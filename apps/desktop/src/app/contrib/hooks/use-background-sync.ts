@@ -167,11 +167,11 @@ export function resetLiveRuntimeTracking(): void {
 
 interface BackgroundSyncParams {
   activeGatewayProfile: string
-  activeIsMessaging: boolean
+  hasActiveStoredSession: boolean
   activeSessionId: null | string
   freshDraftReady: boolean
   gatewayState: string
-  refreshActiveMessagingTranscript: () => Promise<unknown> | unknown
+  refreshActiveStoredTranscript: () => Promise<unknown> | unknown
   refreshCronJobs: () => Promise<unknown> | unknown
   refreshCurrentModel: (force?: boolean) => Promise<unknown> | unknown
   refreshHermesConfig: () => Promise<unknown> | unknown
@@ -200,11 +200,13 @@ function visiblePoll(intervalMs: number, tick: () => void): () => void {
   })
 
   document.addEventListener('visibilitychange', run)
+  window.addEventListener('focus', run)
 
   return () => {
     unsubscribeBattery()
     window.clearInterval(intervalId)
     document.removeEventListener('visibilitychange', run)
+    window.removeEventListener('focus', run)
   }
 }
 
@@ -216,11 +218,11 @@ function visiblePoll(intervalMs: number, tick: () => void): () => void {
  */
 export function useBackgroundSync({
   activeGatewayProfile,
-  activeIsMessaging,
+  hasActiveStoredSession,
   activeSessionId,
   freshDraftReady,
   gatewayState,
-  refreshActiveMessagingTranscript,
+  refreshActiveStoredTranscript,
   refreshCronJobs,
   refreshCurrentModel,
   refreshHermesConfig,
@@ -370,7 +372,7 @@ export function useBackgroundSync({
   // live over the websocket already. sessions.changed re-pulls it via the tick
   // dep; the visible poll is the backstop.
   useEffect(() => {
-    if (gatewayState !== 'open' || !activeIsMessaging) {
+    if (gatewayState !== 'open') {
       return
     }
 
@@ -379,7 +381,17 @@ export function useBackgroundSync({
       () => void refreshActiveMessagingTranscript()
     )
 
-    void refreshActiveMessagingTranscript()
+  // Poll durable history while the selected session is idle. This covers
+  // messages created by another Desktop-compatible client without overwriting
+  // the local websocket stream during an active turn.
+  useEffect(() => {
+    if (gatewayState !== 'open' || !hasActiveStoredSession) {
+      return
+    }
+
+    const dispose = visiblePoll(ACTIVE_SESSION_POLL_INTERVAL_MS, () => void refreshActiveStoredTranscript())
+
+    void refreshActiveStoredTranscript()
 
     return dispose
     // sessionsChangeTick: an inbound turn re-pulls the open transcript.
