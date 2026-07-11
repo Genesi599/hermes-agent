@@ -446,9 +446,15 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     [activeSessionIdRef, selectedStoredSessionIdRef, updateSessionState]
   )
 
+<<<<<<< HEAD
   // Refresh the open messaging transcript (inbound platform turns arrive via
   // the background gateway, not the desktop websocket). Signature-gated so a
   // no-change poll doesn't churn the thread.
+=======
+  // External Desktop-compatible clients can write the selected stored session
+  // without this renderer receiving a websocket event. Signature-gate the
+  // durable-history refresh and never replace a local active stream.
+>>>>>>> 76fe833b20 (desktop: 实时同步外部会话与消息)
   const refreshActiveStoredTranscript = useCallback(async () => {
     const storedSessionId = selectedStoredSessionIdRef.current
     const runtimeSessionId = activeSessionIdRef.current
@@ -833,6 +839,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     refreshSessions
   })
 
+<<<<<<< HEAD
   useEffect(() => {
     if (gatewayState === 'open') {
       // Status-then-arm, syncing $wakeWord so the composer toggle reflects the
@@ -843,6 +850,8 @@ export function ContribWiring({ children }: { children: ReactNode }) {
 
   // Only the open messaging transcript needs its own poll — local chats are
   // live over the websocket already.
+=======
+>>>>>>> 76fe833b20 (desktop: 实时同步外部会话与消息)
   const hasActiveStoredSession = Boolean(selectedStoredSessionId)
 
   // Keep app data live while the gateway is open (on-connect reseed + the

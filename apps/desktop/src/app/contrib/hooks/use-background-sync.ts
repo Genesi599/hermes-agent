@@ -24,8 +24,11 @@ import type { GatewayRequester } from '../types'
 const CRON_POLL_INTERVAL_MS = 30_000
 const CRON_BACKSTOP_INTERVAL_MS = 5 * 60_000
 const MESSAGING_POLL_INTERVAL_MS = 10_000
+<<<<<<< HEAD
 const ACTIVE_MESSAGING_SESSION_POLL_INTERVAL_MS = 5_000
 const ACTIVE_MESSAGING_SESSION_BACKSTOP_INTERVAL_MS = 30_000
+=======
+const SESSION_LIST_POLL_INTERVAL_MS = 5_000
 const ACTIVE_SESSION_POLL_INTERVAL_MS = 2_000
 // Match the TUI's live-session refresh cadence. Auto-compression can rotate a
 // stored session id while its turn keeps running; until the next snapshot the
@@ -209,11 +212,13 @@ function visiblePoll(intervalMs: number, tick: () => void): () => void {
   })
 
   document.addEventListener('visibilitychange', run)
+  window.addEventListener('focus', run)
 
   return () => {
     unsubscribeBattery()
     window.clearInterval(intervalId)
     document.removeEventListener('visibilitychange', run)
+    window.removeEventListener('focus', run)
   }
 }
 
@@ -400,6 +405,34 @@ export function useBackgroundSync({
 
     return visiblePoll(MESSAGING_POLL_INTERVAL_MS, () => void refreshMessagingSessions())
   }, [changeEventsAvailable, gatewayState, refreshMessagingSessions])
+
+  }, [gatewayState, refreshMessagingSessions])
+
+  // External Desktop-compatible clients can create regular sessions without a
+  // renderer websocket event, so keep the sidebar current while visible.
+  useEffect(() => {
+    if (gatewayState !== 'open') {
+      return
+    }
+
+    return visiblePoll(SESSION_LIST_POLL_INTERVAL_MS, () => void refreshSessions())
+  }, [gatewayState, refreshSessions])
+
+  // Poll durable history while the selected session is idle. This covers
+  // messages created by another Desktop-compatible client without overwriting
+  // the local websocket stream during an active turn.
+  useEffect(() => {
+    if (gatewayState !== 'open' || !hasActiveStoredSession) {
+      return
+    }
+
+    const dispose = visiblePoll(ACTIVE_SESSION_POLL_INTERVAL_MS, () => void refreshActiveStoredTranscript())
+
+    void refreshActiveStoredTranscript()
+
+    return dispose
+  }, [gatewayState, hasActiveStoredSession, refreshActiveStoredTranscript])
+>>>>>>> 76fe833b20 (desktop: 实时同步外部会话与消息)
 
   // A fresh new-session draft (gateway open, no active session) re-pulls the
   // model + config so the composer pill reflects the profile default.
