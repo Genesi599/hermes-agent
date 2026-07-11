@@ -26,6 +26,7 @@ const CRON_BACKSTOP_INTERVAL_MS = 5 * 60_000
 const MESSAGING_POLL_INTERVAL_MS = 10_000
 const ACTIVE_MESSAGING_SESSION_POLL_INTERVAL_MS = 5_000
 const ACTIVE_MESSAGING_SESSION_BACKSTOP_INTERVAL_MS = 30_000
+const ACTIVE_SESSION_POLL_INTERVAL_MS = 2_000
 // Match the TUI's live-session refresh cadence. Auto-compression can rotate a
 // stored session id while its turn keeps running; until the next snapshot the
 // sidebar row points at the new id while the renderer still knows the old one.
@@ -175,11 +176,11 @@ export function resetLiveRuntimeTracking(): void {
 
 interface BackgroundSyncParams {
   activeGatewayProfile: string
-  activeIsMessaging: boolean
+  hasActiveStoredSession: boolean
   activeSessionId: null | string
   freshDraftReady: boolean
   gatewayState: string
-  refreshActiveMessagingTranscript: () => Promise<unknown> | unknown
+  refreshActiveStoredTranscript: () => Promise<unknown> | unknown
   refreshCronJobs: () => Promise<unknown> | unknown
   refreshCurrentModel: (force?: boolean) => Promise<unknown> | unknown
   refreshHermesConfig: () => Promise<unknown> | unknown
@@ -224,11 +225,11 @@ function visiblePoll(intervalMs: number, tick: () => void): () => void {
  */
 export function useBackgroundSync({
   activeGatewayProfile,
-  activeIsMessaging,
+  hasActiveStoredSession,
   activeSessionId,
   freshDraftReady,
   gatewayState,
-  refreshActiveMessagingTranscript,
+  refreshActiveStoredTranscript,
   refreshCronJobs,
   refreshCurrentModel,
   refreshHermesConfig,
@@ -374,24 +375,20 @@ export function useBackgroundSync({
     )
   }, [changeEventsAvailable, cronChangeTick, gatewayState, refreshCronJobs])
 
-  // Only the open messaging transcript needs its own cadence — local chats are
-  // live over the websocket already. sessions.changed re-pulls it via the tick
-  // dep; the visible poll is the backstop.
+  // External clients can write any stored Desktop session without this
+  // renderer receiving a websocket event. Signature gating in the caller
+  // prevents no-change polls from replacing local state.
   useEffect(() => {
-    if (gatewayState !== 'open' || !activeIsMessaging) {
+    if (gatewayState !== 'open' || !hasActiveStoredSession) {
       return
     }
 
-    const dispose = visiblePoll(
-      changeEventsAvailable ? ACTIVE_MESSAGING_SESSION_BACKSTOP_INTERVAL_MS : ACTIVE_MESSAGING_SESSION_POLL_INTERVAL_MS,
-      () => void refreshActiveMessagingTranscript()
-    )
+    const dispose = visiblePoll(ACTIVE_SESSION_POLL_INTERVAL_MS, () => void refreshActiveStoredTranscript())
 
-    void refreshActiveMessagingTranscript()
+    void refreshActiveStoredTranscript()
 
     return dispose
-    // sessionsChangeTick: an inbound turn re-pulls the open transcript.
-  }, [activeIsMessaging, changeEventsAvailable, gatewayState, refreshActiveMessagingTranscript, sessionsChangeTick])
+  }, [gatewayState, hasActiveStoredSession, refreshActiveStoredTranscript, sessionsChangeTick])
 
   // Messaging session lists against an older backend: no sessions.changed, so
   // keep the legacy visible poll. (Event-capable backends fold this into the
