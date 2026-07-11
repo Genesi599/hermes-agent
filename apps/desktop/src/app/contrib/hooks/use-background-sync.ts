@@ -17,7 +17,8 @@ import type { GatewayRequester } from '../types'
 // desktop websocket, so poll the bounded lists while the app is visible.
 const CRON_POLL_INTERVAL_MS = 30_000
 const MESSAGING_POLL_INTERVAL_MS = 10_000
-const ACTIVE_MESSAGING_SESSION_POLL_INTERVAL_MS = 5_000
+const SESSION_LIST_POLL_INTERVAL_MS = 5_000
+const ACTIVE_SESSION_POLL_INTERVAL_MS = 2_000
 // Match the TUI's live-session refresh cadence. Auto-compression can rotate a
 // stored session id while its turn keeps running; until the next snapshot the
 // sidebar row points at the new id while the renderer still knows the old one.
@@ -91,11 +92,11 @@ export function rehydrateLiveSessionStatuses(response: LiveSessionStatusResponse
 
 interface BackgroundSyncParams {
   activeGatewayProfile: string
-  activeIsMessaging: boolean
+  hasActiveStoredSession: boolean
   activeSessionId: null | string
   freshDraftReady: boolean
   gatewayState: string
-  refreshActiveMessagingTranscript: () => Promise<unknown> | unknown
+  refreshActiveStoredTranscript: () => Promise<unknown> | unknown
   refreshCronJobs: () => Promise<unknown> | unknown
   refreshCurrentModel: (force?: boolean) => Promise<unknown> | unknown
   refreshHermesConfig: () => Promise<unknown> | unknown
@@ -115,10 +116,12 @@ function visiblePoll(intervalMs: number, tick: () => void): () => void {
 
   const intervalId = window.setInterval(run, intervalMs)
   document.addEventListener('visibilitychange', run)
+  window.addEventListener('focus', run)
 
   return () => {
     window.clearInterval(intervalId)
     document.removeEventListener('visibilitychange', run)
+    window.removeEventListener('focus', run)
   }
 }
 
@@ -130,11 +133,11 @@ function visiblePoll(intervalMs: number, tick: () => void): () => void {
  */
 export function useBackgroundSync({
   activeGatewayProfile,
-  activeIsMessaging,
+  hasActiveStoredSession,
   activeSessionId,
   freshDraftReady,
   gatewayState,
-  refreshActiveMessagingTranscript,
+  refreshActiveStoredTranscript,
   refreshCronJobs,
   refreshCurrentModel,
   refreshHermesConfig,
@@ -231,22 +234,30 @@ export function useBackgroundSync({
     return visiblePoll(MESSAGING_POLL_INTERVAL_MS, () => void refreshMessagingSessions())
   }, [gatewayState, refreshMessagingSessions])
 
-  // Only the open messaging transcript needs its own poll — local chats are
-  // live over the websocket already.
+  // External Desktop-compatible clients can create regular sessions without a
+  // renderer websocket event, so keep the sidebar current while visible.
   useEffect(() => {
-    if (gatewayState !== 'open' || !activeIsMessaging) {
+    if (gatewayState !== 'open') {
       return
     }
 
-    const dispose = visiblePoll(
-      ACTIVE_MESSAGING_SESSION_POLL_INTERVAL_MS,
-      () => void refreshActiveMessagingTranscript()
-    )
+    return visiblePoll(SESSION_LIST_POLL_INTERVAL_MS, () => void refreshSessions())
+  }, [gatewayState, refreshSessions])
 
-    void refreshActiveMessagingTranscript()
+  // Poll durable history while the selected session is idle. This covers
+  // messages created by another Desktop-compatible client without overwriting
+  // the local websocket stream during an active turn.
+  useEffect(() => {
+    if (gatewayState !== 'open' || !hasActiveStoredSession) {
+      return
+    }
+
+    const dispose = visiblePoll(ACTIVE_SESSION_POLL_INTERVAL_MS, () => void refreshActiveStoredTranscript())
+
+    void refreshActiveStoredTranscript()
 
     return dispose
-  }, [activeIsMessaging, gatewayState, refreshActiveMessagingTranscript])
+  }, [gatewayState, hasActiveStoredSession, refreshActiveStoredTranscript])
 
   // A fresh new-session draft (gateway open, no active session) re-pulls the
   // model + config so the composer pill reflects the profile default.

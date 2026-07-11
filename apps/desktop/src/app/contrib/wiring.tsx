@@ -25,7 +25,6 @@ import { emitGatewayEvent } from '@/contrib/events'
 import { getSessionMessages, triggerCronJob } from '@/hermes'
 import { type ChatMessage, chatMessageText, preserveLocalAssistantErrors, toChatMessages } from '@/lib/chat-messages'
 import { sessionMessagesSignature } from '@/lib/session-signatures'
-import { isMessagingSource } from '@/lib/session-source'
 import { latestSessionTodos } from '@/lib/todos'
 import { setCronFocusJobId } from '@/store/cron'
 import { $pinnedSessionIds, pinSession, restoreWorktree, unpinSession } from '@/store/layout'
@@ -39,7 +38,6 @@ import {
   $freshDraftReady,
   $gatewayState,
   $messages,
-  $messagingSessions,
   $resumeExhaustedSessionId,
   $resumeFailedSessionId,
   $selectedStoredSessionId,
@@ -124,7 +122,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
 
   const busyRef = useRef(false)
   const creatingSessionRef = useRef(false)
-  const messagingTranscriptSignatureRef = useRef(new Map<string, string>())
+  const transcriptSignatureRef = useRef(new Map<string, string>())
   // Stable identity for the whole callback surface (see WiringActions). Mutated
   // in place each render so memoized surfaces never re-render on churn.
   const actionsRef = useRef<WiringActions | null>(null)
@@ -136,7 +134,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   const resumeFailedSessionId = useStore($resumeFailedSessionId)
   const resumeExhaustedSessionId = useStore($resumeExhaustedSessionId)
   const selectedStoredSessionId = useStore($selectedStoredSessionId)
-  const messagingSessions = useStore($messagingSessions)
   const profileScope = useStore($profileScope)
 
   const routedSessionId = routeSessionId(location.pathname)
@@ -298,10 +295,10 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     [activeSessionIdRef, selectedStoredSessionIdRef, updateSessionState]
   )
 
-  // Refresh the open messaging transcript (inbound platform turns arrive via
-  // the background gateway, not the desktop websocket). Signature-gated so a
-  // no-change poll doesn't churn the thread.
-  const refreshActiveMessagingTranscript = useCallback(async () => {
+  // External Desktop-compatible clients can write the selected stored session
+  // without this renderer receiving a websocket event. Signature-gate the
+  // durable-history refresh and never replace a local active stream.
+  const refreshActiveStoredTranscript = useCallback(async () => {
     const storedSessionId = selectedStoredSessionIdRef.current
     const runtimeSessionId = activeSessionIdRef.current
 
@@ -309,9 +306,9 @@ export function ContribWiring({ children }: { children: ReactNode }) {
       return
     }
 
-    const stored = $messagingSessions.get().find(s => sessionMatchesStoredId(s, storedSessionId))
+    const stored = $sessions.get().find(s => sessionMatchesStoredId(s, storedSessionId))
 
-    if (!stored || !isMessagingSource(stored.source)) {
+    if (!stored) {
       return
     }
 
@@ -320,11 +317,11 @@ export function ContribWiring({ children }: { children: ReactNode }) {
       const signatureKey = `${stored.profile ?? 'default'}:${storedSessionId}`
       const sig = sessionMessagesSignature(latest.messages)
 
-      if (messagingTranscriptSignatureRef.current.get(signatureKey) === sig) {
+      if (transcriptSignatureRef.current.get(signatureKey) === sig) {
         return
       }
 
-      messagingTranscriptSignatureRef.current.set(signatureKey, sig)
+      transcriptSignatureRef.current.set(signatureKey, sig)
       const messages = toChatMessages(latest.messages)
 
       updateSessionState(
@@ -643,21 +640,17 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     refreshSessions
   })
 
-  // Only the open messaging transcript needs its own poll — local chats are
-  // live over the websocket already.
-  const activeIsMessaging =
-    !!selectedStoredSessionId &&
-    isMessagingSource(messagingSessions.find(s => sessionMatchesStoredId(s, selectedStoredSessionId))?.source)
+  const hasActiveStoredSession = Boolean(selectedStoredSessionId)
 
   // Keep app data live while the gateway is open (on-connect reseed + the
   // cron / messaging / transcript visibility polls + fresh-draft reseed).
   useBackgroundSync({
     activeGatewayProfile,
-    activeIsMessaging,
+    hasActiveStoredSession,
     activeSessionId,
     freshDraftReady,
     gatewayState,
-    refreshActiveMessagingTranscript,
+    refreshActiveStoredTranscript,
     refreshCronJobs,
     refreshCurrentModel,
     refreshHermesConfig,
