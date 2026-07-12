@@ -134,6 +134,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   const resumeFailedSessionId = useStore($resumeFailedSessionId)
   const resumeExhaustedSessionId = useStore($resumeExhaustedSessionId)
   const selectedStoredSessionId = useStore($selectedStoredSessionId)
+  const storedSessions = useStore($sessions)
   const profileScope = useStore($profileScope)
 
   const routedSessionId = routeSessionId(location.pathname)
@@ -195,6 +196,55 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   })
 
   const { connectionRef, gatewayRef, requestGateway } = useGatewayRequest()
+  const durableStatusRef = useRef(new Map<string, 'idle' | 'working'>())
+
+  // A turn started by another gateway process reaches this renderer through
+  // the durable session list rather than its local websocket. Only a real
+  // working-to-idle transition may clear local busy state so an initial idle
+  // snapshot cannot race a local submit.
+  useEffect(() => {
+    const storedSessionId = selectedStoredSessionIdRef.current
+    const runtimeSessionId = activeSessionIdRef.current
+    if (!storedSessionId || !runtimeSessionId) {
+      return
+    }
+
+    const session = storedSessions.find(item => sessionMatchesStoredId(item, storedSessionId))
+    const nextStatus = session?.status
+    if (!nextStatus) {
+      return
+    }
+
+    const previousStatus = durableStatusRef.current.get(storedSessionId)
+    if (previousStatus === nextStatus) {
+      return
+    }
+    durableStatusRef.current.set(storedSessionId, nextStatus)
+
+    if (nextStatus === 'working') {
+      updateSessionState(
+        runtimeSessionId,
+        state => ({
+          ...state,
+          awaitingResponse: true,
+          busy: true,
+          turnStartedAt: state.turnStartedAt ?? Date.now()
+        }),
+        storedSessionId
+      )
+    } else if (previousStatus === 'working') {
+      updateSessionState(
+        runtimeSessionId,
+        state => ({
+          ...state,
+          awaitingResponse: false,
+          busy: false,
+          turnStartedAt: null
+        }),
+        storedSessionId
+      )
+    }
+  }, [activeSessionIdRef, selectedStoredSessionIdRef, storedSessions, updateSessionState])
 
   const {
     loadMoreMessagingForPlatform,

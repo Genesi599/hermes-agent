@@ -806,6 +806,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     profile_name TEXT,
     rewind_count INTEGER NOT NULL DEFAULT 0,
     archived INTEGER NOT NULL DEFAULT 0,
+    live_status TEXT,
+    live_status_updated_at REAL,
     FOREIGN KEY (parent_session_id) REFERENCES sessions(id)
 );
 
@@ -2073,6 +2075,24 @@ class SessionDB:
             conn.execute(
                 "UPDATE sessions SET expiry_finalized = ? WHERE id = ?",
                 (1 if finalized else 0, session_id),
+            )
+
+        self._execute_write(_do)
+
+    def set_session_live_status(self, session_id: str, status: str) -> None:
+        """Publish a short-lived gateway turn state for other clients.
+
+        This deliberately lives alongside the durable session row rather than
+        in a gateway process: Desktop and Hermes Sync can hold independent
+        WebSocket runtimes for one stored conversation.
+        """
+        if not session_id or status not in {"idle", "working"}:
+            return
+
+        def _do(conn):
+            conn.execute(
+                "UPDATE sessions SET live_status = ?, live_status_updated_at = ? WHERE id = ?",
+                (status, time.time(), session_id),
             )
 
         self._execute_write(_do)

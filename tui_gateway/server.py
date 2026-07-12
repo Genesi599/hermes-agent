@@ -1210,6 +1210,45 @@ def _emit(event: str, sid: str, payload: dict | None = None):
     if payload is not None:
         params["payload"] = payload
     write_json({"jsonrpc": "2.0", "method": "event", "params": params})
+    _record_durable_live_status(event, sid, payload)
+
+
+def _record_durable_live_status(event: str, sid: str, payload: dict | None) -> None:
+    if event == "session.info":
+        running = (payload or {}).get("running")
+        if not isinstance(running, bool):
+            return
+        status = "working" if running else "idle"
+    elif event in {
+        "message.start",
+        "message.delta",
+        "reasoning.delta",
+        "status.update",
+        "thinking.delta",
+        "tool.complete",
+        "tool.generating",
+        "tool.progress",
+        "tool.start",
+    }:
+        status = "working"
+    elif event in {"error", "message.complete", "message.done"}:
+        status = "idle"
+    else:
+        return
+
+    with _sessions_lock:
+        session = _sessions.get(sid)
+        session_key = str((session or {}).get("session_key") or "")
+    if not session_key:
+        return
+
+    try:
+        db = _get_db()
+        setter = getattr(db, "set_session_live_status", None)
+        if setter is not None:
+            setter(session_key, status)
+    except Exception:
+        logger.debug("failed to persist live status for %s", session_key, exc_info=True)
 
 
 _compute_host_supervisor = None

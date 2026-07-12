@@ -4291,6 +4291,16 @@ def get_sessions(
             )
             now = time.time()
             for s in sessions:
+                live_status = s.get("live_status")
+                live_status_updated_at = float(s.get("live_status_updated_at") or 0)
+                # A crashed gateway cannot send its terminal event. Treat an
+                # unrefreshed status as idle so a stale spinner never survives
+                # indefinitely in another client.
+                s["status"] = (
+                    "working"
+                    if live_status == "working" and now - live_status_updated_at <= 600
+                    else "idle"
+                )
                 s["is_active"] = (
                     s.get("ended_at") is None
                     and (now - s.get("last_active", s.get("started_at", 0))) < 300
@@ -4413,6 +4423,13 @@ def get_profiles_sessions(
             for s in rows:
                 s["profile"] = name
                 s["is_default_profile"] = name == "default"
+                live_status = s.get("live_status")
+                live_status_updated_at = float(s.get("live_status_updated_at") or 0)
+                s["status"] = (
+                    "working"
+                    if live_status == "working" and now - live_status_updated_at <= 600
+                    else "idle"
+                )
                 s["is_active"] = (
                     s.get("ended_at") is None
                     and (now - s.get("last_active", s.get("started_at", 0))) < 300

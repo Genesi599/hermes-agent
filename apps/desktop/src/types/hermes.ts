@@ -393,6 +393,8 @@ export interface SessionInfo {
   parent_session_id?: null | string
   preview: null | string
   source: null | string
+  /** Cross-client transient turn state, refreshed by the gateway. */
+  status?: 'idle' | 'working'
   started_at: number
   title: null | string
   tool_call_count: number
