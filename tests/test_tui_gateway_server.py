@@ -12317,6 +12317,146 @@ def test_pending_branch_merge_application_is_serialized_per_parent(monkeypatch):
     second.join(1)
 
     assert maximum == 1
+def test_session_merge_branch_injects_only_delta_then_deletes(monkeypatch):
+    rows = {
+        "parent": {"id": "parent", "title": "parent", "parent_session_id": None},
+        "child": {
+            "id": "child",
+            "title": "branch #1",
+            "parent_session_id": "parent",
+            "model_config": json.dumps({"_branch_seed_message_count": 2}),
+        },
+    }
+    messages = {
+        "parent": [
+            {"role": "user", "content": "seed question"},
+            {"role": "assistant", "content": "seed answer"},
+        ],
+        "child": [
+            {"role": "user", "content": "seed question"},
+            {"role": "assistant", "content": "seed answer"},
+            {"role": "user", "content": "new branch fact"},
+            {"role": "assistant", "content": "verified result"},
+        ],
+    }
+    captured = {}
+
+    class _DB:
+        def get_session(self, sid):
+            return rows.get(sid)
+
+        def get_messages(self, sid):
+            return list(messages.get(sid, []))
+
+        def append_message(self, **kwargs):
+            captured["append"] = kwargs
+            messages[kwargs["session_id"]].append(kwargs)
+            return 1
+
+        def delete_session(self, sid, sessions_dir=None):
+            captured["deleted"] = sid
+            rows.pop(sid, None)
+            return True
+
+    def _summarize(**kwargs):
+        captured["input"] = kwargs["user_input"]
+        return "new fact and verified result"
+
+    monkeypatch.setattr(server, "_get_db", lambda: _DB())
+    monkeypatch.setattr("agent.oneshot.run_oneshot", _summarize)
+
+    resp = server.handle_request(
+        {"id": "1", "method": "session.merge_branch", "params": {"session_id": "child"}}
+    )
+
+    assert "result" in resp, resp
+    assert "seed question" not in captured["input"]
+    assert "new branch fact" in captured["input"]
+    assert captured["append"]["session_id"] == "parent"
+    assert captured["append"]["platform_message_id"] == "branch-merge:child"
+    assert captured["deleted"] == "child"
+
+
+def test_session_merge_branch_preserves_child_when_summary_fails(monkeypatch):
+    deleted = []
+
+    class _DB:
+        def get_session(self, sid):
+            return {
+                "id": sid,
+                "parent_session_id": "parent" if sid == "child" else None,
+                "model_config": json.dumps({"_branch_seed_message_count": 0}),
+            }
+
+        def get_messages(self, sid):
+            return [] if sid == "parent" else [{"role": "user", "content": "new fact"}]
+
+        def append_message(self, **kwargs):
+            raise AssertionError("summary must not be injected")
+
+        def delete_session(self, sid, sessions_dir=None):
+            deleted.append(sid)
+            return True
+
+    monkeypatch.setattr(server, "_get_db", lambda: _DB())
+    monkeypatch.setattr(
+        "agent.oneshot.run_oneshot",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("provider unavailable")),
+    )
+
+    resp = server.handle_request(
+        {"id": "1", "method": "session.merge_branch", "params": {"session_id": "child"}}
+    )
+
+    assert resp["error"]["code"] == 5037
+    assert deleted == []
+
+
+def test_branch_seed_count_falls_back_to_matching_selected_parent_message():
+    parent = [
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": "selected seed"},
+        {"role": "user", "content": "later parent"},
+    ]
+    child = [
+        {"role": "assistant", "content": "selected seed"},
+        {"role": "user", "content": "branch delta"},
+    ]
+
+    assert server._branch_seed_count({}, child, parent) == 1
+
+
+def test_session_merge_branch_real_db_moves_summary_and_removes_child(monkeypatch, tmp_path):
+    from hermes_state import SessionDB
+
+    db = SessionDB(db_path=tmp_path / "state.db")
+    try:
+        db.create_session("parent", source="desktop")
+        db.append_message("parent", "user", "shared seed")
+        db.create_session(
+            "child",
+            source="desktop",
+            parent_session_id="parent",
+            model_config={"_branched_from": "parent", "_branch_seed_message_count": 1},
+        )
+        db.append_message("child", "user", "shared seed")
+        db.append_message("child", "assistant", "new verified detail")
+
+        monkeypatch.setattr(server, "_get_db", lambda: db)
+        monkeypatch.setattr("agent.oneshot.run_oneshot", lambda **kwargs: "new verified detail")
+
+        resp = server.handle_request(
+            {"id": "1", "method": "session.merge_branch", "params": {"session_id": "child"}}
+        )
+
+        assert "result" in resp, resp
+        assert db.get_session("child") is None
+        merged = db.get_messages("parent")[-1]
+        assert merged["role"] == "assistant"
+        assert "new verified detail" in merged["content"]
+        assert merged["platform_message_id"] == "branch-merge:child"
+    finally:
+        db.close()
 
 
 # --------------------------------------------------------------------------
