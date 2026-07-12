@@ -32,10 +32,8 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { shouldRefreshSessions } from "@/lib/session-refresh";
-import {
-  importSummary,
-  parseImportSessions,
-} from "@/lib/session-import";
+import { importSummary, parseImportSessions } from "@/lib/session-import";
+import { flattenSessionsWithBranches } from "@/lib/session-branch-tree";
 import type {
   SessionInfo,
   SessionMessage,
@@ -379,6 +377,7 @@ function MessageList({
 }
 
 function SessionRow({
+  branchStem,
   session,
   snippet,
   searchQuery,
@@ -537,6 +536,14 @@ function SessionRow({
         className="flex cursor-pointer items-start gap-3 p-3 transition-colors hover:bg-secondary/30"
         onClick={onToggle}
       >
+        {branchStem && (
+          <span
+            aria-hidden="true"
+            className="shrink-0 whitespace-pre pt-0.5 font-mono text-xs text-muted-foreground"
+          >
+            {branchStem}
+          </span>
+        )}
         <span className="flex shrink-0 items-center pt-0.5">
           <Checkbox
             checked={isSelected}
@@ -1251,6 +1258,8 @@ export default function SessionsPage() {
   const filtered = searchResults
     ? sessions.filter((s) => snippetMap.has(s.id))
     : sessions;
+  const displayEntries = flattenSessionsWithBranches(filtered);
+  const displayedSessions = displayEntries.map(({ session }) => session);
 
   const platformEntries = status
     ? Object.entries(status.gateway_platforms ?? {})
@@ -1697,9 +1706,10 @@ export default function SessionsPage() {
         ) : (
           <>
             <div className="flex min-w-0 flex-col gap-1.5">
-              {filtered.map((s, index) => (
+              {displayEntries.map(({ branchStem, session: s }, index) => (
                 <SessionRow
                   key={s.id}
+                  branchStem={branchStem}
                   session={s}
                   snippet={snippetMap.get(s.id)}
                   searchQuery={search || undefined}
@@ -1709,7 +1719,7 @@ export default function SessionsPage() {
                     setExpandedId((prev) => (prev === s.id ? null : s.id))
                   }
                   onSelectClick={(event) =>
-                    handleSelectClick(event, index, filtered)
+                    handleSelectClick(event, index, displayedSessions)
                   }
                   onDelete={() => sessionDelete.requestDelete(s.id)}
                   onRename={handleRename}
@@ -1792,6 +1802,7 @@ export default function SessionsPage() {
 }
 
 interface SessionRowProps {
+  branchStem?: string;
   isExpanded: boolean;
   isSelected: boolean;
   onDelete: () => void;

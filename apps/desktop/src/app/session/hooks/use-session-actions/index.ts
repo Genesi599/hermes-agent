@@ -989,10 +989,21 @@ export function useSessionActions({
       creatingSessionRef.current = true
 
       try {
-        // No title: the backend auto-names the branch from its parent's lineage.
+        const rows = $sessions.get()
+        const parent = parentStoredId ? rows.find(session => sessionMatchesStoredId(session, parentStoredId)) : null
+
+        const siblings = parentStoredId
+          ? rows.filter(session => session.parent_session_id?.trim() === parentStoredId).length
+          : 0
+
+        // Persist the exact title painted optimistically in Desktop. Without
+        // this, the DB auto-title shown by the mobile Dashboard diverges.
+        const branchTitle = copy.branchTitle(siblings + 1).toLowerCase()
+
         const branched = await requestGateway<SessionCreateResponse>('session.create', {
           cols: 96,
           source: 'desktop',
+          title: branchTitle,
           ...(cwd && { cwd }),
           messages: branchMessages.map(({ content, role }) => ({ content, role })),
           ...(parentStoredId && { parent_session_id: parentStoredId })
@@ -1001,20 +1012,13 @@ export function useSessionActions({
         const routedSessionId = branched.stored_session_id ?? branched.session_id
         const preview = branchMessages.map(({ content }) => content).find(Boolean) ?? null
         // Draft until submit: nest under the parent at the parent's recency so it
-        // doesn't bubble to the top until a real message lands (backend persists
-        // + auto-names it then). The selected row survives refreshes (sessionsToKeep).
-        const rows = $sessions.get()
-        const parent = parentStoredId ? rows.find(session => sessionMatchesStoredId(session, parentStoredId)) : null
-
-        const siblings = parentStoredId
-          ? rows.filter(session => session.parent_session_id?.trim() === parentStoredId).length
-          : 0
-
+        // doesn't bubble to the top until a real message lands and the backend
+        // persists it. The selected row survives refreshes (sessionsToKeep).
         setFreshDraftReady(false)
         upsertOptimisticSession(
           branched,
           routedSessionId,
-          copy.branchTitle(siblings + 1).toLowerCase(),
+          branchTitle,
           preview,
           parentStoredId,
           parent ? parent.last_active || parent.started_at : undefined
