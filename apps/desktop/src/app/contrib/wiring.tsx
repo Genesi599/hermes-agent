@@ -190,6 +190,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   const messagingSessions = useStore($messagingSessions)
   const sessions = useStore($sessions)
   const activeGatewayProfile = useStore($activeGatewayProfile)
+  const storedSessions = useStore($sessions)
   const profileScope = useStore($profileScope)
   const boot = useStore($desktopBoot)
   const storedSessions = useStore($sessions)
@@ -332,6 +333,56 @@ export function ContribWiring({ children }: { children: ReactNode }) {
       }
     }
   }, [runtimeIdByStoredSessionIdRef, storedSessions, updateSessionState])
+  const { connectionRef, gatewayRef, requestGateway } = useGatewayRequest()
+  const durableStatusRef = useRef(new Map<string, 'idle' | 'working'>())
+
+  // A turn started by another gateway process reaches this renderer through
+  // the durable session list rather than its local websocket. Only a real
+  // working-to-idle transition may clear local busy state so an initial idle
+  // snapshot cannot race a local submit.
+  useEffect(() => {
+    const storedSessionId = selectedStoredSessionIdRef.current
+    const runtimeSessionId = activeSessionIdRef.current
+    if (!storedSessionId || !runtimeSessionId) {
+      return
+    }
+
+    const session = storedSessions.find(item => sessionMatchesStoredId(item, storedSessionId))
+    const nextStatus = session?.status
+    if (!nextStatus) {
+      return
+    }
+
+    const previousStatus = durableStatusRef.current.get(storedSessionId)
+    if (previousStatus === nextStatus) {
+      return
+    }
+    durableStatusRef.current.set(storedSessionId, nextStatus)
+
+    if (nextStatus === 'working') {
+      updateSessionState(
+        runtimeSessionId,
+        state => ({
+          ...state,
+          awaitingResponse: true,
+          busy: true,
+          turnStartedAt: state.turnStartedAt ?? Date.now()
+        }),
+        storedSessionId
+      )
+    } else if (previousStatus === 'working') {
+      updateSessionState(
+        runtimeSessionId,
+        state => ({
+          ...state,
+          awaitingResponse: false,
+          busy: false,
+          turnStartedAt: null
+        }),
+        storedSessionId
+      )
+    }
+  }, [activeSessionIdRef, selectedStoredSessionIdRef, storedSessions, updateSessionState])
 
   const {
     loadMoreMessagingForPlatform,
@@ -341,7 +392,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     refreshMessagingSessions,
     refreshSessions
   } = useSessionListActions({ profileScope })
->>>>>>> 9cedbcf6d3 (feat: 校准任务栏未读角标)
 
   const updateActiveSessionRuntimeInfo = useCallback(
     (info: { branch?: string; cwd?: string }) => {
@@ -446,15 +496,12 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     [activeSessionIdRef, selectedStoredSessionIdRef, updateSessionState]
   )
 
-<<<<<<< HEAD
   // Refresh the open messaging transcript (inbound platform turns arrive via
-  // the background gateway, not the desktop websocket). Signature-gated so a
-  // no-change poll doesn't churn the thread.
-=======
-  // External Desktop-compatible clients can write the selected stored session
+  // the background gateway, not the desktop websocket); external
+  // Desktop-compatible clients can also write the selected stored session
   // without this renderer receiving a websocket event. Signature-gate the
   // durable-history refresh and never replace a local active stream.
->>>>>>> 76fe833b20 (desktop: 实时同步外部会话与消息)
+  // Signature-gated so a no-change poll doesn't churn the thread.
   const refreshActiveStoredTranscript = useCallback(async () => {
     const storedSessionId = selectedStoredSessionIdRef.current
     const runtimeSessionId = activeSessionIdRef.current
@@ -839,7 +886,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     refreshSessions
   })
 
-<<<<<<< HEAD
   useEffect(() => {
     if (gatewayState === 'open') {
       // Status-then-arm, syncing $wakeWord so the composer toggle reflects the
@@ -850,8 +896,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
 
   // Only the open messaging transcript needs its own poll — local chats are
   // live over the websocket already.
-=======
->>>>>>> 76fe833b20 (desktop: 实时同步外部会话与消息)
   const hasActiveStoredSession = Boolean(selectedStoredSessionId)
 
   // Keep app data live while the gateway is open (on-connect reseed + the

@@ -4057,6 +4057,7 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
         in a gateway process: Desktop and Hermes Sync can hold independent
         WebSocket runtimes for one stored conversation.
 
+
         When ``owner`` is provided, a working lease can only be refreshed by
         that owner and an idle transition only releases that owner's lease.
         This lets scheduled turns and interactive turns serialize writes to the
@@ -8035,14 +8036,13 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
                 projected.append(merged)
             sessions = projected
 
-<<<<<<< HEAD
         # Derive read state per surfaced conversation. ``last_read_at`` is
         # lineage-stamped by set_session_read, so a projected row's root
         # watermark and its tip's are the same value — comparing it against
         # the tip's last_active is correct either way.
         for s in sessions:
             s["unread"] = self.session_unread(s)
-=======
+
         # A reviewed branch can remain visible while its summary waits for the
         # parent conversation's next quiet write slot. Surface only that durable
         # lifecycle state (never the summary itself) so list clients can
@@ -8059,7 +8059,6 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
         for session in sessions:
             if str(session.get("id") or "") in queued_child_ids:
                 session["branch_merge_status"] = "waiting_for_parent"
->>>>>>> d421740a2e (feat: 标注分支等待父对话)
 
         # Durable batch-run state is authoritative for visible Conversation
         # Branch progress. Keep the transcript out of this projection; list
