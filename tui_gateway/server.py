@@ -272,6 +272,7 @@ _LONG_HANDLERS = frozenset(
         "session.active_list",
         "session.branch",
         "session.compress",
+        "session.merge_branch",
         "session.list",
         "session.resume",
         # Workspace re-home runs git branch/root subprocess probes against an
@@ -2826,6 +2827,9 @@ def _ensure_session_db_row(session: dict) -> None:
     parent_session_id = session.get("parent_session_id") or None
     if parent_session_id:
         model_config["_branched_from"] = parent_session_id
+        model_config["_branch_seed_message_count"] = int(
+            session.get("branch_seed_message_count") or 0
+        )
     try:
         db.create_session(
             key,

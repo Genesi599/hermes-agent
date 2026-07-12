@@ -1647,6 +1647,11 @@ export interface Translations {
       copyId: string
       export: string
       branchFrom: string
+      mergeBranch: string
+      mergeBranchTitle: string
+      mergeBranchDesc: string
+      mergingBranch: string
+      mergedBranch: string
       rename: string
       archive: string
       newWindow: string

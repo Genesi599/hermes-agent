@@ -196,6 +196,12 @@ function normalizeNewChatWorkspaceTarget(target: NewChatWorkspaceTarget): NewCha
   return typeof target === 'string' ? target.trim() || null : target
 }
 
+interface MergeBranchResponse {
+  deleted: string
+  parent_session_id: string
+  summary: string
+}
+
 export function useSessionActions({
   activeSessionId,
   activeSessionIdRef,
@@ -1354,6 +1360,67 @@ export function useSessionActions({
     [copy, forkBranch]
   )
 
+  const mergeBranchIntoParent = useCallback(
+    async (storedSessionId: string, sessionProfile?: string | null): Promise<void> => {
+      clearNotifications()
+
+      const child = $sessions.get().find(session => sessionMatchesStoredId(session, storedSessionId))
+      const parentId = child?.parent_session_id?.trim()
+
+      if (!child || !parentId) {
+        throw new Error('Only a branch session can be merged into its parent.')
+      }
+
+      const wasSelected = selectedStoredSessionId === storedSessionId
+      const closingRuntimeId = wasSelected ? activeSessionId : null
+
+      await ensureGatewayProfile(sessionProfile ?? child.profile)
+
+      try {
+        if (closingRuntimeId) {
+          await requestGateway('session.close', { session_id: closingRuntimeId })
+        }
+
+        const result = await requestGateway<MergeBranchResponse>('session.merge_branch', {
+          session_id: storedSessionId
+        })
+
+        setSessions(prev => prev.filter(session => !sessionMatchesStoredId(session, storedSessionId)))
+        tombstoneSessions([storedSessionId, child.id, child._lineage_root_id])
+        setSessionsTotal(prev => Math.max(0, prev - 1))
+        $pinnedSessionIds.set(
+          $pinnedSessionIds.get().filter(id => id !== storedSessionId && id !== sessionPinId(child))
+        )
+        clearQueuedPrompts(storedSessionId)
+        broadcastSessionsChanged()
+
+        if (wasSelected) {
+          setActiveSessionId(null)
+          activeSessionIdRef.current = null
+          setSelectedStoredSessionId(result.parent_session_id)
+          selectedStoredSessionIdRef.current = result.parent_session_id
+          setMessages([])
+          navigate(sessionRoute(result.parent_session_id), { replace: true })
+        }
+      } catch (err) {
+        if (wasSelected && closingRuntimeId) {
+          await resumeSession(storedSessionId).catch(() => undefined)
+        }
+
+        throw err
+      }
+    },
+    [
+      activeSessionId,
+      activeSessionIdRef,
+      navigate,
+      requestGateway,
+      resumeSession,
+      selectedStoredSessionId,
+      selectedStoredSessionIdRef
+    ]
+  )
+
   const removeSession = useCallback(
     async (storedSessionId: string) => {
       clearNotifications()
@@ -1512,6 +1579,7 @@ export function useSessionActions({
     closeSettings,
     createBackendSessionForSend,
     openNewSessionTile,
+    mergeBranchIntoParent,
     openSettings,
     removeSession,
     resumeSession,
