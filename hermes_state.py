@@ -4008,6 +4008,24 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
 
         self._execute_write(_do)
 
+    def set_session_live_status(self, session_id: str, status: str) -> None:
+        """Publish a short-lived gateway turn state for other clients.
+
+        This deliberately lives alongside the durable session row rather than
+        in a gateway process: Desktop and Hermes Sync can hold independent
+        WebSocket runtimes for one stored conversation.
+        """
+        if not session_id or status not in {"idle", "working"}:
+            return
+
+        def _do(conn):
+            conn.execute(
+                "UPDATE sessions SET live_status = ?, live_status_updated_at = ? WHERE id = ?",
+                (status, time.time(), session_id),
+            )
+
+        self._execute_write(_do)
+
     # ── Gateway routing index (replaces sessions.json, #9006 follow-up) ────
 
     def save_gateway_routing_entry(
