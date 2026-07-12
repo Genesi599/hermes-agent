@@ -1098,7 +1098,8 @@ describe('branchStoredSession desktop source tagging', () => {
 
     expect(createParams).toMatchObject({
       parent_session_id: 'stored-parent',
-      source: 'desktop'
+      source: 'desktop',
+      title: 'draft: branch #1'
     })
   })
 
