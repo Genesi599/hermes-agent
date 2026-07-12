@@ -1888,6 +1888,8 @@ export interface StatusResponse {
 
 export interface SessionInfo {
   id: string;
+  /** Root id when this row is the visible tip of a compressed lineage. */
+  _lineage_root_id?: string | null;
   source: string | null;
   model: string | null;
   title: string | null;
