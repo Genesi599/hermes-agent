@@ -1534,7 +1534,17 @@ export default function SessionsPage() {
     }
   }
 
+<<<<<<< HEAD
   const filtered = searchResults ?? sessions;
+=======
+  // When searching, filter sessions to those with FTS matches;
+  // when not searching, show all sessions
+  const filtered = searchResults
+    ? sessions.filter((s) => snippetMap.has(s.id))
+    : sessions;
+  const displayEntries = flattenSessionsWithBranches(filtered);
+  const displayedSessions = displayEntries.map(({ session }) => session);
+>>>>>>> 8eef345f3c (sessions: 同步分支名称并在手机端显示层级)
 
   const platformEntries = status
     ? Object.entries(status.gateway_platforms ?? {})

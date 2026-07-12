@@ -1213,6 +1213,16 @@ export function useSessionActions({
         // upsertOptimisticSession's $activeGatewayProfile stamp correct.
         await ensureGatewayProfile(profile)
 
+        const rows = $sessions.get()
+        const parent = parentStoredId ? rows.find(session => sessionMatchesStoredId(session, parentStoredId)) : null
+        const siblings = parentStoredId
+          ? rows.filter(session => session.parent_session_id?.trim() === parentStoredId).length
+          : 0
+
+        // Persist the exact title painted optimistically in Desktop. Without
+        // this, the DB auto-title shown by the mobile Dashboard diverges.
+        const branchTitle = copy.branchTitle(siblings + 1).toLowerCase()
+
         // No title: the backend auto-names the branch from its parent's lineage.
         const branched = sourceSessionId
           ? await requestGateway<SessionCreateResponse>('session.branch', {
@@ -1222,7 +1232,7 @@ export function useSessionActions({
           : await requestGateway<SessionCreateResponse>('session.create', {
               cols: 96,
               source: 'desktop',
-              title: copy.branchTitle(1).toLowerCase(),
+              title: branchTitle,
               ...(cwd && { cwd }),
               ...(profile ? { profile } : {}),
               messages: branchMessages.map(({ content, role }) => ({ content, role })),
@@ -1234,19 +1244,12 @@ export function useSessionActions({
         // Draft until submit: nest under the parent at the parent's recency so it
         // doesn't bubble to the top until a real message lands (backend persists
         // + auto-names it then). The selected row survives refreshes (sessionsToKeep).
-        const rows = $sessions.get()
-        const parent = parentStoredId ? rows.find(session => sessionMatchesStoredId(session, parentStoredId)) : null
         const inheritParentPin = parentStoredId ? isSessionFamilyPinned(parentStoredId, rows) : false
-
-        const siblings = parentStoredId
-          ? rows.filter(session => session.parent_session_id?.trim() === parentStoredId).length
-          : 0
-
         setFreshDraftReady(false)
         upsertOptimisticSession(
           branched,
           routedSessionId,
-          copy.branchTitle(siblings + 1).toLowerCase(),
+          branchTitle,
           preview,
           parentStoredId,
           parent ? parent.last_active || parent.started_at : undefined
