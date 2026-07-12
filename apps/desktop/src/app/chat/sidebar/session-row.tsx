@@ -35,6 +35,7 @@ interface SidebarSessionRowProps extends React.ComponentProps<'div'> {
   onArchive: () => void
   onBranch?: () => void
   onDelete: () => void
+  onMerge?: () => Promise<void> | void
   onPin: () => void
   onResume: () => void
   reorderable?: boolean
@@ -64,6 +65,7 @@ export function SidebarSessionRow({
   onArchive,
   onBranch,
   onDelete,
+  onMerge,
   onPin,
   onResume,
   reorderable = false,
@@ -110,6 +112,7 @@ export function SidebarSessionRow({
       onArchive={onArchive}
       onBranch={onBranch}
       onDelete={onDelete}
+      onMerge={onMerge}
       onPin={onPin}
       pinned={isPinned}
       profile={session.profile}
@@ -128,6 +131,7 @@ export function SidebarSessionRow({
               onArchive={onArchive}
               onBranch={onBranch}
               onDelete={onDelete}
+              onMerge={onMerge}
               onPin={onPin}
               pinned={isPinned}
               profile={session.profile}

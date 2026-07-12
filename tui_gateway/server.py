@@ -250,6 +250,7 @@ _LONG_HANDLERS = frozenset(
         "session.active_list",
         "session.branch",
         "session.compress",
+        "session.merge_branch",
         "session.list",
         "session.resume",
         "shell.exec",
@@ -2017,6 +2018,9 @@ def _ensure_session_db_row(session: dict) -> None:
     parent_session_id = session.get("parent_session_id") or None
     if parent_session_id:
         model_config["_branched_from"] = parent_session_id
+        model_config["_branch_seed_message_count"] = int(
+            session.get("branch_seed_message_count") or 0
+        )
     try:
         db.create_session(
             key,
@@ -5852,6 +5856,7 @@ def _(rid, params: dict) -> dict:
             "create_reasoning_override": create_reasoning_override,
             "create_service_tier_override": create_service_tier_override,
             "parent_session_id": parent_session_id,
+            "branch_seed_message_count": len(history),
             "pending_title": title or None,
             "profile_home": str(profile_home) if profile_home is not None else None,
             "running": False,
@@ -6899,6 +6904,193 @@ def _main_runtime_from_agent(agent) -> dict | None:
         elif field == "api_key" and callable(value):
             runtime[field] = value
     return runtime or None
+
+
+def _merge_message_text(content: Any) -> str:
+    """Return readable text from a stored plain or multimodal message."""
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                text = item.get("text") or item.get("content")
+                if isinstance(text, str) and text.strip():
+                    parts.append(text.strip())
+        return "\n".join(parts)
+    if content is None:
+        return ""
+    try:
+        return json.dumps(content, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return str(content).strip()
+
+
+def _branch_seed_count(child: dict, child_messages: list[dict], parent_messages: list[dict]) -> int:
+    """Resolve the copied branch prefix, including branches made before metadata existed."""
+    config = child.get("model_config")
+    if isinstance(config, str):
+        try:
+            config = json.loads(config)
+        except (TypeError, ValueError):
+            config = {}
+    if isinstance(config, dict):
+        raw = config.get("_branch_seed_message_count")
+        try:
+            if raw is not None:
+                return max(0, min(int(raw), len(child_messages)))
+        except (TypeError, ValueError):
+            pass
+
+    def signature(message: dict) -> tuple[str, str]:
+        return str(message.get("role") or ""), _merge_message_text(message.get("content"))
+
+    child_signatures = [signature(message) for message in child_messages]
+    parent_signatures = [signature(message) for message in parent_messages]
+    best = 0
+    for start in range(len(parent_signatures)):
+        matched = 0
+        while (
+            matched < len(child_signatures)
+            and start + matched < len(parent_signatures)
+            and child_signatures[matched] == parent_signatures[start + matched]
+        ):
+            matched += 1
+        best = max(best, matched)
+    return best
+
+
+def _branch_merge_input(messages: list[dict], max_chars: int = 50_000) -> str:
+    rows: list[str] = []
+    for message in messages:
+        role = str(message.get("role") or "").lower()
+        if role not in {"user", "assistant"}:
+            continue
+        content = _merge_message_text(message.get("content"))
+        if content:
+            rows.append(f"{role.upper()}:\n{content[:12_000]}")
+
+    selected: list[str] = []
+    used = 0
+    for row in reversed(rows):
+        if selected and used + len(row) > max_chars:
+            break
+        selected.append(row[-max_chars:])
+        used += len(row)
+    return "\n\n".join(reversed(selected))
+
+
+@method("session.merge_branch")
+def _(rid, params: dict) -> dict:
+    """Summarize a branch delta into its parent, then delete the branch."""
+    target = str(params.get("session_id") or "").strip()
+    if not target:
+        return _err(rid, 4006, "session_id required")
+    db = _get_db()
+    if db is None:
+        return _db_unavailable_error(rid, code=5036)
+
+    child = db.get_session(target)
+    if child is None:
+        return _err(rid, 4007, "session not found")
+    parent_id = str(child.get("parent_session_id") or "").strip()
+    if not parent_id:
+        return _err(rid, 4033, "session is not a branch")
+    parent = db.get_session(parent_id)
+    if parent is None:
+        return _err(rid, 4034, "parent session not found")
+
+    with _sessions_lock:
+        live = list(_sessions.items())
+    related = [(sid, session) for sid, session in live if session.get("session_key") in {target, parent_id}]
+    if any(session.get("running") for _, session in related):
+        return _err(rid, 4035, "stop the parent and branch before merging")
+
+    marker = f"branch-merge:{target}"
+    parent_messages = db.get_messages(parent_id)
+    already_injected = next(
+        (message for message in parent_messages if message.get("platform_message_id") == marker),
+        None,
+    )
+
+    if already_injected is None:
+        child_messages = db.get_messages(target)
+        seed_count = _branch_seed_count(child, child_messages, parent_messages)
+        merge_input = _branch_merge_input(child_messages[seed_count:])
+        if not merge_input:
+            return _err(rid, 4036, "branch has no new messages to merge")
+
+        runtime = next(
+            (_main_runtime_from_agent(session.get("agent")) for _, session in related if session.get("agent")),
+            None,
+        )
+        try:
+            from agent.oneshot import run_oneshot
+
+            summary = run_oneshot(
+                instructions=(
+                    "Summarize only the durable new information in this branch for injection into its parent "
+                    "conversation. Preserve decisions, verified results, constraints, corrections, and unresolved "
+                    "work. Omit greetings, repetition, raw logs, and branch mechanics. Use the source conversation's "
+                    "language. Return only the concise summary."
+                ),
+                user_input=merge_input,
+                task="title_generation",
+                max_tokens=1600,
+                temperature=0.2,
+                main_runtime=runtime,
+            ).strip()
+        except Exception as exc:
+            logger.warning("session.merge_branch summary failed: %s", exc)
+            return _err(rid, 5037, f"branch summary failed: {exc}")
+        if not summary:
+            return _err(rid, 5037, "branch summary was empty")
+
+        title = str(child.get("title") or target).strip()
+        merged_content = f'[Branch merge summary: {title}]\n\n{summary}'
+        try:
+            db.append_message(
+                session_id=parent_id,
+                role="assistant",
+                content=merged_content,
+                platform_message_id=marker,
+                effect_disposition="branch_merge",
+            )
+        except Exception as exc:
+            return _err(rid, 5038, f"could not inject branch summary: {exc}")
+
+        for _, session in related:
+            if session.get("session_key") != parent_id:
+                continue
+            message = {"role": "assistant", "content": merged_content}
+            with session["history_lock"]:
+                session.setdefault("history", []).append(message)
+                session["history_version"] = int(session.get("history_version", 0)) + 1
+                agent = session.get("agent")
+                if agent is not None and hasattr(agent, "_last_flushed_db_idx"):
+                    agent._last_flushed_db_idx = len(session["history"])
+    else:
+        merged_content = _merge_message_text(already_injected.get("content"))
+        seed_count = 0
+
+    for sid, session in related:
+        if session.get("session_key") == target:
+            _close_session_by_id(sid, end_reason="branch_merged")
+    try:
+        deleted = db.delete_session(target, sessions_dir=get_hermes_home() / "sessions")
+    except Exception as exc:
+        return _err(rid, 5039, f"summary injected but branch delete failed: {exc}")
+    if not deleted:
+        return _err(rid, 5039, "summary injected but branch was not deleted")
+    return _ok(
+        rid,
+        {
+            "deleted": target,
+            "parent_session_id": parent_id,
+            "seed_message_count": seed_count,
+            "summary": merged_content,
+        },
+    )
 
 
 @method("llm.oneshot")
@@ -9017,7 +9209,10 @@ def _(rid, params: dict) -> dict:
             # the parent live (no end_reason='branched'), so the legacy
             # end_reason heuristic never matches it — the marker is the only
             # thing that surfaces TUI branches. See issue #20856.
-            model_config={"_branched_from": old_key},
+            model_config={
+                "_branched_from": old_key,
+                "_branch_seed_message_count": len(history),
+            },
             parent_session_id=old_key,
             cwd=_session_cwd(session),
         )

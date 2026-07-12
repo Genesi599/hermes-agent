@@ -18,6 +18,7 @@ interface SessionRowCommonProps {
   onArchive: () => void
   onBranch?: () => void
   onDelete: () => void
+  onMerge?: () => Promise<void> | void
   onPin: () => void
   onResume: () => void
   reorderable?: boolean
@@ -31,6 +32,7 @@ interface VirtualSessionListProps {
   onArchiveSession: (sessionId: string) => void
   onBranchSession?: (sessionId: string, profile?: string) => void
   onDeleteSession: (sessionId: string) => void
+  onMergeSession?: (sessionId: string, profile?: string) => Promise<void> | void
   onResumeSession: (sessionId: string) => void
   onTogglePin: (sessionId: string) => void
   pinned: boolean
@@ -49,6 +51,7 @@ export const VirtualSessionList: FC<VirtualSessionListProps> = ({
   onArchiveSession,
   onBranchSession,
   onDeleteSession,
+  onMergeSession,
   onResumeSession,
   onTogglePin,
   pinned,
@@ -91,6 +94,8 @@ export const VirtualSessionList: FC<VirtualSessionListProps> = ({
       onArchive: () => onArchiveSession(session.id),
       onBranch: onBranchSession ? () => onBranchSession(session.id, session.profile) : undefined,
       onDelete: () => onDeleteSession(session.id),
+      onMerge:
+        session.parent_session_id && onMergeSession ? () => onMergeSession(session.id, session.profile) : undefined,
       onPin: () => onTogglePin(sessionPinId(session)),
       onResume: () => onResumeSession(session.id),
       reorderable,
