@@ -97,6 +97,7 @@ interface SessionActions {
   profile?: string
   onPin?: () => void
   onBranch?: () => void
+  onMerge?: () => Promise<void> | void
   onArchive?: () => void
   onDelete?: () => void
   /** Close this surface (a tile tab) — omitted where nothing closes (sidebar
@@ -179,6 +180,7 @@ function useSessionActions({
   profile,
   onPin,
   onBranch,
+  onMerge,
   onArchive,
   onDelete,
   onClose,
@@ -276,7 +278,20 @@ function useSessionActions({
         triggerHaptic('selection')
         void exportSession(sessionId, { profile, title })
       }
-    })
+    }),
+    ...(onMerge
+      ? [
+          spec({
+            disabled: false,
+            icon: 'git-merge',
+            label: r.mergeBranch,
+            onSelect: () => {
+              triggerHaptic('warning')
+              void onMerge()
+            }
+          })
+        ]
+      : [])
   ]
 
   // TAB — verbs that act on the strip (tabs only; a row isn't a tab).

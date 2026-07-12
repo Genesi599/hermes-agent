@@ -22,6 +22,7 @@ import {
   $newChatWorkspaceTarget,
   $resumeFailedSessionId,
   $selectedStoredSessionId,
+  $sessions,
   setActiveSessionId,
   setActiveSessionStoredIdRotation,
   setCurrentCwd,
@@ -1469,6 +1470,69 @@ describe('resumeSession drops a redundant tile when the session loads into main'
 
     // Only the resumed session's tile closes; the sibling tile stays put.
     expect($sessionTiles.get().map(t => t.storedSessionId)).toEqual(['stored-2'])
+  })
+})
+
+function MergeHarness({
+  onReady,
+  requestGateway
+}: {
+  onReady: (merge: (storedSessionId: string, sessionProfile?: string | null) => Promise<void>) => void
+  requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
+}) {
+  const ref = <T,>(value: T): MutableRefObject<T> => ({ current: value })
+  const actions = useSessionActions({
+    activeSessionId: null,
+    activeSessionIdRef: ref<string | null>(null),
+    busyRef: ref(false),
+    creatingSessionRef: ref(false),
+    ensureSessionState: () => ({}) as ClientSessionState,
+    getRouteToken: () => 'token',
+    navigate: vi.fn() as never,
+    requestGateway,
+    runtimeIdByStoredSessionIdRef: ref(new Map<string, string>()),
+    selectedStoredSessionId: null,
+    selectedStoredSessionIdRef: ref<string | null>(null),
+    sessionStateByRuntimeIdRef: ref(new Map<string, ClientSessionState>()),
+    syncSessionStateToView: vi.fn(),
+    updateSessionState: () => ({}) as ClientSessionState
+  })
+
+  useEffect(() => {
+    onReady(actions.mergeBranchIntoParent)
+  }, [actions.mergeBranchIntoParent, onReady])
+
+  return null
+}
+
+describe('mergeBranchIntoParent', () => {
+  afterEach(() => {
+    cleanup()
+    setSessions([])
+    vi.restoreAllMocks()
+  })
+
+  it('calls the merge RPC and removes the deleted child from the sidebar', async () => {
+    const requestGateway = vi.fn(async (method: string) => {
+      if (method === 'session.merge_branch') {
+        return { deleted: 'child', parent_session_id: 'parent', summary: 'result' } as never
+      }
+
+      return {} as never
+    })
+
+    setSessions([
+      storedSession({ id: 'parent', message_count: 2 }),
+      storedSession({ id: 'child', message_count: 4, parent_session_id: 'parent' })
+    ])
+
+    let merge: ((storedSessionId: string) => Promise<void>) | null = null
+    render(<MergeHarness onReady={action => (merge = action)} requestGateway={requestGateway} />)
+    await waitFor(() => expect(merge).not.toBeNull())
+    await expect(merge!('child')).resolves.toBeUndefined()
+
+    expect(requestGateway).toHaveBeenCalledWith('session.merge_branch', { session_id: 'child' })
+    expect($sessions.get().map(session => session.id)).toEqual(['parent'])
   })
 })
 

@@ -277,6 +277,7 @@ interface ChatSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onLoadMoreMessaging?: (platform: string) => Promise<void> | void
   onResumeSession: (sessionId: string) => void
   onDeleteSession: (sessionId: string) => void
+  onMergeSession: (sessionId: string, profile?: string) => Promise<void> | void
   onArchiveSession: (sessionId: string) => void
   onBranchSession: (sessionId: string) => void
   onNewSessionInWorkspace: (path: null | string) => void
@@ -293,6 +294,7 @@ export function ChatSidebar({
   onLoadMoreMessaging,
   onResumeSession,
   onDeleteSession,
+  onMergeSession,
   onArchiveSession,
   onBranchSession,
   onNewSessionInWorkspace,
@@ -1521,6 +1523,7 @@ export function ChatSidebar({
                 onArchiveSession={onArchiveSession}
                 onBranchSession={onBranchSession}
                 onDeleteSession={onDeleteSession}
+                onMergeSession={onMergeSession}
                 onResumeSession={onResumeSession}
                 onToggle={() => undefined}
                 onTogglePin={pinSession}
@@ -1542,6 +1545,7 @@ export function ChatSidebar({
                 onArchiveSession={onArchiveSession}
                 onBranchSession={onBranchSession}
                 onDeleteSession={onDeleteSession}
+                onMergeSession={onMergeSession}
                 onReorderSessions={reorderPinned}
                 onResumeSession={onResumeSession}
                 onToggle={() => setSidebarPinsOpen(!pinsOpen)}
@@ -1678,12 +1682,8 @@ export function ChatSidebar({
                 onBranchSession={onBranchSession}
                 onDeleteSession={onDeleteSession}
                 onEnterProject={onEnterProject}
-                onMergeChildrenSession={onMergeChildrenSession}
                 onMergeSession={onMergeSession}
-                // Unlike reorder below, this stays on across profiles: a folder
-                // is a folder, and the new session lands in the active profile
-                // — the same one the composer would have started it in.
-                onNewSessionInWorkspace={onNewSessionInWorkspace}
+                onNewSessionInWorkspace={showAllProfiles ? undefined : onNewSessionInWorkspace}
                 onReorderProjects={showAllProfiles ? undefined : reorderProjects}
                 onReorderSessions={showAllProfiles ? undefined : reorderSessions}
                 onResumeSession={onResumeSession}

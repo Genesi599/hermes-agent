@@ -1956,6 +1956,12 @@ export const en: Translations = {
       copyId: 'Copy ID',
       export: 'Export',
       branchFrom: 'Branch',
+      mergeBranch: 'Merge into parent',
+      mergeBranchTitle: 'Merge branch into parent?',
+      mergeBranchDesc:
+        'Hermes will summarize new information into the parent session, then permanently delete this branch.',
+      mergingBranch: 'Merging…',
+      mergedBranch: 'Merged',
       rename: 'Rename',
       archive: 'Archive',
       newWindow: 'New window',
