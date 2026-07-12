@@ -1285,8 +1285,11 @@ def test_session_branch_persists_branched_from_marker(server, monkeypatch):
     new_key, kwargs = create_calls[0]
     assert new_key == "20260101_000001_child0"
     assert kwargs["parent_session_id"] == parent_key
-    # The marker — without it the branch is invisible in /resume and /sessions.
-    assert kwargs["model_config"] == {"_branched_from": parent_key}
+    # The marker keeps the branch visible in /resume and /sessions. Additional
+    # branch metadata is allowed; merge uses the copied-message count to isolate
+    # only the child session's new turns.
+    assert kwargs["model_config"]["_branched_from"] == parent_key
+    assert kwargs["model_config"]["_branch_seed_message_count"] == 1
 
 
 def test_make_agent_accepts_list_system_prompt(server, monkeypatch):
