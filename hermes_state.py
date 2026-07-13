@@ -4008,23 +4008,81 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
 
         self._execute_write(_do)
 
-    def set_session_live_status(self, session_id: str, status: str) -> None:
+    def set_session_live_status(
+        self, session_id: str, status: str, owner: Optional[str] = None
+    ) -> None:
         """Publish a short-lived gateway turn state for other clients.
 
         This deliberately lives alongside the durable session row rather than
         in a gateway process: Desktop and Hermes Sync can hold independent
         WebSocket runtimes for one stored conversation.
+
+        When ``owner`` is provided, a working lease can only be refreshed by
+        that owner and an idle transition only releases that owner's lease.
+        This lets scheduled turns and interactive turns serialize writes to the
+        same stored conversation across processes.
         """
         if not session_id or status not in {"idle", "working"}:
             return
 
         def _do(conn):
-            conn.execute(
-                "UPDATE sessions SET live_status = ?, live_status_updated_at = ? WHERE id = ?",
-                (status, time.time(), session_id),
-            )
+            now = time.time()
+            if status == "working" and owner:
+                conn.execute(
+                    "UPDATE sessions SET live_status = 'working', "
+                    "live_status_updated_at = ?, live_status_owner = ? "
+                    "WHERE id = ? AND (COALESCE(live_status, 'idle') != 'working' "
+                    "OR live_status_owner = ?)",
+                    (now, owner, session_id, owner),
+                )
+            elif status == "idle" and owner:
+                conn.execute(
+                    "UPDATE sessions SET live_status = 'idle', "
+                    "live_status_updated_at = ?, live_status_owner = ? "
+                    "WHERE id = ? AND live_status_owner = ?",
+                    (now, owner, session_id, owner),
+                )
+            else:
+                conn.execute(
+                    "UPDATE sessions SET live_status = ?, live_status_updated_at = ?, "
+                    "live_status_owner = NULL WHERE id = ?",
+                    (status, now, session_id),
+                )
 
         self._execute_write(_do)
+
+    def try_claim_session_live_status(self, session_id: str, owner: str) -> bool:
+        """Atomically claim the execution lease for one stored session."""
+        if not session_id or not owner:
+            return False
+
+        def _do(conn):
+            cursor = conn.execute(
+                "UPDATE sessions SET live_status = 'working', "
+                "live_status_updated_at = ?, live_status_owner = ? "
+                "WHERE id = ? AND (COALESCE(live_status, 'idle') != 'working' "
+                "OR live_status_owner = ?)",
+                (time.time(), owner, session_id, owner),
+            )
+            return cursor.rowcount == 1
+
+        return bool(self._execute_write(_do))
+
+    def release_session_live_status(self, session_id: str, owner: str) -> bool:
+        """Release a stored-session execution lease only when owned by caller."""
+        if not session_id or not owner:
+            return False
+
+        def _do(conn):
+            cursor = conn.execute(
+                "UPDATE sessions SET live_status = 'idle', "
+                "live_status_updated_at = ?, live_status_owner = ? "
+                "WHERE id = ? AND live_status_owner = ?",
+                (time.time(), owner, session_id, owner),
+            )
+            return cursor.rowcount == 1
+
+        return bool(self._execute_write(_do))
 
     # ── Gateway routing index (replaces sessions.json, #9006 follow-up) ────
 

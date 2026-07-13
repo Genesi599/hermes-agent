@@ -3557,6 +3557,99 @@ def run_job(
         logger.info("Job '%s': script produced no output, skipping AI call.", job_name)
         return True, "", SILENT_MARKER, None
     _cron_session_id = f"cron_{job_id}_{_hermes_now().strftime('%Y%m%d_%H%M%S')}"
+    _target_session_id = ""
+    _target_session_history = None
+    _target_session_owner = f"cron:{job_id}:{time.time_ns()}"
+    _target_session_claimed = False
+
+    requested_target = str(job.get("target_session_id") or "").strip()
+    if job.get("attach_to_session") is True and requested_target:
+        try:
+            if _session_db is None:
+                raise RuntimeError(
+                    f"Cron job '{job_name}' cannot resume its Desktop Session: "
+                    "the session database is unavailable."
+                )
+            _target_session_id = (
+                _session_db.resolve_resume_session_id(requested_target) or requested_target
+            )
+            if not _session_db.get_session(_target_session_id):
+                raise RuntimeError(
+                    f"Cron job '{job_name}' target Session '{requested_target}' no longer exists."
+                )
+
+            wait_started = time.monotonic()
+            last_claim_heartbeat = wait_started
+            logged_wait = False
+            while not _session_db.try_claim_session_live_status(
+                _target_session_id, _target_session_owner
+            ):
+                if not logged_wait:
+                    logger.info(
+                        "Job '%s': target Session %s is busy; queued until it becomes idle",
+                        job_id,
+                        _target_session_id,
+                    )
+                    logged_wait = True
+                if _is_interrupted(job_id) or _interpreter_shutting_down():
+                    raise RuntimeError(
+                        f"Cron job '{job_name}' stopped while waiting for its target Session."
+                    )
+                if time.monotonic() - last_claim_heartbeat >= 60.0:
+                    run_claim = job.get("run_claim")
+                    owner = str(run_claim.get("by") or "") if isinstance(run_claim, dict) else ""
+                    if owner:
+                        try:
+                            heartbeat_run_claim(job_id, expected_owner=owner)
+                        except Exception:
+                            logger.debug(
+                                "Job '%s': run_claim heartbeat failed while queued",
+                                job_id,
+                                exc_info=True,
+                            )
+                    last_claim_heartbeat = time.monotonic()
+                time.sleep(0.5)
+
+            _target_session_claimed = True
+            _session_db.reopen_session(_target_session_id)
+            _target_session_history = _session_db.get_messages_as_conversation(
+                _target_session_id, include_ancestors=True
+            )
+            if logged_wait:
+                logger.info(
+                    "Job '%s': target Session %s became idle after %.1fs",
+                    job_id,
+                    _target_session_id,
+                    time.monotonic() - wait_started,
+                )
+        except Exception as e:
+            if _session_db is not None and _target_session_claimed:
+                try:
+                    _session_db.release_session_live_status(
+                        _target_session_id, _target_session_owner
+                    )
+                except Exception:
+                    pass
+            if _session_db is not None:
+                try:
+                    _session_db.close()
+                except Exception:
+                    pass
+            error_msg = f"{type(e).__name__}: {e}"
+            logger.exception("Job '%s' failed before its bound turn: %s", job_name, error_msg)
+            output = f"""# Cron Job: {job_name} (FAILED)
+
+**Job ID:** {job_id}
+**Run Time:** {_hermes_now().strftime('%Y-%m-%d %H:%M:%S')}
+**Schedule:** {job.get('schedule_display', 'N/A')}
+
+## Error
+
+```
+{error_msg}
+```
+"""
+            return False, output, "", error_msg
 
     logger.info("Running job '%s' (ID: %s)", job_name, job_id)
     logger.info("Prompt: %s", prompt[:100])
@@ -4171,8 +4264,12 @@ def run_job(
             skip_memory=True,  # Cron system prompts would corrupt user representations
             skip_background_review=True,  # Cron has no human-in-the-loop need for skill/memory review forks (~30K tok/event)
             platform="cron",
-            session_id=_cron_session_id,
+            session_id=_target_session_id or _cron_session_id,
             session_db=_session_db,
+            pass_session_id=(
+                str(os.getenv("HERMES_TUI_PASS_SESSION_ID", "")).strip().lower()
+                in {"1", "true", "yes", "on"}
+            ),
         )
         
         # Run the agent with an *inactivity*-based timeout: the job can run
@@ -4226,7 +4323,23 @@ def run_job(
         # Tag this fire and time the run_conversation call for the usage_audit.jsonl entry.
         _audit_fire_id = uuid.uuid4().hex
         _audit_t_start = time.monotonic()
-        _cron_future = _cron_pool.submit(_cron_context.run, agent.run_conversation, prompt)
+        if _target_session_id:
+            persisted_prompt = (
+                f"[Scheduled task: {job_name}]\n"
+                f"{str(job.get('prompt') or '').strip()}"
+            ).strip()
+
+            def _run_bound_session_turn():
+                return agent.run_conversation(
+                    prompt,
+                    conversation_history=list(_target_session_history or []),
+                    task_id=_target_session_id,
+                    persist_user_message=persisted_prompt,
+                )
+
+            _cron_future = _cron_pool.submit(_cron_context.run, _run_bound_session_turn)
+        else:
+            _cron_future = _cron_pool.submit(_cron_context.run, agent.run_conversation, prompt)
         _inactivity_timeout = False
         try:
             if _cron_inactivity_limit is None:
@@ -4554,6 +4667,7 @@ def run_job(
                 )
             except (Exception, KeyboardInterrupt) as e:
                 logger.debug("Job '%s': failed to end session: %s", job_id, e)
+        if _session_db:
             try:
                 _session_db.close()
             except (Exception, KeyboardInterrupt) as e:

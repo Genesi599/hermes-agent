@@ -339,6 +339,29 @@ def _origin_from_env() -> Optional[Dict[str, str]]:
     return None
 
 
+def _resolve_local_session_target(session_id: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """Resolve a model tool call's current stored session and source."""
+    candidate = str(session_id or "").strip()
+    if not candidate:
+        return None, None
+    db = None
+    try:
+        from hermes_state import SessionDB
+
+        db = SessionDB()
+        resolved = db.resolve_resume_session_id(candidate) or candidate
+        row = db.get_session(resolved)
+        if not row:
+            return None, None
+        return str(row["id"]), str(row.get("source") or "").strip().lower() or None
+    except Exception:
+        logger.debug("Unable to resolve current session target %s", candidate, exc_info=True)
+        return None, None
+    finally:
+        if db is not None:
+            db.close()
+
+
 def _local_delivery_notice(job: Dict[str, Any], user_deliver: Optional[str]) -> Optional[str]:
     """Return an informational notice when a created job won't deliver anywhere.
 
@@ -594,6 +617,10 @@ def _format_job(job: Dict[str, Any]) -> Dict[str, Any]:
         result["enabled_toolsets"] = job["enabled_toolsets"]
     if job.get("workdir"):
         result["workdir"] = job["workdir"]
+    if isinstance(job.get("attach_to_session"), bool):
+        result["attach_to_session"] = job["attach_to_session"]
+    if job.get("target_session_id"):
+        result["target_session_id"] = job["target_session_id"]
     return result
 
 
@@ -1052,11 +1079,12 @@ def cronjob(
     attach_to_session: Optional[bool] = None,
     monitor_script: Optional[str] = None,
     monitor_url: Optional[str] = None,
+    current_session_id: Optional[str] = None,
     task_id: str = None,
     session_id: Optional[str] = None,
 ) -> str:
     """Unified cron job management tool."""
-    del task_id  # unused but kept for handler signature compatibility
+    current_session_id = current_session_id or task_id
 
     try:
         normalized = (action or "").strip().lower()
@@ -1119,6 +1147,16 @@ def cronjob(
                 CronSchedulerRegistrationError,
                 create_job_with_scheduler_registration,
             )
+            target_session_id, target_source = _resolve_local_session_target(current_session_id)
+            bind_current_session = bool(
+                target_session_id
+                and not _no_agent
+                and (
+                    attach_to_session is True
+                    or (attach_to_session is None and target_source == "desktop")
+                )
+            )
+            effective_attach = True if bind_current_session else attach_to_session
 
             try:
                 job = create_job_with_scheduler_registration(
@@ -1137,15 +1175,18 @@ def cronjob(
                     enabled_toolsets=enabled_toolsets or None,
                     workdir=_normalize_optional_job_value(workdir),
                     no_agent=_no_agent,
-                    attach_to_session=attach_to_session,
+                    attach_to_session=effective_attach,
                     monitor_script=_normalize_optional_job_value(monitor_script),
                     monitor_url=_normalize_optional_job_value(monitor_url),
+                    target_session_id=target_session_id if bind_current_session else None,
                 )
             except CronSchedulerRegistrationError as exc:
                 _partial = exc.to_dict()
                 return tool_error(_partial.pop("error"), success=False, **_partial)
             _create_message = f"Cron job '{job['name']}' created."
-            _local_notice = _local_delivery_notice(job, _normalize_deliver_param(deliver))
+            _local_notice = None if job.get("target_session_id") else _local_delivery_notice(
+                job, _normalize_deliver_param(deliver)
+            )
             if _local_notice:
                 _create_message = f"{_create_message} {_local_notice}"
             return json.dumps(
@@ -1395,6 +1436,12 @@ def cronjob(
                 updates["enabled_toolsets"] = enabled_toolsets or None
             if attach_to_session is not None:
                 updates["attach_to_session"] = bool(attach_to_session)
+                if attach_to_session:
+                    target_session_id, _ = _resolve_local_session_target(current_session_id)
+                    if target_session_id:
+                        updates["target_session_id"] = target_session_id
+                else:
+                    updates["target_session_id"] = None
             if workdir is not None:
                 # Empty string clears the field (restores old behaviour);
                 # otherwise pass raw — update_job() validates / normalizes.
@@ -1451,7 +1498,8 @@ action='run' fires the job immediately in the BACKGROUND (like delegate_task): t
 
 To stop a job the user no longer wants: first action='list' to find the job_id, then action='remove' with that job_id. Never guess job IDs — always list first.
 
-Jobs run in a fresh session with no current-chat context, so prompts must be self-contained.
+Desktop jobs run in the current stored Session unless attach_to_session=False.
+Other jobs run in a fresh session with no current-chat context, so prompts must be self-contained.
 If skills are provided on create, the future cron run loads those skills in order, then follows the prompt as the task instruction.
 On update, passing skills=[] clears attached skills.
 
@@ -1550,7 +1598,7 @@ Important safety rule: cron-run sessions should not recursively schedule more cr
             },
             "attach_to_session": {
                 "type": "boolean",
-                "description": "When True, this job becomes CONTINUABLE: the user can reply to its delivery and the agent has the brief in context instead of asking 'what is that?'. On thread-capable platforms (Telegram topics, Discord/Slack threads) a dedicated thread is opened for the job and its replies; on DM-only platforms (WhatsApp/Signal) the brief is mirrored into the origin DM session. Use this for conversational recurring jobs the user will reply to — daily briefings, reminders that kick off follow-up work. Leave unset for fire-and-forget alerts/watchdogs. Overrides the global cron.mirror_delivery config for this one job. Only the origin chat is touched (never fan-out targets); no effect when deliver='local'."
+                "description": "Run this job in the conversation where it was created. Desktop jobs bind to the current stored Session, wait while that Session is busy, and append the scheduled turn and reply there without creating a separate cron conversation. Gateway chats keep their existing continuable-delivery behavior. Desktop defaults to True when omitted; pass False for an isolated fire-and-forget job."
             },
         },
         "required": ["action"]
@@ -1611,6 +1659,8 @@ registry.register(
         no_agent=args.get("no_agent"),
         monitor_script=args.get("monitor_script"),
         monitor_url=args.get("monitor_url"),
+        attach_to_session=args.get("attach_to_session"),
+        current_session_id=kw.get("session_id"),
         task_id=kw.get("task_id"),
         session_id=kw.get("session_id"),
     ),
