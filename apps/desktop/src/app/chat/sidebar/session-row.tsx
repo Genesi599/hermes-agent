@@ -312,7 +312,7 @@ function SidebarSessionRowImpl({
           (reviewActivity ? (
             <ReviewActivityUnderline className="text-teal-500/90" />
           ) : (
-            <span aria-hidden="true" className="arc-border arc-row" />
+            <span aria-hidden="true" className="arc-border arc-row arc-bottom" />
           ))}
         <SidebarRowBody
           // Every trailing figure lives in the actions slot, which the row
