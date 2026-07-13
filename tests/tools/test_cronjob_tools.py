@@ -246,6 +246,45 @@ class TestUnifiedCronjobTool:
         assert listing["jobs"][0]["name"] == "Server Check"
         assert listing["jobs"][0]["state"] == "scheduled"
 
+    def test_desktop_create_binds_current_stored_session(self, monkeypatch):
+        monkeypatch.setattr(
+            "tools.cronjob_tools._resolve_local_session_target",
+            lambda session_id: ("desktop-session", "desktop"),
+        )
+
+        created = json.loads(
+            cronjob(
+                action="create",
+                prompt="Check the current project",
+                schedule="every 1h",
+                current_session_id="desktop-session",
+            )
+        )
+
+        assert created["success"] is True
+        assert created["job"]["attach_to_session"] is True
+        assert created["job"]["target_session_id"] == "desktop-session"
+
+    def test_desktop_create_can_explicitly_disable_session_binding(self, monkeypatch):
+        monkeypatch.setattr(
+            "tools.cronjob_tools._resolve_local_session_target",
+            lambda session_id: ("desktop-session", "desktop"),
+        )
+
+        created = json.loads(
+            cronjob(
+                action="create",
+                prompt="Run independently",
+                schedule="every 1h",
+                attach_to_session=False,
+                current_session_id="desktop-session",
+            )
+        )
+
+        assert created["success"] is True
+        assert created["job"]["attach_to_session"] is False
+        assert "target_session_id" not in created["job"]
+
     def test_list_handles_partial_legacy_job_records(self):
         from cron.jobs import save_jobs
 
