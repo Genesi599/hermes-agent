@@ -1246,7 +1246,7 @@ def _record_durable_live_status(event: str, sid: str, payload: dict | None) -> N
         db = _get_db()
         setter = getattr(db, "set_session_live_status", None)
         if setter is not None:
-            setter(session_key, status)
+            setter(session_key, status, owner=f"tui:{sid}")
     except Exception:
         logger.debug("failed to persist live status for %s", session_key, exc_info=True)
 
@@ -5688,6 +5688,101 @@ def _interrupt_busy_session(sid: str, session: dict, agent: Any) -> None:
     threading.Thread(target=interrupt, daemon=True, name=f"busy-interrupt-{sid}").start()
 
 
+def _try_claim_durable_session_turn(sid: str, session: dict) -> bool:
+    """Claim this stored Session for one interactive turn.
+
+    Draft sessions do not have a DB row yet and therefore have nothing to
+    contend with. Existing sessions use the cross-process live-status lease so
+    a scheduled turn and a Desktop turn cannot write concurrently.
+    """
+    owner = f"tui:{sid}"
+    if session.get("_durable_turn_owner") == owner:
+        return True
+    key = str(session.get("session_key") or "")
+    db = _get_db()
+    if not key or db is None:
+        return True
+    try:
+        row = db.get_session(key)
+        if row is None:
+            return True
+        refresh_after_claim = str(row.get("live_status_owner") or "").startswith("cron:")
+        claimer = getattr(db, "try_claim_session_live_status", None)
+        if claimer is None or claimer(key, owner):
+            session["_durable_turn_owner"] = owner
+            if refresh_after_claim:
+                session["_refresh_external_history"] = True
+            return True
+    except Exception:
+        logger.debug("failed to claim durable turn for %s", key, exc_info=True)
+        return True
+    return False
+
+
+def _release_durable_session_turn(sid: str, session: dict) -> None:
+    owner = str(session.pop("_durable_turn_owner", "") or "")
+    key = str(session.get("session_key") or "")
+    if not owner or not key:
+        return
+    try:
+        db = _get_db()
+        releaser = getattr(db, "release_session_live_status", None)
+        if releaser is not None:
+            releaser(key, owner)
+    except Exception:
+        logger.debug("failed to release durable turn for %s", key, exc_info=True)
+
+
+def _refresh_session_history_from_db(session: dict) -> None:
+    """Hydrate messages appended by an external scheduled/mobile turn."""
+    if not session.pop("_refresh_external_history", False):
+        return
+    key = str(session.get("session_key") or "")
+    db = _get_db()
+    if not key or db is None:
+        return
+    try:
+        row = db.get_session(key)
+        if not row:
+            return
+        with session["history_lock"]:
+            current_len = len(session.get("history") or [])
+        if int(row.get("message_count") or 0) == current_len:
+            return
+        history = sanitize_replay_history(db.get_messages_as_conversation(key))
+        with session["history_lock"]:
+            session["history"] = history
+            session["history_version"] = int(session.get("history_version", 0)) + 1
+    except Exception:
+        logger.debug("failed to refresh external history for %s", key, exc_info=True)
+
+
+def _schedule_queued_prompt_retry(rid, sid: str, session: dict) -> None:
+    """Drain a prompt queued behind a cron lease once the Session is idle."""
+    # May be called while prompt.submit already holds history_lock. The flag is
+    # only a duplicate-thread suppression hint, so avoid re-entering that
+    # non-reentrant lock here.
+    if session.get("_durable_queue_retry"):
+        return
+    session["_durable_queue_retry"] = True
+
+    def retry() -> None:
+        try:
+            while _sessions.get(sid) is session:
+                with session["history_lock"]:
+                    if not session.get("queued_prompt"):
+                        return
+                    running = bool(session.get("running"))
+                if not running and _drain_queued_prompt(rid, sid, session):
+                    return
+                time.sleep(0.5)
+        finally:
+            with session["history_lock"]:
+                session["_durable_queue_retry"] = False
+
+    threading.Thread(target=retry, daemon=True).start()
+
+
 def _handle_busy_submit(
     rid, sid: str, session: dict, text: Any, transport: Any
 ) -> dict | None:
@@ -5744,6 +5839,8 @@ def _drain_queued_prompt(rid, sid: str, session: dict) -> bool:
     with session["history_lock"]:
         queued = session.get("queued_prompt")
         if not queued or session.get("running"):
+            return False
+        if not _try_claim_durable_session_turn(sid, session):
             return False
         session["queued_prompt"] = None
         session["running"] = True
@@ -9687,6 +9784,11 @@ def _(rid, params: dict) -> dict:
                     db.replace_messages(session["session_key"], truncated)
                 except Exception as exc:
                     print(f"[tui_gateway] prompt.submit: replace_messages failed: {exc}", file=sys.stderr)
+        if not _try_claim_durable_session_turn(sid, session):
+            _enqueue_prompt(session, text, t or session.get("transport"))
+            session["last_active"] = time.time()
+            _schedule_queued_prompt_retry(rid, sid, session)
+            return _ok(rid, {"status": "queued"})
         session["running"] = True
         session["_turn_cancel_requested"] = False
         session["last_active"] = time.time()
@@ -9724,6 +9826,7 @@ def _(rid, params: dict) -> dict:
             with session["history_lock"]:
                 session["running"] = False
                 _clear_inflight_turn(session)
+            _release_durable_session_turn(sid, session)
             return
         with session["history_lock"]:
             if session.get("_turn_cancel_requested") or not session.get("running"):
@@ -10146,6 +10249,13 @@ def _start_notification_poller(sid: str, session: dict) -> threading.Event:
 
 
 def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
+    if not _try_claim_durable_session_turn(sid, session):
+        with session["history_lock"]:
+            session["running"] = False
+            _enqueue_prompt(session, text, session.get("transport"))
+        _schedule_queued_prompt_retry(rid, sid, session)
+        return
+    _refresh_session_history_from_db(session)
     with session["history_lock"]:
         history = list(session["history"])
         history_version = int(session.get("history_version", 0))
@@ -10626,6 +10736,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                 session["last_active"] = time.time()
                 _clear_inflight_turn(session)
             _emit("session.info", sid, _session_info(agent, session))
+            _release_durable_session_turn(sid, session)
 
         # A user prompt that arrived mid-turn (interrupt + queue) wins over
         # every auto follow-up below — drain it first and skip them this cycle;

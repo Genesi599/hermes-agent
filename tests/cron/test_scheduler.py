@@ -1003,6 +1003,63 @@ class TestRunJobSessionPersistence:
         fake_db.close.assert_called_once()
         mock_agent.close.assert_called_once()
 
+    def test_run_job_reuses_bound_session_without_creating_cron_session(self, tmp_path):
+        job = {
+            "id": "bound-job",
+            "name": "bound",
+            "prompt": "continue here",
+            "attach_to_session": True,
+            "target_session_id": "desktop-session",
+        }
+        fake_db = MagicMock()
+        fake_db.resolve_resume_session_id.return_value = "desktop-session"
+        fake_db.get_session.return_value = {
+            "id": "desktop-session",
+            "source": "desktop",
+        }
+        fake_db.try_claim_session_live_status.side_effect = [False, True]
+        history = [{"role": "user", "content": "earlier context"}]
+        fake_db.get_messages_as_conversation.return_value = history
+
+        with patch.dict(
+            os.environ,
+            {"HERMES_MODEL": "test-model", "HERMES_TUI_PASS_SESSION_ID": "1"},
+        ), patch("cron.scheduler._hermes_home", tmp_path), \
+             patch("cron.scheduler._resolve_origin", return_value=None), \
+             patch("hermes_cli.env_loader.load_hermes_dotenv"), \
+             patch("hermes_cli.env_loader.reset_secret_source_cache"), \
+             patch("cron.scheduler.time.sleep"), \
+             patch("hermes_state.SessionDB", return_value=fake_db), \
+             patch(
+                 "hermes_cli.runtime_provider.resolve_runtime_provider",
+                 return_value={
+                     "api_key": "test-key",
+                     "base_url": "https://example.invalid/v1",
+                     "provider": "openrouter",
+                     "api_mode": "chat_completions",
+                 },
+             ), \
+             patch("run_agent.AIAgent") as mock_agent_cls:
+            mock_agent = MagicMock()
+            mock_agent.run_conversation.return_value = {"final_response": "done"}
+            mock_agent_cls.return_value = mock_agent
+
+            success, _output, final_response, error = run_job(job)
+
+        assert success is True
+        assert final_response == "done"
+        assert error is None
+        assert mock_agent_cls.call_args.kwargs["session_id"] == "desktop-session"
+        call = mock_agent.run_conversation.call_args
+        assert call.kwargs["conversation_history"] == history
+        assert call.kwargs["task_id"] == "desktop-session"
+        assert call.kwargs["persist_user_message"] == (
+            "[Scheduled task: bound]\ncontinue here"
+        )
+        assert fake_db.try_claim_session_live_status.call_count == 2
+        fake_db.release_session_live_status.assert_called_once()
+        fake_db.end_session.assert_not_called()
+
     def test_run_job_suppresses_empty_turn_explainer(self, tmp_path):
         """An empty model turn becomes the '⚠️ No reply…' explainer (#34452).
         For cron, that abnormal-empty explainer must be treated as empty so it
