@@ -287,6 +287,11 @@ export function useSessionActions({
 
   const startFreshSessionDraft = useCallback(
     (options: boolean | FreshSessionDraftOptions = false) => {
+      // A resume may still be waiting on stored-session lookup or a profile
+      // switch. Invalidate it before clearing the view so a late result cannot
+      // re-select the old session and make New Session appear to need two clicks.
+      resumeRequestRef.current += 1
+
       const draftOptions = typeof options === 'boolean' ? { replaceRoute: options } : options
       const preserveRoute = draftOptions.preserveRoute ?? false
       const replaceRoute = draftOptions.replaceRoute ?? false
@@ -662,11 +667,15 @@ export function useSessionActions({
       const storedForProfile = await resolveStoredSession(storedSessionId)
       const sessionProfile = storedForProfile?.profile
 
-      if (resumeRequestRef.current !== requestId) {
+      if (!isCurrentResume()) {
         return
       }
 
       await ensureGatewayProfile(sessionProfile)
+
+      if (!isCurrentResume()) {
+        return
+      }
 
       // Re-check after the profile-resolve / gateway-swap awaits above: the
       // cache may have changed, and takeWarmCache re-validates belongs-to and

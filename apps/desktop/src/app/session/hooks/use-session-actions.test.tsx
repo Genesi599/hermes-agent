@@ -645,6 +645,129 @@ function ResumeHarness({
   return null
 }
 
+type ResumeCancellationHandle = Pick<ReturnType<typeof useSessionActions>, 'resumeSession' | 'startFreshSessionDraft'>
+
+function ResumeCancellationHarness({
+  activeSessionIdRef,
+  onReady,
+  requestGateway,
+  selectedStoredSessionIdRef
+}: {
+  activeSessionIdRef: MutableRefObject<string | null>
+  onReady: (handle: ResumeCancellationHandle) => void
+  requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
+  selectedStoredSessionIdRef: MutableRefObject<string | null>
+}) {
+  const ref = <T,>(value: T): MutableRefObject<T> => ({ current: value })
+
+  const actions = useSessionActions({
+    activeSessionId: null,
+    activeSessionIdRef,
+    busyRef: ref(false),
+    creatingSessionRef: ref(false),
+    ensureSessionState: () => ({}) as ClientSessionState,
+    getRouteToken: () => 'token',
+    navigate: vi.fn() as never,
+    requestGateway,
+    runtimeIdByStoredSessionIdRef: ref(new Map<string, string>()),
+    selectedStoredSessionId: null,
+    selectedStoredSessionIdRef,
+    sessionStateByRuntimeIdRef: ref(new Map<string, ClientSessionState>()),
+    syncSessionStateToView: vi.fn(),
+    updateSessionState: (_sessionId, updater) => updater({} as ClientSessionState)
+  })
+
+  useEffect(() => {
+    onReady(actions)
+  }, [actions, onReady])
+
+  return null
+}
+
+describe('resumeSession cancellation', () => {
+  afterEach(() => {
+    cleanup()
+    setActiveSessionId(null)
+    setMessages([])
+    setSessions([])
+    vi.mocked(ensureGatewayProfile).mockReset()
+    vi.mocked(ensureGatewayProfile).mockResolvedValue(undefined)
+    vi.restoreAllMocks()
+  })
+
+  function renderCancellationHarness(
+    requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
+  ) {
+    const activeSessionIdRef = { current: null } satisfies MutableRefObject<string | null>
+    const selectedStoredSessionIdRef = { current: null } satisfies MutableRefObject<string | null>
+    let handle: ResumeCancellationHandle | null = null
+
+    render(
+      <ResumeCancellationHarness
+        activeSessionIdRef={activeSessionIdRef}
+        onReady={value => (handle = value)}
+        requestGateway={requestGateway}
+        selectedStoredSessionIdRef={selectedStoredSessionIdRef}
+      />
+    )
+
+    return { activeSessionIdRef, getHandle: () => handle, selectedStoredSessionIdRef }
+  }
+
+  it('keeps a fresh draft when stored-session resolution completes after the new-session click', async () => {
+    setSessions([storedSession()])
+    const requestGateway = vi.fn(async () => ({}) as never) as <T>(
+      method: string,
+      params?: Record<string, unknown>
+    ) => Promise<T>
+    const harness = renderCancellationHarness(requestGateway)
+    await waitFor(() => expect(harness.getHandle()).not.toBeNull())
+
+    await act(async () => {
+      const pendingResume = harness.getHandle()!.resumeSession('stored-1')
+      harness.getHandle()!.startFreshSessionDraft()
+      await pendingResume
+    })
+
+    expect(harness.activeSessionIdRef.current).toBeNull()
+    expect(harness.selectedStoredSessionIdRef.current).toBeNull()
+    expect($messages.get()).toEqual([])
+    expect(requestGateway).not.toHaveBeenCalledWith('session.resume', expect.anything())
+  })
+
+  it('keeps a fresh draft when a profile switch completes after the new-session click', async () => {
+    setSessions([storedSession()])
+    let finishProfileSwitch: (() => void) | undefined
+    vi.mocked(ensureGatewayProfile).mockImplementationOnce(
+      () =>
+        new Promise<void>(resolve => {
+          finishProfileSwitch = resolve
+        })
+    )
+
+    const requestGateway = vi.fn(async () => ({}) as never) as <T>(
+      method: string,
+      params?: Record<string, unknown>
+    ) => Promise<T>
+    const harness = renderCancellationHarness(requestGateway)
+    await waitFor(() => expect(harness.getHandle()).not.toBeNull())
+
+    const pendingResume = harness.getHandle()!.resumeSession('stored-1')
+    await waitFor(() => expect(ensureGatewayProfile).toHaveBeenCalled())
+
+    await act(async () => {
+      harness.getHandle()!.startFreshSessionDraft()
+      finishProfileSwitch?.()
+      await pendingResume
+    })
+
+    expect(harness.activeSessionIdRef.current).toBeNull()
+    expect(harness.selectedStoredSessionIdRef.current).toBeNull()
+    expect($messages.get()).toEqual([])
+    expect(requestGateway).not.toHaveBeenCalledWith('session.resume', expect.anything())
+  })
+})
+
 describe('resumeSession failure recovery', () => {
   afterEach(() => {
     cleanup()
