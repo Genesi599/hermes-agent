@@ -426,7 +426,7 @@ def _restore_or_build_system_prompt(agent, system_message, conversation_history)
 
 
 def _stored_prompt_matches_runtime(agent, prompt: str) -> bool:
-    """Return False when the persisted Model/Provider lines are stale."""
+    """Return False when persisted runtime identity lines are stale."""
 
     def line_value(label: str) -> str:
         prefix = f"{label}:"
@@ -444,6 +444,15 @@ def _stored_prompt_matches_runtime(agent, prompt: str) -> bool:
     stored_provider = line_value("Provider")
     current_provider = str(getattr(agent, "provider", "") or "").strip()
     if stored_provider and current_provider and stored_provider != current_provider:
+        return False
+
+    stored_session_id = line_value("Session ID")
+    expected_session_id = (
+        str(getattr(agent, "session_id", "") or "").strip()
+        if bool(getattr(agent, "pass_session_id", False))
+        else ""
+    )
+    if stored_session_id != expected_session_id:
         return False
 
     return True
