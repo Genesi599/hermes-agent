@@ -170,6 +170,12 @@ def _durable_turn_owner(sid: str) -> str:
 
 
 try:
+    from gateway.status import get_process_start_time
+
+    _TUI_PROCESS_START_TIME = get_process_start_time(os.getpid()) or 0
+except Exception:
+    _TUI_PROCESS_START_TIME = 0
+try:
     _slash_timeout = float(os.environ.get("HERMES_TUI_SLASH_TIMEOUT_S") or "45")
 except (ValueError, TypeError):
     _slash_timeout = 45.0
