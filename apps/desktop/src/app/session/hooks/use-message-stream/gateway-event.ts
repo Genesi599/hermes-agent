@@ -51,6 +51,7 @@ import {
   $sessions,
   clearPendingModelSelectionIfApplied,
   clearUnreadSessionIds,
+  noteSessionActivity,
   sessionMatchesStoredId,
   setCurrentBranch,
   setCurrentCwdTransient,
@@ -449,7 +450,7 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
           // Active-session model/provider still flows through the session state
           // cache via updateSessionState → syncRuntimeMetadataToView below.
 
-          if (sessionId && modelChanged && providerChanged) {
+          if (sessionId && (modelChanged || providerChanged)) {
             clearPendingModelSelectionIfApplied(sessionId, payload!.model || '', payload!.provider || '')
           }
 

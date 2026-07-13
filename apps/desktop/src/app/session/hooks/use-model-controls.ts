@@ -17,7 +17,8 @@ import {
   markComposerSelectionManual,
   setCurrentModel,
   setCurrentModelSource,
-  setCurrentProvider
+  setCurrentProvider,
+  setPendingModelSelection
 } from '@/store/session'
 import { $sessionStates, sessionTileDelegate } from '@/store/session-states'
 import type { ModelOptionsResponse } from '@/types/hermes'
@@ -213,12 +214,32 @@ export function useModelControls({ queryClient, requestGateway }: ModelControlsO
           value: `${selection.model} --provider ${selection.provider} --session`
         })
 
-        // A pick made DURING a turn is queued by the gateway and applied at the
-        // next turn start (`deferred`). Re-fetching now would answer with the
-        // model still running and repaint the old name over the user's choice —
-        // the switch publishes session.info when it lands, and that is what
-        // re-syncs every surface.
-        if (!result?.deferred) {
+        // A pick made during a turn is applied at the next turn boundary. Keep
+        // the live model visible and surface the requested model as pending
+        // until session.info confirms that the switch landed.
+        if (result?.deferred) {
+          if (touchesPrimary) {
+            setCurrentModel(prevModel)
+            setCurrentProvider(prevProvider)
+            setCurrentModelSource(prevSource)
+          } else if (liveSessionId) {
+            sessionTileDelegate()?.updateSession(liveSessionId, state => ({
+              ...state,
+              model: prevModel,
+              provider: prevProvider
+            }))
+          }
+
+          updateModelOptionsCache(
+            liveSessionId,
+            prevProvider,
+            prevModel,
+            touchesPrimary && !liveSessionId,
+            liveGatewayProfile
+          )
+          setPendingModelSelection({ ...selection, sessionId: liveSessionId })
+        } else {
+          setPendingModelSelection(null)
           void queryClient.invalidateQueries({ queryKey: modelOptionsQueryKey(liveGatewayProfile, liveSessionId) })
         }
 
