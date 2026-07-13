@@ -31,6 +31,7 @@ def _make_agent(session_db=None, prebuilt_prompt: str = "BUILT_PROMPT"):
     agent.model = "test-model"
     agent.provider = "openrouter"
     agent.platform = "cli"
+    agent.pass_session_id = False
     agent._session_db = session_db
     # MagicMock attributes are truthy by default; the static-prefix
     # reconstruction is gated on _use_prompt_caching, so default it off
@@ -112,6 +113,44 @@ class TestStoredPromptReuse:
             agent.session_id, agent._cached_system_prompt
         )
         assert any("stale runtime identity" in r.getMessage() for r in caplog.records)
+
+    @pytest.mark.parametrize(
+        ("pass_session_id", "stored_session_line", "rebuilt_session_line"),
+        [
+            (True, "", "Session ID: test-session-id\n"),
+            (False, "Session ID: test-session-id\n", ""),
+        ],
+    )
+    def test_session_id_visibility_change_rebuilds_stored_prompt(
+        self,
+        pass_session_id,
+        stored_session_line,
+        rebuilt_session_line,
+    ):
+        stored = (
+            "You are Hermes Agent.\n\n"
+            "Conversation started: Tuesday, June 16, 2026\n"
+            f"{stored_session_line}"
+            "Model: test-model\n"
+            "Provider: openrouter"
+        )
+        rebuilt = (
+            "You are Hermes Agent.\n\n"
+            "Conversation started: Tuesday, June 16, 2026\n"
+            f"{rebuilt_session_line}"
+            "Model: test-model\n"
+            "Provider: openrouter"
+        )
+        db = MagicMock()
+        db.get_session.return_value = {"system_prompt": stored}
+        agent = _make_agent(session_db=db, prebuilt_prompt=rebuilt)
+        agent.pass_session_id = pass_session_id
+
+        _restore_or_build_system_prompt(agent, None, [{"role": "user", "content": "hi"}])
+
+        assert agent._cached_system_prompt == rebuilt
+        agent._build_system_prompt.assert_called_once_with(None)
+        db.update_system_prompt.assert_called_once_with(agent.session_id, rebuilt)
 
 
 # ---------------------------------------------------------------------------
@@ -212,6 +251,8 @@ class TestPromptStabilityInvariant:
         db = MagicMock()
         db.get_session.return_value = {"system_prompt": stored}
         agent = _make_agent(session_db=db)
+        agent.pass_session_id = True
+        agent.session_id = "20260517_153500_abc123"
 
         _restore_or_build_system_prompt(agent, None, [{"role": "user", "content": "hi"}])
 
