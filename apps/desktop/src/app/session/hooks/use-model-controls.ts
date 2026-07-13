@@ -17,7 +17,8 @@ import {
   markComposerSelectionManual,
   setCurrentModel,
   setCurrentModelSource,
-  setCurrentProvider
+  setCurrentProvider,
+  setPendingModelSelection
 } from '@/store/session'
 import { $sessionStates, sessionTileDelegate } from '@/store/session-states'
 import type { ModelOptionsResponse } from '@/types/hermes'
