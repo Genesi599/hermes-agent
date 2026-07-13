@@ -566,6 +566,13 @@ export const $resumeFailedSessionId = atom<string | null>(null)
 export const $resumeExhaustedSessionId = atom<string | null>(null)
 export const $currentModel = atom(storedString(COMPOSER_MODEL_KEY) ?? '')
 export const $currentProvider = atom(storedString(COMPOSER_PROVIDER_KEY) ?? '')
+export interface PendingModelSelection {
+  model: string
+  provider: string
+  sessionId: string
+}
+
+export const $pendingModelSelection = atom<PendingModelSelection | null>(null)
 export const $currentReasoningEffort = atom(storedString(COMPOSER_EFFORT_KEY) ?? '')
 export const $currentServiceTier = atom('')
 export const $currentFastMode = atom(storedBoolean(COMPOSER_FAST_KEY, false))
@@ -701,6 +708,17 @@ export const getComposerSelectionGeneration = (): number => composerSelectionGen
 export const markComposerSelectionManual = (): void => {
   composerSelectionGeneration += 1
   setCurrentModelSource('manual')
+}
+
+export const setPendingModelSelection = (next: Updater<PendingModelSelection | null>) =>
+  updateAtom($pendingModelSelection, next)
+
+export const clearPendingModelSelectionIfApplied = (sessionId: string, model: string, provider: string) => {
+  const pending = $pendingModelSelection.get()
+
+  if (pending?.sessionId === sessionId && pending.model === model && pending.provider === provider) {
+    $pendingModelSelection.set(null)
+  }
 }
 
 export const setCurrentReasoningEffort = (next: Updater<string>) => {

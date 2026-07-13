@@ -49,6 +49,8 @@ import {
   $currentProvider,
   $selectedStoredSessionId,
   $sessions,
+  clearPendingModelSelectionIfApplied,
+  noteSessionActivity,
   sessionMatchesStoredId,
   setCurrentBranch,
   setCurrentCwdTransient,
@@ -435,6 +437,10 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
           // (or a stale session model) and would silently revert the dropdown.
           // Active-session model/provider still flows through the session state
           // cache via updateSessionState → syncRuntimeMetadataToView below.
+
+          if (sessionId && modelChanged && providerChanged) {
+            clearPendingModelSelectionIfApplied(sessionId, payload!.model || '', payload!.provider || '')
+          }
 
           if (typeof payload?.cwd === 'string' && sessionInfoDescribesSelectedSession(payload.stored_session_id)) {
             // The active session's agent can relocate itself (new repo/worktree

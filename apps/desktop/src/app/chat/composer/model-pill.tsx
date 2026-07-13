@@ -10,7 +10,7 @@ import { releaseTypingFocus } from '@/components/ui/keyboard-first'
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { ChevronDown } from '@/lib/icons'
-import { formatModelStatusLabel } from '@/lib/model-status-label'
+import { displayModelName, formatModelStatusLabel } from '@/lib/model-status-label'
 import { cn } from '@/lib/utils'
 import { $currentModelSource, $defaultReasoningEffort, setModelPickerOpen } from '@/store/session'
 
@@ -53,6 +53,7 @@ export function ModelPill({
   const modelSource = useStore($currentModelSource)
   const defaultEffort = useStore($defaultReasoningEffort)
   const runtimeId = useStore(view.$runtimeId)
+  const pendingModel = useStore($pendingModelSelection)
   const [open, setOpen] = useState(false)
   const scope = useComposerScope()
   const hasLiveMenu = Boolean(model.modelMenuContent)
@@ -108,6 +109,7 @@ export function ModelPill({
           role="img"
         />
       )}
+      {queuedModel ? <span className="shrink-0 text-[0.68rem] text-muted-foreground/75">Next: {displayModelName(queuedModel)}</span> : null}
       <ChevronDown className="size-2.5 shrink-0 opacity-50" />
     </>
   )
@@ -125,7 +127,11 @@ export function ModelPill({
     ? copy.modelTitle(currentProvider, currentModel || copy.modelNone)
     : copy.switchModel
 
-  const title = pinnedOverride ? `${baseTitle} — ${copy.modelPinned}` : baseTitle
+  const title = queuedModel
+    ? `Next: ${pendingModel?.provider || currentProvider}/${queuedModel}`
+    : pinnedOverride
+      ? `${baseTitle} — ${copy.modelPinned}`
+      : baseTitle
 
   if (!model.modelMenuContent) {
     return (
