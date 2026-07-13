@@ -792,6 +792,18 @@ def _stored_prompt_matches_runtime(agent, prompt: str) -> bool:
     if stored_platform and current_platform and stored_platform != current_platform:
         return False
 
+    # Detect session drift: with HERMES_TUI_PASS_SESSION_ID the stored prompt
+    # records the session id it was built for; a different stored session must
+    # rebuild rather than reuse another session's identity block.
+    stored_session_id = line_value("Session ID")
+    expected_session_id = (
+        str(getattr(agent, "session_id", "") or "").strip()
+        if bool(getattr(agent, "pass_session_id", False))
+        else ""
+    )
+    if stored_session_id != expected_session_id:
+        return False
+
     return True
 
 
