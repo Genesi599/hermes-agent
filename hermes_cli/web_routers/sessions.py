@@ -29,6 +29,7 @@ from hermes_cli.web_models import (
     SessionPrune,
     SessionRename,
 )
+from hermes_state import session_live_status_is_working
 
 # Same logger the handlers used before extraction (identical logger object).
 _log = logging.getLogger("hermes_cli.web_server")
@@ -145,6 +146,7 @@ def get_sessions(
             # scoped, so default-profile rows never circulate unowned.
             row_profile = profile_name or _cron_default_profile()
             for s in sessions:
+                s["status"] = "working" if session_live_status_is_working(s, now) else "idle"
                 s["is_active"] = (
                     s.get("ended_at") is None
                     and (now - s.get("last_active", s.get("started_at", 0))) < 300

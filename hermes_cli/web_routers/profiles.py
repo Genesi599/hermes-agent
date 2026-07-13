@@ -115,6 +115,7 @@ def get_profiles_sessions(
     if order not in ("created", "recent"):
         raise HTTPException(status_code=400, detail="order must be one of: created, recent")
 
+    from hermes_state import SessionDB, session_live_status_is_working
     from hermes_cli import profiles as profiles_mod
 
     targets: List[Tuple[str, Path]] = []
@@ -196,6 +197,7 @@ def get_profiles_sessions(
             for s in rows:
                 s["profile"] = name
                 s["is_default_profile"] = name == "default"
+                s["status"] = "working" if session_live_status_is_working(s, now) else "idle"
                 s["is_active"] = (
                     s.get("ended_at") is None
                     and (now - s.get("last_active", s.get("started_at", 0))) < 300
