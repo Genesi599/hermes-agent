@@ -24,10 +24,7 @@ import {
   $currentCwd,
   $currentUsage,
   $selectedStoredSessionId,
-  $sessions,
-  $sessionStartedAt,
   $turnStartedAt,
-  sessionMatchesStoredId
 } from '@/store/session'
 import { $focusedRuntimeId, $focusedSessionState, $focusedStoredSessionId } from '@/store/session-states'
 import { $subagentsBySession, activeSubagentCount, failedSubagentCount } from '@/store/subagents'
@@ -100,7 +97,6 @@ export function useStatusbarItems({
   const projectName = useMemo(() => projectNameForCwd(currentCwd), [currentCwd, projectTree])
   const primaryUsage = useStore($currentUsage)
   const gatewayRestarting = useStore($gatewayRestarting)
-  const primarySessionStartedAt = useStore($sessionStartedAt)
   const primaryTurnStartedAt = useStore($turnStartedAt)
   const subagentsBySession = useStore($subagentsBySession)
   const updateStatus = useStore($updateStatus)
@@ -117,7 +113,6 @@ export function useStatusbarItems({
   const focusedStoredSessionId = useStore($focusedStoredSessionId)
   const focusedRuntimeId = useStore($focusedRuntimeId)
   const focusedState = useStore($focusedSessionState)
-  const sessions = useStore($sessions)
   const selectedStoredSessionId = useStore($selectedStoredSessionId)
   const primaryFocused = !focusedStoredSessionId || focusedStoredSessionId === selectedStoredSessionId
 
@@ -129,18 +124,6 @@ export function useStatusbarItems({
   const currentUsage = primaryFocused ? primaryUsage : (focusedState?.usage ?? EMPTY_USAGE)
 
   const turnStartedAt = primaryFocused ? primaryTurnStartedAt : (focusedState?.turnStartedAt ?? null)
-
-  // A tile's session-start comes from its stored row (the cache only knows
-  // runtime state); seconds → ms.
-  const focusedRow = focusedStoredSessionId
-    ? sessions.find(s => sessionMatchesStoredId(s, focusedStoredSessionId))
-    : null
-
-  const sessionStartedAt = primaryFocused
-    ? primarySessionStartedAt
-    : focusedRow?.started_at
-      ? focusedRow.started_at * 1000
-      : null
 
   const contextUsage = useMemo(() => usageContextLabel(currentUsage), [currentUsage])
   const contextBar = useMemo(() => contextBarLabel(currentUsage), [currentUsage])
@@ -430,14 +413,6 @@ export function useStatusbarItems({
         variant: 'menu'
       },
       {
-        detail: <LiveDuration since={sessionStartedAt} />,
-        hidden: !sessionStartedAt,
-        id: 'session-timer',
-        label: copy.session,
-        title: copy.runtimeSessionElapsed,
-        variant: 'text'
-      },
-      {
         ...approvalModeItem,
         hidden: gatewayState !== 'open'
       },
@@ -466,7 +441,6 @@ export function useStatusbarItems({
       copy,
       currentUsage,
       requestGateway,
-      sessionStartedAt,
       gatewayState,
       terminalTakeover,
       turnStartedAt
