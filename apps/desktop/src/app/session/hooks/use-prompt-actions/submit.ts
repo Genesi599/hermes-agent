@@ -184,7 +184,7 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
       // Queue drains carry their source session explicitly. A background drain
       // must never inherit the currently selected session after the user moves
       // to another chat.
-      const targetStoredSessionId = options?.storedSessionId ?? selectedStoredSessionIdRef.current
+      let targetStoredSessionId = options?.storedSessionId ?? selectedStoredSessionIdRef.current
 
       const targetStartedInCurrentView =
         !targetStoredSessionId || targetStoredSessionId === selectedStoredSessionIdRef.current
@@ -579,6 +579,7 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
 
         // Re-pin the baseline to the created chat for the rest of the
         // pipeline; the closures (seedOptimistic et al) see the new value.
+        targetStoredSessionId = selectedStoredSessionIdRef.current
         startingStoredSessionId = selectedStoredSessionIdRef.current
         startingRouteToken = getRouteToken()
 
