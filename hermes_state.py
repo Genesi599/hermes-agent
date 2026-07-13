@@ -152,6 +152,58 @@ T = TypeVar("T")
 
 DEFAULT_DB_PATH = get_hermes_home() / "state.db"
 
+# Cross-process turn leases are refreshed by live gateway events. If a process
+# dies before releasing its lease, another client may reclaim it after the same
+# stale window used by the Sessions API when projecting working vs idle.
+SESSION_LIVE_STATUS_STALE_SECONDS = 10 * 60
+
+_TUI_LIVE_STATUS_OWNER_RE = re.compile(r"^tui:(\d+):(\d+):")
+
+
+def _tui_live_status_owner_process_alive(owner: str) -> Optional[bool]:
+    """Return process liveness for a process-aware TUI owner.
+
+    ``None`` means the owner uses the legacy/foreign format and must fall back
+    to timestamp expiry. The process start fingerprint prevents a recycled PID
+    from being mistaken for the gateway process that originally held the lease.
+    """
+    match = _TUI_LIVE_STATUS_OWNER_RE.match(str(owner or ""))
+    if match is None:
+        return None
+
+    pid = int(match.group(1))
+    expected_start = int(match.group(2))
+    try:
+        from gateway.status import _pid_exists, get_process_start_time
+
+        if not _pid_exists(pid):
+            return False
+        current_start = get_process_start_time(pid)
+    except Exception:
+        return None
+
+    if expected_start and current_start is not None:
+        return current_start == expected_start
+    return True
+
+
+def session_live_status_is_working(
+    row: Dict[str, Any], now: Optional[float] = None
+) -> bool:
+    """Project one durable lease into the cross-client working indicator."""
+    if row.get("live_status") != "working":
+        return False
+
+    owner_alive = _tui_live_status_owner_process_alive(
+        str(row.get("live_status_owner") or "")
+    )
+    if owner_alive is False:
+        return False
+
+    updated_at = float(row.get("live_status_updated_at") or 0)
+    current_time = time.time() if now is None else now
+    return current_time - updated_at <= SESSION_LIVE_STATUS_STALE_SECONDS
+
 SCHEMA_VERSION = 22
 
 # Cap on user-controlled FTS5 query input before regex/sanitizer processing.
@@ -2100,12 +2152,29 @@ class SessionDB:
         def _do(conn):
             now = time.time()
             if status == "working" and owner:
+                existing = conn.execute(
+                    "SELECT live_status, live_status_owner FROM sessions WHERE id = ?",
+                    (session_id,),
+                ).fetchone()
+                reclaim_owner = None
+                if existing and existing["live_status"] == "working":
+                    existing_owner = str(existing["live_status_owner"] or "")
+                    if _tui_live_status_owner_process_alive(existing_owner) is False:
+                        reclaim_owner = existing_owner
                 conn.execute(
                     "UPDATE sessions SET live_status = 'working', "
                     "live_status_updated_at = ?, live_status_owner = ? "
                     "WHERE id = ? AND (COALESCE(live_status, 'idle') != 'working' "
-                    "OR live_status_owner = ?)",
-                    (now, owner, session_id, owner),
+                    "OR COALESCE(live_status_updated_at, 0) < ? "
+                    "OR live_status_owner = ? OR live_status_owner = ?)",
+                    (
+                        now,
+                        owner,
+                        session_id,
+                        now - SESSION_LIVE_STATUS_STALE_SECONDS,
+                        owner,
+                        reclaim_owner,
+                    ),
                 )
             elif status == "idle" and owner:
                 conn.execute(
@@ -2129,12 +2198,30 @@ class SessionDB:
             return False
 
         def _do(conn):
+            now = time.time()
+            existing = conn.execute(
+                "SELECT live_status, live_status_owner FROM sessions WHERE id = ?",
+                (session_id,),
+            ).fetchone()
+            reclaim_owner = None
+            if existing and existing["live_status"] == "working":
+                existing_owner = str(existing["live_status_owner"] or "")
+                if _tui_live_status_owner_process_alive(existing_owner) is False:
+                    reclaim_owner = existing_owner
             cursor = conn.execute(
                 "UPDATE sessions SET live_status = 'working', "
                 "live_status_updated_at = ?, live_status_owner = ? "
                 "WHERE id = ? AND (COALESCE(live_status, 'idle') != 'working' "
-                "OR live_status_owner = ?)",
-                (time.time(), owner, session_id, owner),
+                "OR COALESCE(live_status_updated_at, 0) < ? "
+                "OR live_status_owner = ? OR live_status_owner = ?)",
+                (
+                    now,
+                    owner,
+                    session_id,
+                    now - SESSION_LIVE_STATUS_STALE_SECONDS,
+                    owner,
+                    reclaim_owner,
+                ),
             )
             return cursor.rowcount == 1
 
