@@ -490,6 +490,258 @@ class TestRunJobSessionPersistence:
         fake_db.close.assert_called_once()
         mock_agent.close.assert_called_once()
 
+    def test_run_job_reuses_bound_session_without_creating_cron_session(self, tmp_path):
+        job = {
+            "id": "bound-job",
+            "name": "bound",
+            "prompt": "continue here",
+            "attach_to_session": True,
+            "target_session_id": "desktop-session",
+        }
+        fake_db = MagicMock()
+        fake_db.resolve_resume_session_id.return_value = "desktop-session"
+        fake_db.get_session.return_value = {
+            "id": "desktop-session",
+            "source": "desktop",
+        }
+        fake_db.try_claim_session_live_status.side_effect = [False, True]
+        history = [{"role": "user", "content": "earlier context"}]
+        fake_db.get_messages_as_conversation.return_value = history
+
+        with patch.dict(
+            os.environ,
+            {"HERMES_MODEL": "test-model", "HERMES_TUI_PASS_SESSION_ID": "1"},
+        ), patch("cron.scheduler._hermes_home", tmp_path), \
+             patch("cron.scheduler._resolve_origin", return_value=None), \
+             patch("hermes_cli.env_loader.load_hermes_dotenv"), \
+             patch("hermes_cli.env_loader.reset_secret_source_cache"), \
+             patch("cron.scheduler.time.sleep"), \
+             patch("hermes_state.SessionDB", return_value=fake_db), \
+             patch(
+                 "hermes_cli.runtime_provider.resolve_runtime_provider",
+                 return_value={
+                     "api_key": "test-key",
+                     "base_url": "https://example.invalid/v1",
+                     "provider": "openrouter",
+                     "api_mode": "chat_completions",
+                 },
+             ), \
+             patch("run_agent.AIAgent") as mock_agent_cls:
+            mock_agent = MagicMock()
+            mock_agent.run_conversation.return_value = {"final_response": "done"}
+            mock_agent_cls.return_value = mock_agent
+
+            success, _output, final_response, error = run_job(job)
+
+        assert success is True
+        assert final_response == "done"
+        assert error is None
+        assert mock_agent_cls.call_args.kwargs["session_id"] == "desktop-session"
+        call = mock_agent.run_conversation.call_args
+        assert call.kwargs["conversation_history"] == history
+        assert call.kwargs["task_id"] == "desktop-session"
+        assert call.kwargs["persist_user_message"] == (
+            "[Scheduled task: bound]\ncontinue here"
+        )
+        assert fake_db.try_claim_session_live_status.call_count == 2
+        fake_db.release_session_live_status.assert_called_once()
+        fake_db.end_session.assert_not_called()
+
+    def test_run_job_suppresses_empty_turn_explainer(self, tmp_path):
+        """An empty model turn becomes the '⚠️ No reply…' explainer (#34452).
+        For cron, that abnormal-empty explainer must be treated as empty so it
+        is suppressed instead of delivered (Manfredi's Telegram symptom)."""
+        from run_agent import AIAgent
+        explainer = AIAgent._format_turn_completion_explanation("empty_response_exhausted")
+        assert explainer  # sanity: the explainer text exists
+        job = {"id": "test-job", "name": "test", "prompt": "hello"}
+        fake_db = MagicMock()
+
+        with patch("cron.scheduler._hermes_home", tmp_path), \
+             patch("cron.scheduler._resolve_origin", return_value=None), \
+             patch("hermes_cli.env_loader.load_hermes_dotenv"), \
+             patch("hermes_cli.env_loader.reset_secret_source_cache"), \
+             patch("hermes_state.SessionDB", return_value=fake_db), \
+             patch(
+                 "hermes_cli.runtime_provider.resolve_runtime_provider",
+                 return_value={
+                     "api_key": "test-key",
+                     "base_url": "https://example.invalid/v1",
+                     "provider": "openrouter",
+                     "api_mode": "chat_completions",
+                 },
+             ), \
+             patch("run_agent.AIAgent") as mock_agent_cls:
+            mock_agent = MagicMock()
+            mock_agent._format_turn_completion_explanation = (
+                AIAgent._format_turn_completion_explanation
+            )
+            mock_agent.run_conversation.return_value = {
+                "final_response": explainer,
+                "turn_exit_reason": "empty_response_exhausted",
+            }
+            mock_agent_cls.return_value = mock_agent
+            # Patch the class staticmethod the scheduler calls.
+            mock_agent_cls._format_turn_completion_explanation = (
+                AIAgent._format_turn_completion_explanation
+            )
+
+            success, output, final_response, error = run_job(job)
+
+        # The explainer is stripped to empty inside run_job; the downstream
+        # firing body (process_job) then suppresses delivery and marks the run
+        # a soft failure via its empty-response guard.  Here we assert the
+        # load-bearing transform: the "⚠️ No reply…" text never reaches delivery.
+        assert final_response == ""
+
+    def test_run_job_real_report_on_empty_reason_still_delivers(self, tmp_path):
+        """Defensive: a real report must NOT be suppressed even if the result
+        carries an abnormal turn_exit_reason — only the exact explainer text is."""
+        from run_agent import AIAgent
+        job = {"id": "test-job", "name": "test", "prompt": "hello"}
+        fake_db = MagicMock()
+
+        with patch("cron.scheduler._hermes_home", tmp_path), \
+             patch("cron.scheduler._resolve_origin", return_value=None), \
+             patch("hermes_cli.env_loader.load_hermes_dotenv"), \
+             patch("hermes_cli.env_loader.reset_secret_source_cache"), \
+             patch("hermes_state.SessionDB", return_value=fake_db), \
+             patch(
+                 "hermes_cli.runtime_provider.resolve_runtime_provider",
+                 return_value={
+                     "api_key": "test-key",
+                     "base_url": "https://example.invalid/v1",
+                     "provider": "openrouter",
+                     "api_mode": "chat_completions",
+                 },
+             ), \
+             patch("run_agent.AIAgent") as mock_agent_cls:
+            mock_agent = MagicMock()
+            mock_agent.run_conversation.return_value = {
+                "final_response": "Daily report: 4 PRs merged.",
+                "turn_exit_reason": "empty_response_exhausted",
+            }
+            mock_agent_cls.return_value = mock_agent
+            mock_agent_cls._format_turn_completion_explanation = (
+                AIAgent._format_turn_completion_explanation
+            )
+
+            success, output, final_response, error = run_job(job)
+
+        assert final_response == "Daily report: 4 PRs merged."
+        assert success is True
+
+    def test_run_job_titles_cron_session_from_job_not_important_hint(self, tmp_path):
+        # The cron session's first message is the injected "[IMPORTANT: …]"
+        # hint, which used to surface as the sidebar/history row label. run_job
+        # must title the session from the job (name → short prompt → id).
+        job = {
+            "id": "test-job",
+            "name": "Morning digest",
+            "prompt": "summarize my inbox",
+        }
+        fake_db = MagicMock()
+
+        with patch("cron.scheduler._hermes_home", tmp_path), \
+             patch("cron.scheduler._resolve_origin", return_value=None), \
+             patch("hermes_cli.env_loader.load_hermes_dotenv"), \
+             patch("hermes_cli.env_loader.reset_secret_source_cache"), \
+             patch("hermes_state.SessionDB", return_value=fake_db), \
+             patch(
+                 "hermes_cli.runtime_provider.resolve_runtime_provider",
+                 return_value={
+                     "api_key": "test-key",
+                     "base_url": "https://example.invalid/v1",
+                     "provider": "openrouter",
+                     "api_mode": "chat_completions",
+                 },
+             ), \
+             patch("run_agent.AIAgent") as mock_agent_cls:
+            mock_agent = MagicMock()
+            mock_agent.run_conversation.return_value = {"final_response": "ok"}
+            mock_agent_cls.return_value = mock_agent
+
+            run_job(job)
+
+        fake_db.set_session_title.assert_called_once()
+        sid, title = fake_db.set_session_title.call_args[0]
+        assert sid.startswith("cron_test-job_")
+        assert "IMPORTANT" not in title
+        assert title.startswith("Morning digest")
+
+    def test_run_job_closes_agent_on_failure_to_prevent_fd_leak(self, tmp_path):
+        # Regression: if ``run_conversation`` raises, the ephemeral cron
+        # agent was previously leaked — over days of ticks this accumulated
+        # httpx transports and hit EMFILE / "too many open files".
+        job = {
+            "id": "failing-job",
+            "name": "failing",
+            "prompt": "hello",
+        }
+        fake_db = MagicMock()
+
+        with patch("cron.scheduler._hermes_home", tmp_path), \
+             patch("cron.scheduler._resolve_origin", return_value=None), \
+             patch("hermes_cli.env_loader.load_hermes_dotenv"), \
+             patch("hermes_cli.env_loader.reset_secret_source_cache"), \
+             patch("hermes_state.SessionDB", return_value=fake_db), \
+             patch(
+                 "hermes_cli.runtime_provider.resolve_runtime_provider",
+                 return_value={
+                     "api_key": "***",
+                     "base_url": "https://example.invalid/v1",
+                     "provider": "openrouter",
+                     "api_mode": "chat_completions",
+                 },
+             ), \
+             patch("run_agent.AIAgent") as mock_agent_cls:
+            mock_agent = MagicMock()
+            mock_agent.run_conversation.side_effect = RuntimeError("boom")
+            mock_agent_cls.return_value = mock_agent
+
+            success, output, final_response, error = run_job(job)
+
+        assert success is False
+        assert final_response == ""
+        assert "RuntimeError: boom" in error
+        mock_agent.close.assert_called_once()
+
+    def test_run_job_reaps_stale_auxiliary_clients_per_tick(self, tmp_path):
+        # Regression: auxiliary clients bound to the cron worker's dead
+        # event loop must be reaped each tick. Without this, ``_client_cache``
+        # holds onto transports whose underlying sockets can no longer be
+        # closed (their loop is gone), leaking one fd batch per cron run.
+        job = {
+            "id": "aux-clean-job",
+            "name": "aux-clean",
+            "prompt": "hello",
+        }
+        fake_db = MagicMock()
+
+        with patch("cron.scheduler._hermes_home", tmp_path), \
+             patch("cron.scheduler._resolve_origin", return_value=None), \
+             patch("hermes_cli.env_loader.load_hermes_dotenv"), \
+             patch("hermes_cli.env_loader.reset_secret_source_cache"), \
+             patch("hermes_state.SessionDB", return_value=fake_db), \
+             patch(
+                 "hermes_cli.runtime_provider.resolve_runtime_provider",
+                 return_value={
+                     "api_key": "***",
+                     "base_url": "https://example.invalid/v1",
+                     "provider": "openrouter",
+                     "api_mode": "chat_completions",
+                 },
+             ), \
+             patch("run_agent.AIAgent") as mock_agent_cls, \
+             patch("agent.auxiliary_client.cleanup_stale_async_clients") as cleanup_mock:
+            mock_agent = MagicMock()
+            mock_agent.run_conversation.return_value = {"final_response": "ok"}
+            mock_agent_cls.return_value = mock_agent
+
+            success, _output, _final_response, _error = run_job(job)
+
+        assert success is True
+        cleanup_mock.assert_called_once()
 
     @contextlib.contextmanager
     def _run_job_patches(self, tmp_path, extra=()):

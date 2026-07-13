@@ -4601,7 +4601,18 @@ def run_job(
             exit_non_dispatcher_owned_context(_non_dispatcher_token)
         for _var_name in _cron_delivery_vars:
             _VAR_MAP[_var_name].set("")
-        if _session_db:
+        if _session_db and _target_session_claimed:
+            try:
+                _session_db.release_session_live_status(
+                    _target_session_id, _target_session_owner
+                )
+            except (Exception, KeyboardInterrupt) as e:
+                logger.debug(
+                    "Job '%s': failed to release target Session lease: %s",
+                    job_id,
+                    e,
+                )
+        if _session_db and not _target_session_id:
             # Compression can rotate the live agent onto a continuation while
             # this run is in flight. Finalize that continuation, not the stale
             # cron id captured before AIAgent started. SessionDB is the source
