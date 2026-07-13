@@ -48,6 +48,16 @@ def test_interactive_turn_waits_when_cron_owns_session(server, monkeypatch):
     assert "_durable_turn_owner" not in session
 
 
+def test_tui_durable_owner_contains_process_identity(server):
+    owner = server._durable_turn_owner("live-1")
+    parts = owner.split(":", 3)
+
+    assert parts[0] == "tui"
+    assert int(parts[1]) > 0
+    assert int(parts[2]) >= 0
+    assert parts[3] == "live-1"
+
+
 def test_interactive_turn_marks_history_refresh_after_cron_release(server, monkeypatch):
     db = MagicMock()
     db.get_session.return_value = {

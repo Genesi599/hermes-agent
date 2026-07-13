@@ -3948,6 +3948,7 @@ def test_finalize_session_closes_slash_worker(monkeypatch):
     defense-in-depth and idempotent.
     """
     closed = {"count": 0}
+    released = []
 
     class _FakeWorker:
         def close(self):
@@ -3955,11 +3956,17 @@ def test_finalize_session_closes_slash_worker(monkeypatch):
 
     monkeypatch.setattr(server, "_notify_session_boundary", lambda *a, **k: None)
     monkeypatch.setattr(server, "_get_db", lambda: None)
+    monkeypatch.setattr(
+        server,
+        "_release_durable_session_turn",
+        lambda sid, current: released.append((sid, current)),
+    )
 
     session = _session(slash_worker=_FakeWorker())
 
     server._finalize_session(session)
     assert closed["count"] == 1
+    assert released == [("", session)]
     assert session.get("_finalized") is True
 
     # Idempotent: a second finalize (or a follow-up teardown) must not
@@ -3967,6 +3974,7 @@ def test_finalize_session_closes_slash_worker(monkeypatch):
     server._finalize_session(session)
     server._teardown_session(session)
     assert closed["count"] == 1
+    assert released == [("", session)]
 
 
 def test_ws_orphan_reap_spares_reattached_session(monkeypatch):

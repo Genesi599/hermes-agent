@@ -4028,12 +4028,29 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
         def _do(conn):
             now = time.time()
             if status == "working" and owner:
+                existing = conn.execute(
+                    "SELECT live_status, live_status_owner FROM sessions WHERE id = ?",
+                    (session_id,),
+                ).fetchone()
+                reclaim_owner = None
+                if existing and existing["live_status"] == "working":
+                    existing_owner = str(existing["live_status_owner"] or "")
+                    if _tui_live_status_owner_process_alive(existing_owner) is False:
+                        reclaim_owner = existing_owner
                 conn.execute(
                     "UPDATE sessions SET live_status = 'working', "
                     "live_status_updated_at = ?, live_status_owner = ? "
                     "WHERE id = ? AND (COALESCE(live_status, 'idle') != 'working' "
-                    "OR live_status_owner = ?)",
-                    (now, owner, session_id, owner),
+                    "OR COALESCE(live_status_updated_at, 0) < ? "
+                    "OR live_status_owner = ? OR live_status_owner = ?)",
+                    (
+                        now,
+                        owner,
+                        session_id,
+                        now - SESSION_LIVE_STATUS_STALE_SECONDS,
+                        owner,
+                        reclaim_owner,
+                    ),
                 )
             elif status == "idle" and owner:
                 conn.execute(
@@ -4057,12 +4074,30 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
             return False
 
         def _do(conn):
+            now = time.time()
+            existing = conn.execute(
+                "SELECT live_status, live_status_owner FROM sessions WHERE id = ?",
+                (session_id,),
+            ).fetchone()
+            reclaim_owner = None
+            if existing and existing["live_status"] == "working":
+                existing_owner = str(existing["live_status_owner"] or "")
+                if _tui_live_status_owner_process_alive(existing_owner) is False:
+                    reclaim_owner = existing_owner
             cursor = conn.execute(
                 "UPDATE sessions SET live_status = 'working', "
                 "live_status_updated_at = ?, live_status_owner = ? "
                 "WHERE id = ? AND (COALESCE(live_status, 'idle') != 'working' "
-                "OR live_status_owner = ?)",
-                (time.time(), owner, session_id, owner),
+                "OR COALESCE(live_status_updated_at, 0) < ? "
+                "OR live_status_owner = ? OR live_status_owner = ?)",
+                (
+                    now,
+                    owner,
+                    session_id,
+                    now - SESSION_LIVE_STATUS_STALE_SECONDS,
+                    owner,
+                    reclaim_owner,
+                ),
             )
             return cursor.rowcount == 1
 

@@ -156,6 +156,12 @@ _cfg_mtime: float | None = None
 _cfg_path = None
 _session_resume_lock = threading.Lock()
 try:
+    from gateway.status import get_process_start_time
+
+    _TUI_PROCESS_START_TIME = get_process_start_time(os.getpid()) or 0
+except Exception:
+    _TUI_PROCESS_START_TIME = 0
+try:
     _slash_timeout = float(os.environ.get("HERMES_TUI_SLASH_TIMEOUT_S") or "45")
 except (ValueError, TypeError):
     _slash_timeout = 45.0
@@ -803,6 +809,10 @@ def _finalize_session(session: dict | None, end_reason: str = "tui_close") -> No
             worker.close()
     except Exception:
         pass
+
+    # Release only after the final history flush and hooks complete. Another
+    # process may claim this stored Session as soon as the lease becomes idle.
+    _release_durable_session_turn(str(session.get("_sid") or ""), session)
 
 
 # End reasons where the BACKEND reclaimed a session the client never asked to
@@ -7654,7 +7664,7 @@ def _try_claim_durable_session_turn(sid: str, session: dict) -> bool:
     contend with. Existing sessions use the cross-process live-status lease so
     a scheduled turn and a Desktop turn cannot write concurrently.
     """
-    owner = f"tui:{sid}"
+    owner = _durable_turn_owner(sid)
     if session.get("_durable_turn_owner") == owner:
         return True
     key = str(session.get("session_key") or "")
