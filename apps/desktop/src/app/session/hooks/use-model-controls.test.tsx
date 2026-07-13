@@ -7,6 +7,7 @@ import {
   $activeSessionId,
   $currentModel,
   $currentProvider,
+  $pendingModelSelection,
   getCurrentModelSource,
   setCurrentModel,
   setCurrentModelSource,
@@ -80,6 +81,7 @@ function Harness({
 describe('useModelControls', () => {
   beforeEach(() => {
     $activeSessionId.set(null)
+    $pendingModelSelection.set(null)
     setCurrentModel('')
     setCurrentModelSource('')
     setCurrentProvider('')
@@ -89,6 +91,7 @@ describe('useModelControls', () => {
     cleanup()
     vi.restoreAllMocks()
     $activeSessionId.set(null)
+    $pendingModelSelection.set(null)
     setCurrentModel('')
     setCurrentModelSource('')
     setCurrentProvider('')
@@ -176,6 +179,26 @@ describe('useModelControls', () => {
       session_id: 'session-1',
       key: 'model',
       value: 'BeastMode --provider moa --session'
+    })
+  })
+
+  it('keeps the live model visible and marks a running-session selection as next', async () => {
+    setCurrentModel('old/model')
+    setCurrentProvider('old-provider')
+    const requestGateway = vi.fn(async () => ({ queued: true }) as never)
+    let controls!: Controls
+
+    $activeSessionId.set('session-1')
+    render(<Harness onReady={value => (controls = value)} requestGateway={requestGateway} />)
+
+    await expect(controls.selectModel({ model: 'next/model', provider: 'next-provider' })).resolves.toBe(true)
+
+    expect($currentModel.get()).toBe('old/model')
+    expect($currentProvider.get()).toBe('old-provider')
+    expect($pendingModelSelection.get()).toEqual({
+      model: 'next/model',
+      provider: 'next-provider',
+      sessionId: 'session-1'
     })
   })
 

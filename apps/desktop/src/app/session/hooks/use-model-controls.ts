@@ -15,7 +15,8 @@ import {
   markComposerSelectionManual,
   setCurrentModel,
   setCurrentModelSource,
-  setCurrentProvider
+  setCurrentProvider,
+  setPendingModelSelection
 } from '@/store/session'
 import { $sessionStates, sessionTileDelegate } from '@/store/session-states'
 import type { ModelOptionsResponse } from '@/types/hermes'
@@ -167,13 +168,30 @@ export function useModelControls({ queryClient, requestGateway }: ModelControlsO
       }
 
       try {
-        await requestGateway('config.set', {
+        const result = await requestGateway<{ queued?: boolean }>('config.set', {
           session_id: liveSessionId,
           key: 'model',
           value: `${selection.model} --provider ${selection.provider} --session`
         })
 
-        void queryClient.invalidateQueries({ queryKey: ['model-options', liveSessionId] })
+        if (result.queued) {
+          if (touchesPrimary) {
+            setCurrentModel(prevModel)
+            setCurrentProvider(prevProvider)
+            setCurrentModelSource(prevSource)
+          } else if (liveSessionId) {
+            sessionTileDelegate()?.updateSession(liveSessionId, state => ({
+              ...state,
+              model: prevModel,
+              provider: prevProvider
+            }))
+          }
+          updateModelOptionsCache(liveSessionId, prevProvider, prevModel, touchesPrimary && !liveSessionId)
+          setPendingModelSelection({ ...selection, sessionId: liveSessionId })
+        } else {
+          setPendingModelSelection(null)
+          void queryClient.invalidateQueries({ queryKey: ['model-options', liveSessionId] })
+        }
 
         return true
       } catch (err) {
