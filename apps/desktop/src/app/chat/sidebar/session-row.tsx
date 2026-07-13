@@ -189,7 +189,7 @@ function SidebarSessionRowImpl({
           (reviewActivity ? (
             <ReviewActivityUnderline className="text-teal-500/90" />
           ) : (
-            <span aria-hidden="true" className="arc-border arc-row" />
+            <span aria-hidden="true" className="arc-border arc-row arc-bottom" />
           ))}
         <SidebarRowBody
           className={cn('z-0 group-hover:pr-12', branchStem && 'pl-3.5')}
