@@ -29,10 +29,6 @@ import { sessionCostUsd } from '@/store/sidebar-archive'
 import { $reviewActivityBySessionId, $sessions } from '@/store/session'
 import { $attentionSessionIds } from '@/store/session-states'
 import { $sessionColorById } from '@/store/session-color' 
-import { $reviewActivityBySessionId } from '@/store/session'
-import { $sessionColorById } from '@/store/session-color'
-import { $attentionSessionIds } from '@/store/session-states'
->>>>>>> 3bb70734cd (style: 对齐模块移植代码规范)
 
 import { SessionStatusDot } from '../session-status-dot'
 
