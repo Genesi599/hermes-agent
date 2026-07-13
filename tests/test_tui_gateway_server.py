@@ -10656,11 +10656,34 @@ def test_config_set_model_allowed_when_idle(monkeypatch):
         server._sessions.pop("sid", None)
 
 
-def test_mirror_slash_side_effects_rejects_mutating_commands_while_running(monkeypatch):
-    """Slash worker passthrough (e.g. /model, /personality, /prompt,
-    /compress) must reject during an in-flight turn.  Same race as
-    config.set — mutates live agent state while run_conversation is
-    reading it."""
+def test_queued_model_switch_applies_latest_choice_before_next_prompt(monkeypatch):
+    session = _session(
+        running=False,
+        pending_model_switch={"value": "first/model", "confirm_expensive_model": False},
+    )
+    applied = []
+
+    def _fake_apply(sid, target, raw, **_kwargs):
+        applied.append(raw)
+        if raw == "first/model":
+            target["pending_model_switch"] = {
+                "value": "last/model",
+                "confirm_expensive_model": False,
+            }
+        return {"value": raw, "warning": "", "confirm_required": False}
+
+    monkeypatch.setattr(server, "_apply_model_switch", _fake_apply)
+    monkeypatch.setattr(server, "_emit", lambda *args, **kwargs: None)
+
+    server._apply_queued_model_switch("sid", session)
+
+    assert applied == ["first/model", "last/model"]
+    assert session.get("pending_model_switch") is None
+    assert session["model_switching"] is False
+
+
+def test_mirror_slash_side_effects_queues_model_but_rejects_other_mutations_while_running(monkeypatch):
+    """/model is deferred; other agent-mutating slash commands stay blocked."""
     import types
 
     applied = {"model": False, "compress": False}
@@ -10679,8 +10702,12 @@ def test_mirror_slash_side_effects_rejects_mutating_commands_while_running(monke
     session = _session(running=True)
     session["agent"] = types.SimpleNamespace(model="x")
 
+    model_warning = server._mirror_slash_side_effects("sid", session, "/model new/model")
+    assert "queued" in model_warning
+    assert session["pending_model_switch"]["value"] == "new/model"
+    assert not applied["model"], "model switch fired despite running session"
+
     for cmd, expected_name in [
-        ("/model new/model", "model"),
         ("/personality default", "personality"),
         ("/prompt", "prompt"),
         ("/compress", "compress"),

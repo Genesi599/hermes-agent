@@ -4699,6 +4699,54 @@ def _apply_model_switch(
     }
 
 
+def _apply_queued_model_switch(sid: str, session: dict) -> None:
+    """Apply the newest model pick after a running turn has finished.
+
+    ``agent.switch_model`` is deliberately never called while ``running`` is
+    true.  The picker can still accept a new choice mid-turn: the last choice
+    wins, then this function applies it before a queued next prompt is drained.
+    ``model_switching`` extends the same exclusion to the short hand-off so a
+    new prompt cannot begin while the agent client is being replaced.
+    """
+    while True:
+        with session["history_lock"]:
+            pending = session.get("pending_model_switch")
+            if not isinstance(pending, dict):
+                session["model_switching"] = False
+                return
+            session["model_switching"] = True
+
+        try:
+            result = _apply_model_switch(
+                sid,
+                session,
+                str(pending["value"]),
+                confirm_expensive_model=bool(pending.get("confirm_expensive_model", False)),
+            )
+            if result.get("confirm_required"):
+                _emit(
+                    "error",
+                    sid,
+                    {
+                        "message": (
+                            "Queued model switch needs confirmation: "
+                            f"{result.get('confirm_message') or result.get('warning') or result['value']}"
+                        )
+                    },
+                )
+        except Exception as exc:
+            _emit("error", sid, {"message": f"Queued model switch failed: {exc}"})
+        finally:
+            with session["history_lock"]:
+                # A newer picker choice can arrive while the first switch is in
+                # progress.  Keep it and immediately apply that final choice.
+                if session.get("pending_model_switch") is pending:
+                    session.pop("pending_model_switch", None)
+                if not session.get("pending_model_switch"):
+                    session["model_switching"] = False
+                    return
+
+
 def _sync_agent_model_with_config(sid: str, session: dict) -> None:
     """Adopt a config.yaml model change at turn start, like gateways do per
     message. Sessions pinned with /model keep their choice; a failed switch
@@ -10543,6 +10591,7 @@ def _run_prompt_submit(
             # Clear the per-turn interim callback so a stale closure from
             # this turn can't fire during a later turn on the same agent.
             agent.interim_assistant_callback = None
+            apply_queued_model = False
             with session["history_lock"]:
                 session["running"] = False
                 session["last_active"] = time.time()
@@ -10553,6 +10602,9 @@ def _run_prompt_submit(
             _retire_turn_marker(session, marker_key)
             session.pop("_auto_continue_scheduled", None)
             _emit_settled_session_info(sid, session, agent)
+
+            if apply_queued_model:
+                _apply_queued_model_switch(sid, session)
 
         # A user prompt that arrived mid-turn (interrupt + queue) wins over
         # every auto follow-up below — drain it first and skip them this cycle;
@@ -10999,23 +11051,51 @@ def _(rid, params: dict) -> dict:
                     )
                 parsed_flags = parse_model_switch_args(value)
                 explicit_provider = parsed_flags.explicit_provider
-                if session.get("agent") is None and not explicit_provider.strip():
-                    session_id = params.get("session_id", "")
-                    _start_agent_build(session_id, session)
-                    init_err = _wait_agent(session, rid)
-                    if init_err:
-                        return init_err
-                    if session.get("agent") is None:
-                        return _err(rid, 5032, "agent initialization failed")
-                result = _apply_model_switch(
-                    params.get("session_id", ""),
-                    session,
-                    value,
-                    confirm_expensive_model=bool(
-                        params.get("confirm_expensive_model", False)
-                    ),
-                    parsed_flags=parsed_flags,
-                )
+                with session["history_lock"]:
+                    if session.get("running") or session.get("model_switching"):
+                        # ``agent.switch_model`` mutates model/provider/client
+                        # in place, so the current turn must keep its original
+                        # runtime.  Preserve only the latest picker choice.
+                        session["pending_model_switch"] = {
+                            "value": str(value),
+                            "confirm_expensive_model": bool(
+                                params.get("confirm_expensive_model", False)
+                            ),
+                        }
+                        return _ok(
+                            rid,
+                            {
+                                "key": key,
+                                "value": model_input,
+                                "warning": "model switch queued until the current turn finishes",
+                                "queued": True,
+                                "confirm_required": False,
+                                "confirm_message": "",
+                            },
+                        )
+                    # Block prompt.submit from racing the immediate idle switch.
+                    session["model_switching"] = True
+                try:
+                    if session.get("agent") is None and not explicit_provider.strip():
+                        session_id = params.get("session_id", "")
+                        _start_agent_build(session_id, session)
+                        init_err = _wait_agent(session, rid)
+                        if init_err:
+                            return init_err
+                        if session.get("agent") is None:
+                            return _err(rid, 5032, "agent initialization failed")
+                    result = _apply_model_switch(
+                        params.get("session_id", ""),
+                        session,
+                        value,
+                        confirm_expensive_model=bool(
+                            params.get("confirm_expensive_model", False)
+                        ),
+                        parsed_flags=parsed_flags,
+                    )
+                finally:
+                    with session["history_lock"]:
+                        session["model_switching"] = False
             else:
                 result = _apply_model_switch(
                     "",
@@ -13019,11 +13099,8 @@ def _mirror_slash_side_effects(sid: str, session: dict, command: str) -> str:
         # notification wiring below is never exercised for that route.
         name = "compress"
 
-    # Reject agent-mutating commands during an in-flight turn.  These
-    # all do read-then-mutate on live agent/session state that the
-    # worker thread running agent.run_conversation is using.  Parity
-    # with the session.compress / session.undo guards and the gateway
-    # runner's running-agent /model guard.
+    # Agent-mutating slash commands must route through the compute host when
+    # one owns this session, so its live runtime remains authoritative.
     _MUTATES_WHILE_RUNNING = {"model", "personality", "prompt", "compress"}
     if _session_uses_compute_host(session) and name in _MUTATES_WHILE_RUNNING:
         route_name = f"slash.{name}"
@@ -13040,6 +13117,24 @@ def _mirror_slash_side_effects(sid: str, session: dict, command: str) -> str:
             return str(ack.get("message") or f"compute-host {route_name} failed")
         _apply_compute_host_metadata_mirror(session, ack)
         return str(ack.get("output") or "")
+
+    # ``/model`` follows the picker behavior: queue the newest choice for the
+    # turn boundary instead of mutating the live agent.  The other commands
+    # still have no safe deferred form and remain rejected while running.
+    if name == "model" and arg and (session.get("running") or session.get("model_switching")):
+        with session["history_lock"]:
+            session["pending_model_switch"] = {
+                "value": arg,
+                "confirm_expensive_model": False,
+            }
+        return "model switch queued until the current turn finishes"
+
+    # Reject agent-mutating commands during an in-flight turn. These
+    # all do read-then-mutate on live agent/session state that the
+    # worker thread running agent.run_conversation is using.  Parity
+    # with the session.compress / session.undo guards and the gateway
+    # runner's running-agent /model guard.
+    _MUTATES_WHILE_RUNNING = {"personality", "prompt", "compress"}
     if name in _MUTATES_WHILE_RUNNING and session.get("running"):
         return f"session busy — /interrupt the current turn before running /{name}"
 
