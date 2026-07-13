@@ -13012,6 +13012,9 @@ def _run_prompt_submit(
                         session["_experience_review_running"] = False
                     _emit_settled_session_info(sid, session, agent)
 
+            if apply_queued_model:
+                _apply_queued_model_switch(sid, session)
+
         # A user prompt that arrived mid-turn (interrupt + queue) wins over
         # every auto follow-up below — drain it first and skip them this cycle;
         # the goal judge / notifications re-evaluate at the end of that turn.
