@@ -99,6 +99,7 @@ function Harness({
   onUpdateState,
   onReady,
   onSeedState,
+  onUpdateStoredSessionId,
   openMemoryGraph,
   refreshSessions,
   requestGateway,
@@ -121,6 +122,7 @@ function Harness({
   ) => void
   onReady: (handle: HarnessHandle) => void
   onSeedState?: (state: Record<string, unknown>) => void
+  onUpdateStoredSessionId?: (storedSessionId?: null | string) => void
   openMemoryGraph?: () => void
   refreshSessions: () => Promise<void>
   requestGateway: <T>(method: string, params?: Record<string, unknown>, timeoutMs?: number) => Promise<T>
@@ -173,6 +175,9 @@ function Harness({
       stateRef.current = next as never
       onSeedState?.(next)
       onUpdateState?.(sessionId, storedSessionId, next)
+      if (storedSessionId) {
+        onUpdateStoredSessionId?.(storedSessionId)
+      }
 
       return next as never
     }
@@ -3485,6 +3490,51 @@ describe('usePromptActions sleep/wake session recovery', () => {
     expect(ok).toBe(true)
     expect(createBackendSessionForSend).toHaveBeenCalledTimes(1)
     expect(calls).not.toContain('session.resume')
+  })
+
+  it('submits the first message after session creation rebases its own route and stored-session changes', async () => {
+    const storedSessionId = 'stored-new-chat'
+    const activeSessionIdRef: MutableRefObject<string | null> = { current: null }
+    const selectedStoredSessionIdRef: MutableRefObject<string | null> = { current: null }
+    const updateStoredSessionIds: Array<null | string | undefined> = []
+    let routeToken = 'new-chat-route'
+
+    const createBackendSessionForSend = vi.fn(async () => {
+      activeSessionIdRef.current = RUNTIME_SESSION_ID
+      selectedStoredSessionIdRef.current = storedSessionId
+      routeToken = 'stored-session-route'
+
+      return RUNTIME_SESSION_ID
+    })
+    const requestGateway = vi.fn(async () => ({}) as never)
+    let handle: HarnessHandle | null = null
+
+    render(
+      <Harness
+        activeSessionId={null}
+        activeSessionIdRef={activeSessionIdRef}
+        createBackendSessionForSend={createBackendSessionForSend}
+        getRouteToken={() => routeToken}
+        onReady={h => (handle = h)}
+        onUpdateStoredSessionId={id => updateStoredSessionIds.push(id)}
+        refreshSessions={async () => undefined}
+        requestGateway={requestGateway}
+        selectedStoredSessionIdRef={selectedStoredSessionIdRef}
+        storedSessionId={null}
+      />
+    )
+
+    expect(await handle!.submitText('first message must stay submitted')).toBe(true)
+    expect(requestGateway).toHaveBeenCalledWith(
+      'prompt.submit',
+      {
+        session_id: RUNTIME_SESSION_ID,
+        text: 'first message must stay submitted'
+      },
+      1_800_000
+    )
+    expect(updateStoredSessionIds).not.toContain(null)
+    expect(updateStoredSessionIds).toContain(storedSessionId)
   })
 })
 
