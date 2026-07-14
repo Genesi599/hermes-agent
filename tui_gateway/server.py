@@ -7138,6 +7138,8 @@ def _start_inflight_turn(session: dict, text: Any) -> None:
     now = time.time()
     session["inflight_turn"] = {
         "assistant": "",
+        "events": [],
+        "reasoning": "",
         "started_at": now,
         "streaming": True,
         "updated_at": now,
@@ -7715,6 +7717,8 @@ def _inflight_snapshot(session: dict) -> dict | None:
         return None
     snapshot = {
         "assistant": assistant,
+        "events": list(turn.get("events") or []),
+        "reasoning": str(turn.get("reasoning") or ""),
         "streaming": streaming,
         "user": user,
     }
@@ -8082,7 +8086,16 @@ def _live_session_payload(
     transport: Transport | None = None,
     omit_messages: bool = False,
 ) -> dict:
+    release_stale_turn = False
     with session["history_lock"]:
+        run_thread = session.get("_run_thread")
+        if session.get("running") and run_thread is not None and not run_thread.is_alive():
+            # A worker may exit before its finalizer updates the shared session.
+            # Do not report that orphaned turn as live to a renderer reconnecting
+            # after a Desktop restart; it otherwise stays on Thinking forever.
+            session["running"] = False
+            _clear_inflight_turn(session)
+            release_stale_turn = True
         if cols is not None:
             session["cols"] = cols
         if transport is not None:

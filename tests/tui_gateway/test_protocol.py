@@ -112,6 +112,86 @@ def test_ok_envelope(server):
     }
 
 
+def test_live_session_payload_heals_dead_running_thread(server, monkeypatch):
+    class _DeadThread:
+        def is_alive(self):
+            return False
+
+    session = {
+        "_run_thread": _DeadThread(),
+        "created_at": 1.0,
+        "history": [],
+        "history_lock": threading.Lock(),
+        "inflight_turn": {"user": "stuck", "assistant": ""},
+        "last_active": 1.0,
+        "running": True,
+        "session_key": "stored-session",
+    }
+    released = []
+    monkeypatch.setattr(server, "_fallback_session_info", lambda _session: {})
+    monkeypatch.setattr(server, "_release_durable_session_turn", lambda sid, _session: released.append(sid))
+    monkeypatch.setattr(server, "_session_live_status", lambda _sid, current: "streaming" if current["running"] else "idle")
+
+    payload = server._live_session_payload("runtime-session", session)
+
+    assert payload["running"] is False
+    assert payload["status"] == "idle"
+    assert "inflight" not in payload
+    assert session["running"] is False
+    assert session.get("inflight_turn") is None
+    assert released == ["runtime-session"]
+
+
+def test_inflight_snapshot_keeps_reasoning_and_active_tool_events(server):
+    session = {
+        "inflight_turn": {
+            "assistant": "partial answer",
+            "events": [
+                {"type": "tool.start", "payload": {"name": "browser", "tool_id": "tool-1"}},
+            ],
+            "reasoning": "checking the page",
+            "streaming": True,
+            "user": "open it",
+        }
+    }
+
+    snapshot = server._inflight_snapshot(session)
+
+    assert snapshot == {
+        "assistant": "partial answer",
+        "events": session["inflight_turn"]["events"],
+        "reasoning": "checking the page",
+        "streaming": True,
+        "user": "open it",
+    }
+
+
+def test_inflight_tool_event_is_removed_when_tool_completes(server):
+    sid = "runtime-session"
+    server._sessions[sid] = {
+        "inflight_turn": {
+            "assistant": "",
+            "events": [],
+            "reasoning": "",
+            "streaming": True,
+            "user": "open it",
+        }
+    }
+
+    server._record_inflight_event(
+        "tool.start", sid, {"args": {"url": "http://localhost"}, "name": "browser", "tool_id": "tool-1"}
+    )
+    server._record_inflight_event("tool.progress", sid, {"message": "opening", "tool_id": "tool-1"})
+
+    [active] = server._sessions[sid]["inflight_turn"]["events"]
+    assert active["payload"]["args"] == {"url": "http://localhost"}
+    assert active["payload"]["message"] == "opening"
+
+    server._record_inflight_event("tool.complete", sid, {"result": "large output", "tool_id": "tool-1"})
+
+    assert server._sessions[sid]["inflight_turn"]["events"] == []
+
+
 def test_err_envelope(server):
     assert server._err("r2", 4001, "nope") == {
         "jsonrpc": "2.0", "id": "r2", "error": {"code": 4001, "message": "nope"},
