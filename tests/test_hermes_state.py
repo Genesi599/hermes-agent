@@ -98,6 +98,34 @@ class TestSessionLifecycle:
     def test_get_nonexistent_session(self, db):
         assert db.get_session("nonexistent") is None
 
+    def test_experience_review_checkpoint_resets_only_after_completion(self, db):
+        db.create_session("review-session", source="desktop")
+
+        for expected in range(1, 20):
+            state = db.record_experience_review_turn("review-session")
+            assert state["user_count"] == expected
+            assert state["pending"] is False
+
+        state = db.record_experience_review_turn("review-session")
+        assert state["user_count"] == 20
+        assert state["batch"] == 0
+        assert state["pending"] is True
+
+        # A failed/retried review cannot advance or overflow the batch.
+        state = db.record_experience_review_turn("review-session")
+        assert state["user_count"] == 20
+        assert state["pending"] is True
+
+        assert db.complete_experience_review("review-session") is True
+        assert db.get_experience_review_state("review-session") == {
+            "user_count": 0,
+            "batch": 1,
+            "pending": False,
+            "completed_at": db.get_experience_review_state("review-session")["completed_at"],
+        }
+        assert db.get_experience_review_state("review-session")["completed_at"] is not None
+        assert db.complete_experience_review("review-session") is False
+
     def test_create_session_enriches_null_metadata_on_conflict(self, db):
         """Gateway creates a bare row first; the agent's later create_session
         must backfill model/model_config/system_prompt without clobbering the

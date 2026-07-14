@@ -171,6 +171,31 @@ except (ValueError, TypeError):
 _WS_ORPHAN_REAP_GRACE_S = max(0.0, _ws_orphan_reap_grace)
 _DETAIL_SECTION_NAMES = ("thinking", "tools", "subagents", "activity")
 _DETAIL_MODES = frozenset({"hidden", "collapsed", "expanded"})
+_EXPERIENCE_REVIEW_USER_TURNS = 20
+_INTERNAL_TURN_PREFIX = "[HERMES_INTERNAL_"
+_EXPERIENCE_REVIEW_PREFIX = f"{_INTERNAL_TURN_PREFIX}EXPERIENCE_REVIEW]"
+
+
+def _experience_review_prompt(batch: int) -> str:
+    return f"""{_EXPERIENCE_REVIEW_PREFIX}
+这是当前 stored Session 的第 {batch} 批自动复盘,不是用户的新问题。
+
+请只使用当前模型上下文,复盘最近 20 条不带上述内部标记的真实用户消息,以及这些消息之间的全部助手回复和工具结果。不得读取 transcript_path、Session 数据库、日志、缓存或凭据。
+
+必须读取并执行 `%USERPROFILE%/Documents/GitHub/AI-Agent-Hub/skills/promote-agent-experience/SKILL.md`,将候选经验判为 skip、memory、skill 或 hook。只沉淀稳定且已验证的信息;优先更新已有资产,避免重复。达到升级判据时直接实现、测试、逐文件提交并推送;hook 只能用于机械可检测的生命周期触发,trust 必须保留人工审核,不得绕过。
+
+完成后给用户显示一份简短中文复盘,包含:本批完成事项、经验或教训、下一批可采用的提效方法。不要复述本提示,不要把复盘伪装成用户问题。"""
+
+
+def _is_experience_review_prompt(text: Any) -> bool:
+    return isinstance(text, str) and text.startswith(_EXPERIENCE_REVIEW_PREFIX)
+
+
+def _internal_turn_prompt(kind: str | None, text: Any) -> Any:
+    if not kind or _is_experience_review_prompt(text) or not isinstance(text, str):
+        return text
+    marker = kind.strip().upper().replace("-", "_").replace(" ", "_")
+    return f"{_INTERNAL_TURN_PREFIX}{marker}]\n{text}"
 
 # ── Async RPC dispatch (#12546) ──────────────────────────────────────
 # A handful of handlers block the dispatcher loop in entry.py for seconds
@@ -10246,7 +10271,7 @@ def _notification_poller_loop(
             continue
         try:
             _emit("message.start", sid)
-            _run_prompt_submit(rid, sid, session, text)
+            _run_prompt_submit(rid, sid, session, text, internal_kind="process_notification")
             complete_event_delivery(evt, _claim)
         except Exception as exc:
             release_event_delivery(evt, _claim)
@@ -10314,7 +10339,7 @@ def _notification_poller_loop(
             continue
         try:
             _emit("message.start", sid)
-            _run_prompt_submit(rid, sid, session, text)
+            _run_prompt_submit(rid, sid, session, text, internal_kind="process_notification")
             complete_event_delivery(evt, _claim)
         except Exception as exc:
             release_event_delivery(evt, _claim)
@@ -10389,7 +10414,9 @@ def _start_notification_poller(sid: str, session: dict) -> threading.Event:
     return stop
 
 
-def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
+def _run_prompt_submit(
+    rid, sid: str, session: dict, text: Any, *, internal_kind: str | None = None
+) -> None:
     if not _try_claim_durable_session_turn(sid, session):
         with session["history_lock"]:
             session["running"] = False
@@ -10418,6 +10445,10 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
         home_token = None  # per-turn HERMES_HOME override for a resumed remote profile
         goal_followup = None  # set by the post-turn goal hook below
         one_turn_restore = session.pop("one_turn_model_restore", None)
+        experience_review_followup = None
+        is_experience_review = (
+            internal_kind == "experience_review" or _is_experience_review_prompt(text)
+        )
         try:
             from tools.approval import (
                 reset_current_session_key,
@@ -10452,7 +10483,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
             _register_session_cwd(session)
             cols = session.get("cols", 80)
             streamer = make_stream_renderer(cols)
-            prompt = text
+            prompt = _internal_turn_prompt(internal_kind, text)
 
             if isinstance(prompt, str) and "@" in prompt:
                 from agent.context_references import preprocess_context_references
@@ -10693,6 +10724,29 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                 _clear_inflight_turn(session)
             _emit("message.complete", sid, payload)
 
+            # Count only completed, real human turns. The 20th turn queues a
+            # same-session internal review after the durable execution lease is
+            # released below. A review failure leaves ``pending`` armed; the
+            # counter is reset only after a non-empty review completes.
+            if status == "complete" and isinstance(raw, str) and raw.strip():
+                try:
+                    with _session_db(session) as review_db:
+                        review_key = str(session.get("session_key") or "")
+                        if review_db is not None and review_key:
+                            if is_experience_review:
+                                review_db.complete_experience_review(review_key)
+                            elif internal_kind is None:
+                                review_state = review_db.record_experience_review_turn(
+                                    review_key,
+                                    threshold=_EXPERIENCE_REVIEW_USER_TURNS,
+                                )
+                                if review_state.get("pending"):
+                                    experience_review_followup = _experience_review_prompt(
+                                        int(review_state.get("batch") or 0) + 1
+                                    )
+                except Exception:
+                    logger.warning("experience review checkpoint update failed", exc_info=True)
+
             # ── /goal continuation (Ralph-style loop) ─────────────────
             # After every TUI turn, if a /goal is active, ask the judge
             # whether the goal is done and — if not and we're still under
@@ -10701,7 +10755,12 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
             # ("✓ Goal achieved" / "⏸ budget exhausted") is surfaced as
             # a system line so the user sees progress regardless of
             # outcome. Mirrors gateway/run._post_turn_goal_continuation.
-            if status == "complete" and isinstance(raw, str) and raw.strip():
+            if (
+                not is_experience_review
+                and status == "complete"
+                and isinstance(raw, str)
+                and raw.strip()
+            ):
                 try:
                     from hermes_cli.goals import GoalManager
 
@@ -10772,6 +10831,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                 and raw.strip()
                 and isinstance(text, str)
                 and text.strip()
+                and not is_experience_review
             ):
                 try:
                     from agent.title_generator import maybe_auto_title
@@ -10822,6 +10882,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                 and isinstance(raw, str)
                 and raw.strip()
                 and _voice_tts_enabled()
+                and not is_experience_review
             ):
                 try:
                     from hermes_cli.voice import speak_text
@@ -10889,9 +10950,35 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
             if apply_queued_model:
                 _apply_queued_model_switch(sid, session)
 
-        # A user prompt that arrived mid-turn (interrupt + queue) wins over
-        # every auto follow-up below — drain it first and skip them this cycle;
-        # the goal judge / notifications re-evaluate at the end of that turn.
+        # The 20-turn review must run before a message that arrived during turn
+        # 20, otherwise that message would enter the batch being summarized.
+        # It uses the same stored Session and durable queue, so no child/new
+        # conversation is created and transcript writes cannot race.
+        if experience_review_followup:
+            with session["history_lock"]:
+                if not session.get("running"):
+                    session["running"] = True
+                else:
+                    experience_review_followup = None
+            if experience_review_followup:
+                try:
+                    _run_prompt_submit(
+                        rid,
+                        sid,
+                        session,
+                        experience_review_followup,
+                        internal_kind="experience_review",
+                    )
+                    return
+                except Exception as review_exc:
+                    logger.warning(
+                        "experience review dispatch failed: %s", review_exc, exc_info=True
+                    )
+                    with session["history_lock"]:
+                        session["running"] = False
+
+        # A user prompt that arrived mid-turn wins over the remaining automatic
+        # continuations below.
         if _drain_queued_prompt(rid, sid, session):
             return
 
@@ -10910,7 +10997,9 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                 session["running"] = True
             try:
                 _emit("message.start", sid)
-                _run_prompt_submit(rid, sid, session, goal_followup)
+                _run_prompt_submit(
+                    rid, sid, session, goal_followup, internal_kind="goal_continuation"
+                )
             except Exception as _cont_exc:
                 print(
                     f"[tui_gateway] goal continuation dispatch failed: "
@@ -10956,7 +11045,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                     continue
                 try:
                     _emit("message.start", sid)
-                    _run_prompt_submit(rid, sid, session, synth)
+                    _run_prompt_submit(rid, sid, session, synth, internal_kind="process_notification")
                     complete_event_delivery(_evt, _claim)
                 except Exception as _n_exc:
                     release_event_delivery(_evt, _claim)

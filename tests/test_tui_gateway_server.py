@@ -6754,6 +6754,93 @@ def test_prompt_submit_history_version_match_persists_normally(monkeypatch):
         server._sessions.pop("sid", None)
 
 
+def test_prompt_submit_queues_same_session_review_after_twentieth_human_turn(monkeypatch):
+    class _ReviewDb:
+        def __init__(self):
+            self.recorded = 0
+            self.completed = 0
+
+        def record_experience_review_turn(self, session_id, *, threshold):
+            assert session_id == "session-key"
+            assert threshold == 20
+            self.recorded += 1
+            return {"user_count": 20, "batch": 0, "pending": True}
+
+        def complete_experience_review(self, session_id):
+            assert session_id == "session-key"
+            self.completed += 1
+            return True
+
+    class _DbContext:
+        def __init__(self, db):
+            self.db = db
+
+        def __enter__(self):
+            return self.db
+
+        def __exit__(self, *_args):
+            return False
+
+    class _Agent:
+        model = "test-model"
+        provider = "test-provider"
+        session_id = "session-key"
+
+        def __init__(self):
+            self.prompts = []
+
+        def run_conversation(self, prompt, conversation_history=None, stream_callback=None):
+            self.prompts.append(prompt)
+            response = "批次复盘" if server._is_experience_review_prompt(prompt) else "normal reply"
+            return {
+                "final_response": response,
+                "messages": [
+                    *(conversation_history or []),
+                    {"role": "user", "content": prompt},
+                    {"role": "assistant", "content": response},
+                ],
+            }
+
+    class _ImmediateThread:
+        def __init__(self, target=None, daemon=None, **_kwargs):
+            self._target = target
+
+        def start(self):
+            self._target()
+
+    review_db = _ReviewDb()
+    agent = _Agent()
+    session = _session(agent=agent, running=True)
+    server._sessions["sid"] = session
+    monkeypatch.setattr(server.threading, "Thread", _ImmediateThread)
+    monkeypatch.setattr(server, "_session_db", lambda _session: _DbContext(review_db))
+    monkeypatch.setattr(server, "_try_claim_durable_session_turn", lambda *_args: True)
+    monkeypatch.setattr(server, "_release_durable_session_turn", lambda *_args: None)
+    monkeypatch.setattr(server, "_refresh_session_history_from_db", lambda *_args: None)
+    monkeypatch.setattr(server, "_sync_agent_model_with_config", lambda *_args: None)
+    monkeypatch.setattr(server, "_set_session_context", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(server, "_clear_session_context", lambda *_args: None)
+    monkeypatch.setattr(server, "_wire_callbacks", lambda *_args: None)
+    monkeypatch.setattr(server, "_emit", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(server, "make_stream_renderer", lambda *_args: None)
+    monkeypatch.setattr(server, "render_message", lambda *_args: None)
+    monkeypatch.setattr(server, "_get_usage", lambda *_args: {})
+    monkeypatch.setattr(server, "_drain_queued_prompt", lambda *_args: False)
+    monkeypatch.setattr(server, "_schedule_post_turn_history_hygiene", lambda *_args: None)
+
+    try:
+        server._run_prompt_submit("r1", "sid", session, "human turn 20")
+
+        assert agent.prompts[0] == "human turn 20"
+        assert server._is_experience_review_prompt(agent.prompts[1])
+        assert len(agent.prompts) == 2
+        assert review_db.recorded == 1
+        assert review_db.completed == 1
+        assert session["running"] is False
+    finally:
+        server._sessions.pop("sid", None)
+
+
 def test_prompt_submit_can_truncate_before_user_ordinal(monkeypatch):
     """Desktop user-message edits should restart the turn from the edited user."""
 
