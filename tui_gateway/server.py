@@ -1622,6 +1622,7 @@ def _event_frame(event: str, sid: str, payload: dict | None = None) -> dict:
 
 
 def _emit(event: str, sid: str, payload: dict | None = None):
+    _record_inflight_event(event, sid, payload)
     write_json(_event_frame(event, sid, payload))
 
 
@@ -7945,6 +7946,55 @@ def _record_inflight_correction(session: dict, text: Any) -> None:
 
 def _clear_inflight_turn(session: dict) -> None:
     session["inflight_turn"] = None
+
+
+def _record_inflight_event(event: str, sid: str, payload: dict | None) -> None:
+    session = _sessions.get(sid)
+    turn = (session or {}).get("inflight_turn")
+    if not isinstance(turn, dict):
+        return
+
+    if event == "reasoning.delta":
+        turn["reasoning"] = f"{turn.get('reasoning') or ''}{(payload or {}).get('text') or ''}"
+    elif event == "reasoning.available" and not turn.get("reasoning"):
+        turn["reasoning"] = str((payload or {}).get("text") or "")
+    elif event in {"tool.start", "tool.progress", "tool.generating", "tool.complete"}:
+        current = dict(payload or {})
+        tool_key = str(
+            current.get("tool_id") or current.get("tool_call_id") or current.get("id") or current.get("name") or "tool"
+        )
+        events = list(turn.get("events") or [])
+        previous = next(
+            (
+                item for item in reversed(events)
+                if str(
+                    (item.get("payload") or {}).get("tool_id")
+                    or (item.get("payload") or {}).get("tool_call_id")
+                    or (item.get("payload") or {}).get("id")
+                    or (item.get("payload") or {}).get("name")
+                    or "tool"
+                ) == tool_key
+            ),
+            None,
+        )
+        events = [
+            item for item in events
+            if str(
+                (item.get("payload") or {}).get("tool_id")
+                or (item.get("payload") or {}).get("tool_call_id")
+                or (item.get("payload") or {}).get("id")
+                or (item.get("payload") or {}).get("name")
+                or "tool"
+            ) != tool_key
+        ]
+        if event != "tool.complete":
+            merged = {**((previous or {}).get("payload") or {}), **current}
+            events.append({"type": event, "payload": merged})
+        turn["events"] = events[-8:]
+    else:
+        return
+
+    turn["updated_at"] = time.time()
 
 
 def _fail_inflight_turn(session: dict, error: Any) -> None:

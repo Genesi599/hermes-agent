@@ -87,6 +87,7 @@ import {
   reconcileResumeMessages,
   resolveSessionProfile,
   resolveStoredSession,
+  restoreInflightView,
   sessionMatchesStoredId,
   sessionShouldHaveTranscript,
   upsertOptimisticSession
@@ -1030,6 +1031,9 @@ export function useSessionActions({
             ? currentMessages
             : preserveLocalAssistantErrors(inFlightRecovery.messages, currentMessages)
 
+        const restoredInflight = restoreInflightView(messagesForView, resumed)
+        const finalMessagesForView = restoredInflight.messages
+
         // Fail-latch on the PRE-recovery transcript: an orphan journal tail
         // must not mask a lost transcript (a retry that reloads real history
         // is safer than surfacing the in-flight turn alone). Recovery only
@@ -1054,16 +1058,16 @@ export function useSessionActions({
           state => ({
             ...state,
             ...(runtimeInfo ?? {}),
-            messages: messagesForView,
+            messages: finalMessagesForView,
             busy: resumedRunning,
-            awaitingResponse: resumedRunning && !recoveredInFlightTail,
+            awaitingResponse: resumedRunning && !recoveredInFlightTail && !restoredInflight.sawAssistantPayload,
             adoptedRunningTurn: state.adoptedRunningTurn || resumedRunning,
-            ...(inFlightRecovery.applied
+            ...(inFlightRecovery.applied || restoredInflight.sawAssistantPayload
               ? {
                   sawAssistantPayload: true,
                   // Point live deltas at the recovered row when the backend is
                   // still mid-turn; a settled recovery keeps the stream idle.
-                  streamId: resumedRunning ? inFlightRecovery.streamId : null,
+                  streamId: resumedRunning ? (inFlightRecovery.streamId ?? restoredInflight.streamId) : null,
                   turnStartedAt: resumedRunning
                     ? (inFlightRecovery.turnStartedAt ?? state.turnStartedAt ?? Date.now())
                     : state.turnStartedAt
@@ -1077,8 +1081,8 @@ export function useSessionActions({
         // Commit the final, already-reconciled transcript now so resume has one
         // additive DOM build instead of an eager prefetch build plus a later
         // runtime projection build.
-        if (!chatMessageArraysEquivalent($messages.get(), messagesForView)) {
-          setMessages(messagesForView)
+        if (!chatMessageArraysEquivalent($messages.get(), finalMessagesForView)) {
+          setMessages(finalMessagesForView)
         }
       } catch (err) {
         if (!isCurrentResume()) {

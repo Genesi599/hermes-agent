@@ -627,6 +627,11 @@ export interface SessionResumeResponse {
   }
   inflight?: null | {
     assistant?: string
+    events?: Array<{
+      payload?: Record<string, unknown>
+      type: string
+    }>
+    reasoning?: string
     /** Mid-turn redirect corrections, oldest first. The turn's original prompt
      *  stays in `user`; these are the follow-ups typed while it ran. */
     corrections?: string[]
