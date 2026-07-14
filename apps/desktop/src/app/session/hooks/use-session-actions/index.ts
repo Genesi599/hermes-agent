@@ -217,7 +217,7 @@ export function useSessionActions({
   navigate,
   onFreshDraftRouteIntent,
   requestGateway,
-  resetViewSync,
+  resetViewSync = () => {},
   runtimeIdByStoredSessionIdRef,
   selectedStoredSessionId,
   selectedStoredSessionIdRef,
