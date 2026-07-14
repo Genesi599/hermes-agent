@@ -86,6 +86,7 @@ import {
   reconcileResumeMessages,
   resolveSessionProfile,
   resolveStoredSession,
+  restoreInflightView,
   sessionMatchesStoredId,
   sessionShouldHaveTranscript,
   toBranchMessages,
@@ -213,7 +214,7 @@ export function useSessionActions({
   navigate,
   onFreshDraftRouteIntent,
   requestGateway,
-  resetViewSync,
+  resetViewSync = () => {},
   runtimeIdByStoredSessionIdRef,
   selectedStoredSessionId,
   selectedStoredSessionIdRef,
@@ -739,7 +740,6 @@ export function useSessionActions({
           // un-owned for the life of the session (#71254).
           setWorkspaceCwdOwner(storedSessionId)
           setCurrentBranch(cachedViewState.branch)
-          setSessionStartedAt(Date.now())
 
           try {
             let activated: SessionResumeResponse | null = null
@@ -1054,7 +1054,7 @@ export function useSessionActions({
           state => ({
             ...state,
             ...(runtimeInfo ?? {}),
-            messages: messagesForView,
+            messages: restoredInflight.messages,
             busy: resumedRunning,
             awaitingResponse: resumedRunning && !recoveredInFlightTail,
             adoptedRunningTurn: state.adoptedRunningTurn || resumedRunning,

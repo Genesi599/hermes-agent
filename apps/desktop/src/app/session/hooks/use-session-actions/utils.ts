@@ -1,6 +1,14 @@
 import { textWithoutReferenceLines } from '@/components/assistant-ui/reference-kinds'
 import { getSession } from '@/hermes'
-import { assistantTextPart, type ChatMessage, chatMessageText, textPart } from '@/lib/chat-messages'
+import {
+  assistantTextPart,
+  type ChatMessage,
+  chatMessageText,
+  type GatewayEventPayload,
+  reasoningPart,
+  textPart,
+  upsertToolPart
+} from '@/lib/chat-messages'
 import { normalizePersonalityValue } from '@/lib/chat-runtime'
 import { embeddedImageUrls, textWithoutEmbeddedImages } from '@/lib/embedded-images'
 import { reconcileApprovalModeForProfile } from '@/store/approval-mode'
@@ -258,6 +266,52 @@ export function chatMessageArraysEquivalent(a: ChatMessage[], b: ChatMessage[]):
   }
 
   return a.length === b.length && a.every((message, index) => chatMessagesEquivalent(message, b[index]))
+}
+
+export interface RestoredInflightView {
+  messages: ChatMessage[]
+  sawAssistantPayload: boolean
+  streamId: null | string
+}
+
+export function restoreInflightView(messages: ChatMessage[], resumed: SessionResumeResponse): RestoredInflightView {
+  if (!resumed.running || !resumed.inflight?.streaming) {
+    return { messages, sawAssistantPayload: false, streamId: null }
+  }
+
+  const pending = [...messages].reverse().find(message => message.role === 'assistant' && message.pending)
+
+  if (pending) {
+    return { messages, sawAssistantPayload: true, streamId: pending.id }
+  }
+
+  const streamId = `assistant-resume-${resumed.session_id}`
+  let parts = resumed.inflight.reasoning?.trim() ? [reasoningPart(resumed.inflight.reasoning)] : []
+
+  for (const event of resumed.inflight.events ?? []) {
+    if (!event.type.startsWith('tool.')) {
+      continue
+    }
+
+    parts = upsertToolPart(
+      parts,
+      event.payload as GatewayEventPayload | undefined,
+      event.type === 'tool.complete' ? 'complete' : 'running'
+    )
+  }
+
+  if (resumed.inflight.assistant) {
+    parts.push(assistantTextPart(resumed.inflight.assistant))
+  } else if (parts.length === 0) {
+    // Keep a non-empty part array so AssistantMessage mounts its stalled-thinking indicator.
+    parts.push(assistantTextPart(''))
+  }
+
+  return {
+    messages: [...messages, { id: streamId, parts, pending: true, role: 'assistant' }],
+    sawAssistantPayload: true,
+    streamId
+  }
 }
 
 export function reconcileResumeMessages(nextMessages: ChatMessage[], previousMessages: ChatMessage[]): ChatMessage[] {
