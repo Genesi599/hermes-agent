@@ -1219,6 +1219,7 @@ def _emit(event: str, sid: str, payload: dict | None = None):
     params = {"type": event, "session_id": sid}
     if payload is not None:
         params["payload"] = payload
+    _record_inflight_event(event, sid, payload)
     write_json({"jsonrpc": "2.0", "method": "event", "params": params})
     _record_durable_live_status(event, sid, payload)
 
@@ -5671,6 +5672,8 @@ def _start_inflight_turn(session: dict, text: Any) -> None:
     now = time.time()
     session["inflight_turn"] = {
         "assistant": "",
+        "events": [],
+        "reasoning": "",
         "started_at": now,
         "streaming": True,
         "updated_at": now,
@@ -5693,6 +5696,63 @@ def _append_inflight_delta(session: dict, delta: Any) -> None:
 
 def _clear_inflight_turn(session: dict) -> None:
     session["inflight_turn"] = None
+
+
+def _record_inflight_event(event: str, sid: str, payload: dict | None) -> None:
+    session = _sessions.get(sid)
+    turn = (session or {}).get("inflight_turn")
+    if not isinstance(turn, dict):
+        return
+
+    if event == "reasoning.delta":
+        turn["reasoning"] = f"{turn.get('reasoning') or ''}{(payload or {}).get('text') or ''}"
+    elif event == "reasoning.available" and not turn.get("reasoning"):
+        turn["reasoning"] = str((payload or {}).get("text") or "")
+    elif event in {"tool.start", "tool.progress", "tool.generating", "tool.complete"}:
+        current = dict(payload or {})
+        tool_key = str(
+            current.get("tool_id")
+            or current.get("tool_call_id")
+            or current.get("id")
+            or current.get("name")
+            or "tool"
+        )
+        events = list(turn.get("events") or [])
+        previous = next(
+            (
+                item
+                for item in reversed(events)
+                if str(
+                    (item.get("payload") or {}).get("tool_id")
+                    or (item.get("payload") or {}).get("tool_call_id")
+                    or (item.get("payload") or {}).get("id")
+                    or (item.get("payload") or {}).get("name")
+                    or "tool"
+                )
+                == tool_key
+            ),
+            None,
+        )
+        events = [
+            item
+            for item in events
+            if str(
+                (item.get("payload") or {}).get("tool_id")
+                or (item.get("payload") or {}).get("tool_call_id")
+                or (item.get("payload") or {}).get("id")
+                or (item.get("payload") or {}).get("name")
+                or "tool"
+            )
+            != tool_key
+        ]
+        if event != "tool.complete":
+            merged = {**((previous or {}).get("payload") or {}), **current}
+            events.append({"type": event, "payload": merged})
+        turn["events"] = events[-8:]
+    else:
+        return
+
+    turn["updated_at"] = time.time()
 
 
 def _enqueue_prompt(session: dict, text: Any, transport: Any) -> None:
@@ -5941,6 +6001,8 @@ def _inflight_snapshot(session: dict) -> dict | None:
         return None
     return {
         "assistant": assistant,
+        "events": list(turn.get("events") or []),
+        "reasoning": str(turn.get("reasoning") or ""),
         "streaming": streaming,
         "user": user,
     }
@@ -6867,7 +6929,16 @@ def _live_session_payload(
     touch: bool = False,
     transport: Transport | None = None,
 ) -> dict:
+    release_stale_turn = False
     with session["history_lock"]:
+        run_thread = session.get("_run_thread")
+        if session.get("running") and run_thread is not None and not run_thread.is_alive():
+            # A worker may exit before its finalizer updates the shared session.
+            # Do not report that orphaned turn as live to a renderer reconnecting
+            # after a Desktop restart; it otherwise stays on Thinking forever.
+            session["running"] = False
+            _clear_inflight_turn(session)
+            release_stale_turn = True
         if cols is not None:
             session["cols"] = cols
         if transport is not None:
@@ -6880,6 +6951,8 @@ def _live_session_payload(
         inflight = _inflight_snapshot(session)
         queued = _queued_prompt_snapshot(session)
         running = bool(session.get("running"))
+    if release_stale_turn:
+        _release_durable_session_turn(sid, session)
     payload = {
         "info": _fallback_session_info(session),
         "message_count": len(history),

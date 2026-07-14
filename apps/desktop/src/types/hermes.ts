@@ -438,6 +438,11 @@ export interface SessionMessagesResponse {
 export interface SessionResumeResponse {
   inflight?: null | {
     assistant?: string
+    events?: Array<{
+      payload?: Record<string, unknown>
+      type: string
+    }>
+    reasoning?: string
     streaming?: boolean
     user?: string
   }

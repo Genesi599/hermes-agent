@@ -73,6 +73,7 @@ import {
   preserveLocalPendingTurnMessages,
   reconcileResumeMessages,
   resolveStoredSession,
+  restoreInflightView,
   sessionMatchesStoredId,
   sessionShouldHaveTranscript,
   toBranchMessages,
@@ -199,7 +200,7 @@ export function useSessionActions({
   navigate,
   onFreshDraftRouteIntent,
   requestGateway,
-  resetViewSync,
+  resetViewSync = () => {},
   runtimeIdByStoredSessionIdRef,
   selectedStoredSessionId,
   selectedStoredSessionIdRef,
@@ -619,7 +620,6 @@ export function useSessionActions({
           syncSessionStateToView(cachedRuntimeId, cachedViewState)
           setCurrentCwd(cachedViewState.cwd)
           setCurrentBranch(cachedViewState.branch)
-          setSessionStartedAt(Date.now())
 
           try {
             let activated: SessionResumeResponse | null = null
@@ -749,7 +749,10 @@ export function useSessionActions({
       }
 
       busyRef.current = true
-      setBusy(true)
+      // Rebinding a stored conversation is transport work, not an agent turn.
+      // The ref still protects the transcript while the composer waits for the
+      // confirmed runtime; showing a running turn here creates a false spinner.
+      setBusy(false)
       setAwaitingResponse(false)
       clearNotifications()
       setSelectedStoredSessionId(storedSessionId)
@@ -883,16 +886,19 @@ export function useSessionActions({
 
         patchSessionWorkspace(storedSessionId, runtimeInfo?.cwd)
 
-        resumedRunning = Boolean((resumed as { running?: boolean }).running)
+        resumedRunning = Boolean(resumed.running)
+        const restoredInflight = restoreInflightView(messagesForView, resumed)
 
         updateSessionState(
           resumed.session_id,
           state => ({
             ...state,
             ...(runtimeInfo ?? {}),
-            messages: messagesForView,
+            messages: restoredInflight.messages,
             busy: resumedRunning,
-            awaitingResponse: resumedRunning
+            awaitingResponse: resumedRunning && !restoredInflight.sawAssistantPayload,
+            sawAssistantPayload: restoredInflight.sawAssistantPayload,
+            streamId: restoredInflight.streamId
           }),
           storedSessionId
         )
