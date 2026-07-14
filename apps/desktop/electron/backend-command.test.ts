@@ -2,10 +2,22 @@ import assert from 'node:assert/strict'
 
 import { test } from 'vitest'
 
-import { dashboardFallbackArgs, serveBackendArgs, sourceDeclaresServe } from './backend-command'
+import { dashboardFallbackArgs, normalizeBackendPort, serveBackendArgs, sourceDeclaresServe } from './backend-command'
 
 test('serveBackendArgs builds a headless serve invocation', () => {
   assert.deepEqual(serveBackendArgs(), ['serve', '--host', '127.0.0.1', '--port', '0'])
+})
+
+test('serveBackendArgs accepts a validated fixed primary port', () => {
+  assert.deepEqual(serveBackendArgs(undefined, normalizeBackendPort('8803')), [
+    'serve',
+    '--host',
+    '127.0.0.1',
+    '--port',
+    '8803'
+  ])
+  assert.equal(normalizeBackendPort('invalid'), '0')
+  assert.equal(normalizeBackendPort('70000'), '0')
 })
 
 test('serveBackendArgs pins a profile when provided', () => {
