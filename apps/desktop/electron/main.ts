@@ -30,7 +30,7 @@ import {
 import nodePty from 'node-pty'
 
 import { stopBackendChild as stopBackendChildImpl } from './backend-child'
-import { dashboardFallbackArgs, sourceDeclaresServe } from './backend-command'
+import { dashboardFallbackArgs, normalizeBackendPort, serveBackendArgs, sourceDeclaresServe } from './backend-command'
 import { createBackendConnectionState } from './backend-connection-state'
 import { buildDesktopBackendEnv, normalizeHermesHomeRoot } from './backend-env'
 import { canImportHermesCli, verifyHermesCli } from './backend-probes'
@@ -7052,8 +7052,10 @@ async function startHermes() {
     await waitForUpdateToFinish()
 
     const token = crypto.randomBytes(32).toString('base64url')
-    // --port 0: the OS assigns an ephemeral port; the child announces it on stdout.
-    const backendArgs = ['serve', '--host', '127.0.0.1', '--port', '0']
+    // Keep the official ephemeral-port default, while allowing fixed local
+    // integrations (for example the phone sync proxy) to opt into one port.
+    const primaryBackendPort = normalizeBackendPort(process.env.HERMES_DESKTOP_BACKEND_PORT)
+    const backendArgs = serveBackendArgs(undefined, primaryBackendPort)
     // Pin the desktop's chosen profile via the global --profile flag. This is
     // deterministic (it wins over the sticky ~/.hermes/active_profile file) and
     // resolves HERMES_HOME the same way `hermes -p <name>` does on the CLI. An
