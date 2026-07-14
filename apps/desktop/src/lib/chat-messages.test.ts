@@ -42,6 +42,7 @@ describe('toChatMessages', () => {
     expect((toolPart as { args: { command?: string } }).args.command).toBe(longCommand)
   })
 
+
   it('hides the internal experience-review prompt but keeps its summary', () => {
     const messages = toChatMessages([
       { role: 'user', content: 'real message', timestamp: 1 },

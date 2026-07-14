@@ -8,6 +8,8 @@ import { normalize } from '@/lib/text'
 import { parseTodos } from '@/lib/todos'
 import type { MessageReaction, SessionMessage, UsageStats } from '@/types/hermes'
 
+export const INTERNAL_TURN_PREFIX = '[HERMES_INTERNAL_'
+
 export type ChatMessagePart = Exclude<ThreadMessageLike['content'], string>[number]
 
 export type ChatMessage = {
@@ -968,6 +970,14 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
   }
 
   messages.forEach((message, index) => {
+    if (
+      message.role === 'user' &&
+      typeof message.content === 'string' &&
+      message.content.startsWith(INTERNAL_TURN_PREFIX)
+    ) {
+      return
+    }
+
     if (message.role === 'tool') {
       const updatedPendingToolParts = applyStoredToolResultToParts(pendingToolParts, message)
 
