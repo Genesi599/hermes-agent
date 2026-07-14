@@ -4119,6 +4119,90 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
 
         return bool(self._execute_write(_do))
 
+    def get_experience_review_state(self, session_id: str) -> Dict[str, Any]:
+        """Return the durable 20-user-turn review checkpoint for a session."""
+        if not session_id:
+            return {
+                "user_count": 0,
+                "batch": 0,
+                "pending": False,
+                "completed_at": None,
+            }
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT experience_review_user_count, experience_review_batch, "
+                "experience_review_pending, experience_review_completed_at "
+                "FROM sessions WHERE id = ?",
+                (session_id,),
+            ).fetchone()
+        if row is None:
+            return {
+                "user_count": 0,
+                "batch": 0,
+                "pending": False,
+                "completed_at": None,
+            }
+        return {
+            "user_count": int(row["experience_review_user_count"] or 0),
+            "batch": int(row["experience_review_batch"] or 0),
+            "pending": bool(row["experience_review_pending"]),
+            "completed_at": row["experience_review_completed_at"],
+        }
+
+    def record_experience_review_turn(
+        self, session_id: str, *, threshold: int = 20
+    ) -> Dict[str, Any]:
+        """Count one completed human turn and atomically arm its review."""
+        if not session_id:
+            return self.get_experience_review_state(session_id)
+        threshold = max(1, int(threshold))
+
+        def _do(conn):
+            conn.execute(
+                "UPDATE sessions SET "
+                "experience_review_user_count = MIN(?, "
+                "COALESCE(experience_review_user_count, 0) + 1), "
+                "experience_review_pending = CASE WHEN "
+                "COALESCE(experience_review_pending, 0) = 1 OR "
+                "COALESCE(experience_review_user_count, 0) + 1 >= ? "
+                "THEN 1 ELSE 0 END WHERE id = ?",
+                (threshold, threshold, session_id),
+            )
+            return conn.execute(
+                "SELECT experience_review_user_count, experience_review_batch, "
+                "experience_review_pending, experience_review_completed_at "
+                "FROM sessions WHERE id = ?",
+                (session_id,),
+            ).fetchone()
+
+        row = self._execute_write(_do)
+        if row is None:
+            return self.get_experience_review_state(session_id)
+        return {
+            "user_count": int(row["experience_review_user_count"] or 0),
+            "batch": int(row["experience_review_batch"] or 0),
+            "pending": bool(row["experience_review_pending"]),
+            "completed_at": row["experience_review_completed_at"],
+        }
+
+    def complete_experience_review(self, session_id: str) -> bool:
+        """Commit a successful review checkpoint and start the next batch."""
+        if not session_id:
+            return False
+
+        def _do(conn):
+            cursor = conn.execute(
+                "UPDATE sessions SET experience_review_user_count = 0, "
+                "experience_review_batch = COALESCE(experience_review_batch, 0) + 1, "
+                "experience_review_pending = 0, "
+                "experience_review_completed_at = ? "
+                "WHERE id = ? AND COALESCE(experience_review_pending, 0) = 1",
+                (time.time(), session_id),
+            )
+            return cursor.rowcount == 1
+
+        return bool(self._execute_write(_do))
+
     # ── Gateway routing index (replaces sessions.json, #9006 follow-up) ────
 
     def save_gateway_routing_entry(

@@ -186,6 +186,31 @@ except (ValueError, TypeError):
 _WS_ORPHAN_REAP_GRACE_S = max(0.0, _ws_orphan_reap_grace)
 _DETAIL_SECTION_NAMES = ("thinking", "tools", "subagents", "activity")
 _DETAIL_MODES = frozenset({"hidden", "collapsed", "expanded"})
+_EXPERIENCE_REVIEW_USER_TURNS = 20
+_INTERNAL_TURN_PREFIX = "[HERMES_INTERNAL_"
+_EXPERIENCE_REVIEW_PREFIX = f"{_INTERNAL_TURN_PREFIX}EXPERIENCE_REVIEW]"
+
+
+def _experience_review_prompt(batch: int) -> str:
+    return f"""{_EXPERIENCE_REVIEW_PREFIX}
+这是当前 stored Session 的第 {batch} 批自动复盘,不是用户的新问题。
+
+请只使用当前模型上下文,复盘最近 20 条不带上述内部标记的真实用户消息,以及这些消息之间的全部助手回复和工具结果。不得读取 transcript_path、Session 数据库、日志、缓存或凭据。
+
+必须读取并执行 `%USERPROFILE%/Documents/GitHub/AI-Agent-Hub/skills/promote-agent-experience/SKILL.md`,将候选经验判为 skip、memory、skill 或 hook。只沉淀稳定且已验证的信息;优先更新已有资产,避免重复。达到升级判据时直接实现、测试、逐文件提交并推送;hook 只能用于机械可检测的生命周期触发,trust 必须保留人工审核,不得绕过。
+
+完成后给用户显示一份简短中文复盘,包含:本批完成事项、经验或教训、下一批可采用的提效方法。不要复述本提示,不要把复盘伪装成用户问题。"""
+
+
+def _is_experience_review_prompt(text: Any) -> bool:
+    return isinstance(text, str) and text.startswith(_EXPERIENCE_REVIEW_PREFIX)
+
+
+def _internal_turn_prompt(kind: str | None, text: Any) -> Any:
+    if not kind or _is_experience_review_prompt(text) or not isinstance(text, str):
+        return text
+    marker = kind.strip().upper().replace("-", "_").replace(" ", "_")
+    return f"{_INTERNAL_TURN_PREFIX}{marker}]\n{text}"
 
 # ── Async RPC dispatch (#12546) ──────────────────────────────────────
 # A handful of handlers block the dispatcher loop in entry.py for seconds
@@ -9884,6 +9909,7 @@ def _run_prompt_submit(
     display_metadata: dict | None = None,
     image_paths: list[str] | None = None,
     queued_prompt_generation: int | None = None,
+    internal_kind: str | None = None,
 ) -> None:
     with session["history_lock"]:
         if (
@@ -9922,6 +9948,10 @@ def _run_prompt_submit(
         home_token = None  # per-turn HERMES_HOME override for a resumed remote profile
         secret_token = None
         goal_followup = None  # set by the post-turn goal hook below
+        experience_review_followup = None
+        is_experience_review = (
+            internal_kind == "experience_review" or _is_experience_review_prompt(text)
+        )
         result = None  # turn outcome; read after the finally for leftover /steer
         tts_queue = None  # streaming-TTS feed for this turn (voice mode)
         thinking_started = False  # ambient thinking sound armed for this turn
@@ -9986,7 +10016,7 @@ def _run_prompt_submit(
             _register_session_cwd(session)
             cols = session.get("cols", 80)
             streamer = make_stream_renderer(cols)
-            prompt = text
+            prompt = _internal_turn_prompt(internal_kind, text)
 
             if isinstance(prompt, str) and "@" in prompt:
                 from agent.context_references import preprocess_context_references
@@ -10401,6 +10431,29 @@ def _run_prompt_submit(
             _retire_turn_marker(session, marker_key)
             _emit("message.complete", sid, payload)
 
+            # Count only completed, real human turns. The 20th turn queues a
+            # same-session internal review after the durable execution lease is
+            # released below. A review failure leaves ``pending`` armed; the
+            # counter is reset only after a non-empty review completes.
+            if status == "complete" and isinstance(raw, str) and raw.strip():
+                try:
+                    with _session_db(session) as review_db:
+                        review_key = str(session.get("session_key") or "")
+                        if review_db is not None and review_key:
+                            if is_experience_review:
+                                review_db.complete_experience_review(review_key)
+                            elif internal_kind is None:
+                                review_state = review_db.record_experience_review_turn(
+                                    review_key,
+                                    threshold=_EXPERIENCE_REVIEW_USER_TURNS,
+                                )
+                                if review_state.get("pending"):
+                                    experience_review_followup = _experience_review_prompt(
+                                        int(review_state.get("batch") or 0) + 1
+                                    )
+                except Exception:
+                    logger.warning("experience review checkpoint update failed", exc_info=True)
+
             # ── /goal continuation (Ralph-style loop) ─────────────────
             # After every TUI turn, if a /goal is active, ask the judge
             # whether the goal is done and — if not and we're still under
@@ -10436,8 +10489,10 @@ def _run_prompt_submit(
 
             # Compression failures are never judge input: the error text is
             # not work toward the goal, and evaluating it would spend a turn.
-            if not compression_exhausted and _is_successful_goal_turn(
-                result, status, raw
+            if (
+                not is_experience_review
+                and not compression_exhausted
+                and _is_successful_goal_turn(result, status, raw)
             ):
                 try:
                     from hermes_cli.goals import GoalManager
@@ -10503,6 +10558,54 @@ def _run_prompt_submit(
                     # Transient DB failure — keep pending_title for retry.
                     pass
 
+            if (
+                status == "complete"
+                and isinstance(raw, str)
+                and raw.strip()
+                and isinstance(text, str)
+                and text.strip()
+                and not is_experience_review
+            ):
+                try:
+                    from agent.title_generator import maybe_auto_title
+
+                    _title_key = session.get("session_key") or sid
+                    # Snapshot the runtime identity; the validator lets the
+                    # background titler skip its LLM call if the session's
+                    # model changed before it fires (#19027).
+                    _title_model = getattr(agent, "model", None)
+                    _title_provider = getattr(agent, "provider", None)
+                    maybe_auto_title(
+                        _get_db(),
+                        _title_key,
+                        text,
+                        raw,
+                        session.get("history", []),
+                        # Keep auxiliary auto-detection aligned with the active
+                        # Desktop/Webapp session. Without this, providers that
+                        # rely on runtime auth (for example OpenAI Codex OAuth)
+                        # are skipped and the new session remains untitled.
+                        main_runtime={
+                            "model": getattr(agent, "model", None),
+                            "provider": getattr(agent, "provider", None),
+                            "base_url": getattr(agent, "base_url", None),
+                            "api_key": getattr(agent, "api_key", None),
+                            "api_mode": getattr(agent, "api_mode", None),
+                        },
+                        runtime_validator=lambda: (
+                            getattr(agent, "model", None) == _title_model
+                            and getattr(agent, "provider", None) == _title_provider
+                        ),
+                        # Push the generated title live so the sidebar renames
+                        # without waiting for the next list refresh (the titler
+                        # runs async, after this turn's refresh already fired).
+                        title_callback=lambda t, _k=_title_key: _emit(
+                            "session.title", sid, {"session_id": _k, "title": t}
+                        ),
+                    )
+                except Exception:
+                    pass
+
             # Voice TTS fallback: when the streaming pipeline couldn't start
             # (no provider / missing deps probed at turn start), speak the
             # final text whole (cli.py:_voice_speak_response parity). The
@@ -10513,6 +10616,7 @@ def _run_prompt_submit(
                 and isinstance(raw, str)
                 and raw.strip()
                 and _voice_tts_enabled()
+                and not is_experience_review
             ):
                 try:
                     spoken = raw
@@ -10660,7 +10764,9 @@ def _run_prompt_submit(
                 session["running"] = True
             try:
                 _emit("message.start", sid)
-                _run_prompt_submit(rid, sid, session, goal_followup)
+                _run_prompt_submit(
+                    rid, sid, session, goal_followup, internal_kind="goal_continuation"
+                )
             except Exception as _cont_exc:
                 print(
                     f"[tui_gateway] goal continuation dispatch failed: "
@@ -10706,7 +10812,7 @@ def _run_prompt_submit(
                     continue
                 try:
                     _emit("message.start", sid)
-                    _run_prompt_submit(rid, sid, session, synth)
+                    _run_prompt_submit(rid, sid, session, synth, internal_kind="process_notification")
                     complete_event_delivery(_evt, _claim)
                 except Exception as _n_exc:
                     release_event_delivery(_evt, _claim)

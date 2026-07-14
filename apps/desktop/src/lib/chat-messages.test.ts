@@ -42,6 +42,22 @@ describe('toChatMessages', () => {
     expect((toolPart as { args: { command?: string } }).args.command).toBe(longCommand)
   })
 
+  it('hides the internal experience-review prompt but keeps its summary', () => {
+    const messages = toChatMessages([
+      { role: 'user', content: 'real message', timestamp: 1 },
+      { role: 'assistant', content: 'real reply', timestamp: 2 },
+      {
+        role: 'user',
+        content: '[HERMES_INTERNAL_EXPERIENCE_REVIEW]\nreview this batch',
+        timestamp: 3
+      },
+      { role: 'assistant', content: '批次复盘', timestamp: 4 }
+    ])
+
+    expect(messages.map(chatMessageText)).toEqual(['real message', 'real reply', '批次复盘'])
+    expect(messages.filter(message => message.role === 'user')).toHaveLength(1)
+  })
+
   it('keeps a turn with interleaved tool-only rows in a single bubble', () => {
     const messages = toChatMessages([
       { role: 'assistant', content: 'Planning.', timestamp: 1 },
