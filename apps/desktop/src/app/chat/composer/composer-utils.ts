@@ -34,6 +34,12 @@ export const COMPOSER_FADE_BACKGROUND =
 // unmount/pagehide flushes bypass it.
 export const DRAFT_PERSIST_DEBOUNCE_MS = 400
 
+export const composerInputIsDisabled = (
+  disabled: boolean,
+  reconnecting: boolean,
+  allowDraftWhileDisabled: boolean
+): boolean => disabled && !reconnecting && !allowDraftWhileDisabled
+
 export const pickPlaceholder = (pool: readonly string[]) => pool[Math.floor(Math.random() * pool.length)]
 
 /** Completion items can carry an `action` (set in use-slash-completions) that
