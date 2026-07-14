@@ -80,6 +80,7 @@ import { chipTypedUrlOnSpace, linkifyUrls } from './url-refs'
 import { VoiceActivity, VoicePlaybackActivity } from './voice-activity'
 
 export function ChatBar({
+  allowDraftWhileDisabled = false,
   busy,
   cwd,
   disabled,
@@ -201,7 +202,10 @@ export function ChatBar({
   const { t } = useI18n()
   const gatewayState = useStore($gatewayState)
   const reconnecting = gatewayState === 'closed' || gatewayState === 'error'
-  const inputDisabled = disabled && !reconnecting
+  // During a session rebind the controls/send path stay disabled, but the
+  // stored-session draft scope is already authoritative. Let the user type
+  // immediately and keep Enter as a no-op until routing is confirmed.
+  const inputDisabled = composerInputIsDisabled(disabled, reconnecting, allowDraftWhileDisabled)
 
   // The draft engine — detached source of truth (DOM + draftRef + edge
   // selectors); typing never re-renders the chrome. ChatBar owns `queueEditRef`
