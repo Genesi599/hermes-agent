@@ -10,7 +10,8 @@ describe('SidebarRowLabel typography', () => {
     render(<SidebarRowLabel>Log gy</SidebarRowLabel>)
 
     const label = screen.getByText('Log gy')
-    expect(label.className).toContain('leading-4')
+    expect(label.className).toContain('leading-5')
+    expect(label.className).not.toContain('leading-4')
     expect(label.className).not.toContain('leading-none')
   })
 })
