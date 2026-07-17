@@ -86,6 +86,53 @@ describe('fetchRuntimeReadinessSignals', () => {
 
     expect(calls).toEqual([{ method: 'setup.status' }, { method: 'setup.runtime_check', params: { provider: 'nous' } }])
   })
+
+  it('retries a timed-out runtime check once before reporting readiness', async () => {
+    let runtimeCalls = 0
+
+    const requestGateway = async <T = unknown>(method: string) => {
+      if (method === 'setup.status') {
+        return { provider_configured: false } as T
+      }
+
+      if (method === 'setup.runtime_check') {
+        runtimeCalls += 1
+
+        if (runtimeCalls === 1) {
+          throw new Error('request timed out: setup.runtime_check')
+        }
+
+        return { ok: true } as T
+      }
+
+      throw new Error(`unexpected method: ${method}`)
+    }
+
+    const signals = await fetchRuntimeReadinessSignals(requestGateway)
+
+    expect(runtimeCalls).toBe(2)
+    expect(signals.runtime).toEqual({ ok: true })
+    expect(signals.runtimeError).toBeNull()
+  })
+
+  it('does not retry an authoritative runtime failure', async () => {
+    let runtimeCalls = 0
+
+    const requestGateway = async <T = unknown>(method: string) => {
+      if (method === 'setup.status') {
+        return { provider_configured: true } as T
+      }
+
+      runtimeCalls += 1
+      throw new Error('No provider can serve the selected model.')
+    }
+
+    const signals = await fetchRuntimeReadinessSignals(requestGateway)
+
+    expect(runtimeCalls).toBe(1)
+    expect(signals.runtime).toBeNull()
+    expect(signals.runtimeError).toBe('No provider can serve the selected model.')
+  })
 })
 
 describe('evaluateRuntimeReadiness', () => {
