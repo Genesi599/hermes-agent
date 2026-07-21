@@ -505,7 +505,7 @@ export function ChatView({
         {showChatBar && (
           <Suspense fallback={<ChatBarFallback />}>
             <ChatBar
-              allowDraftWhileDisabled={resumingSession}
+              allowDraftWhileDisabled={false}
               busy={busy}
               cwd={currentCwd}
               disabled={!gatewayOpen}

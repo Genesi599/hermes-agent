@@ -298,7 +298,7 @@ const ThreadMessageListInner: FC<ThreadMessageListProps> = ({
     const el = scrollRef.current
 
     restoreFromBottomRef.current = el ? el.scrollHeight - el.scrollTop : null
-    setVisibleUserTurns(limit => limit + USER_TURN_WINDOW)
+    setRenderBudget(budget => budget + RENDER_BUDGET)
   }, [scrollRef])
 
   useLayoutEffect(() => {
@@ -308,7 +308,7 @@ const ThreadMessageListInner: FC<ThreadMessageListProps> = ({
       el.scrollTop = el.scrollHeight - restoreFromBottomRef.current
       restoreFromBottomRef.current = null
     }
-  }, [scrollRef, visibleUserTurns])
+  }, [renderBudget, scrollRef])
 
   return (
     <div
