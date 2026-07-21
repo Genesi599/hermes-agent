@@ -50,7 +50,6 @@ import {
   $selectedStoredSessionId,
   $sessions,
   clearPendingModelSelectionIfApplied,
-  noteSessionActivity,
   sessionMatchesStoredId,
   setCurrentBranch,
   setCurrentCwdTransient,

@@ -100,11 +100,11 @@ interface SessionActionsOptions {
   creatingSessionRef: MutableRefObject<boolean>
   ensureSessionState: (sessionId: string, storedSessionId?: string | null) => ClientSessionState
   getRouteToken: () => string
-  getRoutedStoredSessionId: () => null | string
+  getRoutedStoredSessionId?: () => null | string
   navigate: NavigateFunction
   onFreshDraftRouteIntent?: () => void
   requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
-  resetViewSync: () => void
+  resetViewSync?: () => void
   runtimeIdByStoredSessionIdRef: MutableRefObject<Map<string, string>>
   selectedStoredSessionId: string | null
   selectedStoredSessionIdRef: MutableRefObject<string | null>
@@ -210,7 +210,7 @@ export function useSessionActions({
   creatingSessionRef,
   ensureSessionState,
   getRouteToken,
-  getRoutedStoredSessionId,
+  getRoutedStoredSessionId = () => null,
   navigate,
   onFreshDraftRouteIntent,
   requestGateway,
