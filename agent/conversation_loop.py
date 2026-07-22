@@ -186,6 +186,35 @@ _API_CALL_MODULES = frozenset({
     "chat_completion_helpers",
 })
 
+_CONTINUOUS_RETRY_REASONS = {
+    FailoverReason.timeout,
+    FailoverReason.overloaded,
+    FailoverReason.server_error,
+    FailoverReason.rate_limit,
+    FailoverReason.upstream_rate_limit,
+}
+
+
+def _extend_transient_retry_budget(
+    agent: Any,
+    classified: Any,
+    *,
+    retry_count: int,
+    max_retries: int,
+) -> int:
+    """Start another retry batch for a known-transient provider failure."""
+    if retry_count < max_retries:
+        return max_retries
+    if not getattr(agent, "_retry_transient_forever", False):
+        return max_retries
+    if not getattr(classified, "retryable", False):
+        return max_retries
+    if getattr(classified, "reason", None) not in _CONTINUOUS_RETRY_REASONS:
+        return max_retries
+
+    batch_size = max(int(getattr(agent, "_api_max_retries", 3) or 3), 1)
+    return max_retries + batch_size
+
 
 def _join_truncated_parts(parts: List[str]) -> str:
     """Join continuation fragments, adding a newline where two would glue together (#78577)."""
@@ -2415,6 +2444,7 @@ def run_conversation(
         
         api_start_time = time.time()
         retry_count = 0
+        transient_failure_count = 0
         max_retries = agent._api_max_retries
         _retry = TurnRetryState()
 
@@ -4554,6 +4584,8 @@ def run_conversation(
                     )
 
                 retry_count += 1
+                if classified.reason in _CONTINUOUS_RETRY_REASONS:
+                    transient_failure_count += 1
                 elapsed_time = time.time() - api_start_time
                 agent._touch_activity(
                     f"API error recovery (attempt {retry_count}/{max_retries})"
@@ -5691,6 +5723,37 @@ def run_conversation(
                         "error": _nonretryable_summary,
                     }
 
+                # Once the normal client rebuild and fallback paths have both
+                # had a chance to recover, keep known-transient outages alive
+                # in visible retry batches. Extending the ceiling before the
+                # terminal guard lets the existing interruptible backoff run
+                # unchanged.
+                if (
+                    retry_count >= max_retries
+                    and _retry.primary_recovery_attempted
+                    and not agent._has_pending_fallback()
+                ):
+                    _extended_retry_budget = _extend_transient_retry_budget(
+                        agent,
+                        classified,
+                        retry_count=retry_count,
+                        max_retries=max_retries,
+                    )
+                    if _extended_retry_budget > max_retries:
+                        max_retries = _extended_retry_budget
+                        agent._emit_status(
+                            f"⚠️ API temporarily unavailable after {transient_failure_count} attempts: "
+                            f"{_error_summary}. Continuing automatic retries; press Stop to cancel."
+                        )
+                        logger.warning(
+                            "%sTransient API failure retry budget extended to %s attempts "
+                            "(transient_failures=%s reason=%s)",
+                            agent.log_prefix,
+                            max_retries,
+                            transient_failure_count,
+                            classified.reason.value,
+                        )
+
                 if retry_count >= max_retries:
                     # Before falling back, try rebuilding the primary
                     # client once for transient transport errors (stale
@@ -5719,6 +5782,7 @@ def run_conversation(
                         compression_attempts = 0
                         _retry.primary_recovery_attempted = False
                         continue
+
                     # Terminal — flush buffered retry/fallback trace.
                     agent._flush_status_buffer()
                     _final_summary = agent._summarize_api_error(api_error)

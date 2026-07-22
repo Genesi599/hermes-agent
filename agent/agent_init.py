@@ -1871,6 +1871,16 @@ def init_agent(
         _api_retries = 3
     agent._api_max_retries = _api_retries
 
+    # Keep a turn alive across temporary provider outages.  The normal retry
+    # budget still controls how often Hermes reports the failure; known-transient
+    # errors start another retry batch instead of
+    # returning a terminal assistant error.  Deterministic failures (auth,
+    # billing, malformed requests, context overflow) keep their existing
+    # fail-fast paths.
+    agent._retry_transient_forever = str(
+        _agent_section.get("retry_transient_forever", True)
+    ).lower() in {"true", "1", "yes", "on"}
+
     # Initialize context compressor for automatic context management
     # Compresses conversation when approaching model's context limit
     # Configuration via config.yaml (compression section)
