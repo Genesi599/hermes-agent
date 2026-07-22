@@ -246,6 +246,16 @@ function SidebarSessionRowImpl({
             {title}
           </SidebarRowLabel>
           {showProfile && <ProfileTag profile={session.profile} />}
+          {isMergeWaiting ? (
+            <span
+              className="flex shrink-0 items-center gap-1 text-[0.625rem] font-medium leading-5 text-amber-400"
+              data-branch-merge-status="waiting_for_parent"
+              title={r.branchMergeWaitingDescription}
+            >
+              <Codicon aria-hidden="true" name="clock" size="0.6875rem" />
+              <span>{r.branchMergeWaiting}</span>
+            </span>
+          ) : null}
         </SidebarRowBody>
       </SidebarRowShell>
     </SessionContextMenu>
