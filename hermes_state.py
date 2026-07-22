@@ -4203,6 +4203,71 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
 
         return bool(self._execute_write(_do))
 
+    def queue_branch_merge(self, child_session_id: str, summary: str) -> bool:
+        """Persist a reviewed branch summary until its parent can accept it."""
+        child_session_id = str(child_session_id or "").strip()
+        summary = str(summary or "").strip()
+        if not child_session_id or not summary:
+            return False
+
+        def _do(conn):
+            child = conn.execute(
+                "SELECT parent_session_id FROM sessions WHERE id = ?",
+                (child_session_id,),
+            ).fetchone()
+            if child is None or not child["parent_session_id"]:
+                return False
+            conn.execute(
+                "INSERT INTO branch_merge_queue "
+                "(child_session_id, parent_session_id, summary, requested_at) "
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(child_session_id) DO UPDATE SET "
+                "parent_session_id = excluded.parent_session_id, "
+                "summary = excluded.summary, requested_at = excluded.requested_at",
+                (
+                    child_session_id,
+                    child["parent_session_id"],
+                    summary,
+                    time.time(),
+                ),
+            )
+            return True
+
+        return bool(self._execute_write(_do))
+
+    def list_pending_branch_merges(self, parent_session_id: str) -> List[Dict[str, Any]]:
+        """Return reviewed child branches waiting to merge into one parent."""
+        parent_session_id = str(parent_session_id or "").strip()
+        if not parent_session_id:
+            return []
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT child.id, queue.parent_session_id, child.title, "
+                "queue.summary AS branch_merge_summary, "
+                "queue.requested_at AS branch_merge_requested_at "
+                "FROM branch_merge_queue queue "
+                "JOIN sessions child ON child.id = queue.child_session_id "
+                "WHERE queue.parent_session_id = ? "
+                "ORDER BY queue.requested_at, child.started_at, child.id",
+                (parent_session_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_pending_branch_merge(self, child_session_id: str) -> Optional[Dict[str, Any]]:
+        """Return one queued branch merge without exposing it in session lists."""
+        child_session_id = str(child_session_id or "").strip()
+        if not child_session_id:
+            return None
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT child_session_id AS id, parent_session_id, "
+                "summary AS branch_merge_summary, "
+                "requested_at AS branch_merge_requested_at "
+                "FROM branch_merge_queue WHERE child_session_id = ?",
+                (child_session_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
     # ── Gateway routing index (replaces sessions.json, #9006 follow-up) ────
 
     def save_gateway_routing_entry(

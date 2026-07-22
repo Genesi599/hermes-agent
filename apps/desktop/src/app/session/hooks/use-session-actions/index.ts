@@ -3,7 +3,7 @@ import { type MutableRefObject, useCallback, useEffect, useRef } from 'react'
 import type { NavigateFunction } from 'react-router'
 
 import { revealTreePane } from '@/components/pane-shell/tree/store'
-import { deleteSession, getAllSessionMessages, getLatestSessionMessages, setSessionArchived } from '@/hermes'
+import { deleteSession, getAllSessionMessages, getLatestSessionMessages, getSessionMessages, PROMPT_SUBMIT_REQUEST_TIMEOUT_MS, setSessionArchived } from '@/hermes' 
 import { useI18n } from '@/i18n'
 import { type ChatMessage, preserveLocalAssistantErrors, toChatMessages } from '@/lib/chat-messages'
 import { isMissingRpcMethod } from '@/lib/gateway-rpc'
@@ -104,7 +104,7 @@ interface SessionActionsOptions {
   getRoutedStoredSessionId?: () => null | string
   navigate: NavigateFunction
   onFreshDraftRouteIntent?: () => void
-  requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
+  requestGateway: <T>(method: string, params?: Record<string, unknown>, timeoutMs?: number) => Promise<T>
   resetViewSync?: () => void
   runtimeIdByStoredSessionIdRef: MutableRefObject<Map<string, string>>
   selectedStoredSessionId: string | null
@@ -199,8 +199,14 @@ function normalizeNewChatWorkspaceTarget(target: NewChatWorkspaceTarget): NewCha
 }
 
 interface MergeBranchResponse {
-  deleted: string
+  deleted: string | null
+  queued: boolean
   parent_session_id: string
+  summary: string
+}
+
+interface ReviewDeleteResponse {
+  deleted: string
   summary: string
 }
 
@@ -1378,54 +1384,48 @@ export function useSessionActions({
         throw new Error('Only a branch session can be merged into its parent.')
       }
 
-      const wasSelected = selectedStoredSessionId === storedSessionId
-      const closingRuntimeId = wasSelected ? activeSessionId : null
+      let runtimeSessionId = selectedStoredSessionIdRef.current === storedSessionId ? activeSessionIdRef.current : null
 
-      await ensureGatewayProfile(sessionProfile ?? child.profile)
+      if (!runtimeSessionId) {
+        navigate(sessionRoute(storedSessionId))
+        await resumeSession(storedSessionId, true)
+        runtimeSessionId = selectedStoredSessionIdRef.current === storedSessionId ? activeSessionIdRef.current : null
+      } else {
+        await ensureGatewayProfile(sessionProfile ?? child.profile)
+      }
 
-      try {
-        if (closingRuntimeId) {
-          await requestGateway('session.close', { session_id: closingRuntimeId })
-        }
+      if (!runtimeSessionId) {
+        throw new Error('Could not resume the branch for its merge review.')
+      }
 
-        const result = await requestGateway<MergeBranchResponse>('session.merge_branch', {
+      const result = await requestGateway<MergeBranchResponse>(
+        'session.merge_branch',
+        {
+          runtime_session_id: runtimeSessionId,
           session_id: storedSessionId
-        })
+        },
+        PROMPT_SUBMIT_REQUEST_TIMEOUT_MS
+      )
 
+      if (result.deleted) {
         setSessions(prev => prev.filter(session => !sessionMatchesStoredId(session, storedSessionId)))
         tombstoneSessions([storedSessionId, child.id, child._lineage_root_id])
         setSessionsTotal(prev => Math.max(0, prev - 1))
         $pinnedSessionIds.set(
           $pinnedSessionIds.get().filter(id => id !== storedSessionId && id !== sessionPinId(child))
         )
-        clearQueuedPrompts(storedSessionId)
-        broadcastSessionsChanged()
-
-        if (wasSelected) {
-          setActiveSessionId(null)
-          activeSessionIdRef.current = null
-          setSelectedStoredSessionId(result.parent_session_id)
-          selectedStoredSessionIdRef.current = result.parent_session_id
-          setMessages([])
-          navigate(sessionRoute(result.parent_session_id), { replace: true })
-        }
-      } catch (err) {
-        if (wasSelected && closingRuntimeId) {
-          await resumeSession(storedSessionId).catch(() => undefined)
-        }
-
-        throw err
       }
+      clearQueuedPrompts(storedSessionId)
+      broadcastSessionsChanged()
+
+      setActiveSessionId(null)
+      activeSessionIdRef.current = null
+      setSelectedStoredSessionId(result.parent_session_id)
+      selectedStoredSessionIdRef.current = result.parent_session_id
+      setMessages([])
+      navigate(sessionRoute(result.parent_session_id), { replace: true })
     },
-    [
-      activeSessionId,
-      activeSessionIdRef,
-      navigate,
-      requestGateway,
-      resumeSession,
-      selectedStoredSessionId,
-      selectedStoredSessionIdRef
-    ]
+    [activeSessionIdRef, navigate, requestGateway, resumeSession, selectedStoredSessionIdRef]
   )
 
   const removeSession = useCallback(
@@ -1433,12 +1433,7 @@ export function useSessionActions({
       clearNotifications()
 
       const removed = $sessions.get().find(session => sessionMatchesStoredId(session, storedSessionId))
-      const wasSelected = selectedStoredSessionId === storedSessionId
-      const closingRuntimeId = wasSelected ? activeSessionId : null
-      const previousMessages = $messages.get()
       const previousPinned = $pinnedSessionIds.get()
-      // Pins are keyed on the durable lineage-root id; the stored id may be the
-      // live tip after compression. Drop both so the pin can't linger.
       const removedPinId = removed ? sessionPinId(removed) : storedSessionId
       const removedIds = [storedSessionId, removed?.id, removed?._lineage_root_id]
 
@@ -1458,20 +1453,42 @@ export function useSessionActions({
       }
 
       try {
-        if (closingRuntimeId) {
-          await requestGateway('session.close', { session_id: closingRuntimeId }).catch(() => undefined)
+        let runtimeSessionId =
+          selectedStoredSessionIdRef.current === storedSessionId ? activeSessionIdRef.current : null
+
+        if (!runtimeSessionId) {
+          navigate(sessionRoute(storedSessionId))
+          await resumeSession(storedSessionId, true)
+          runtimeSessionId =
+            selectedStoredSessionIdRef.current === storedSessionId ? activeSessionIdRef.current : null
+        } else {
+          await ensureGatewayProfile(removed?.profile)
         }
 
-        await deleteSession(storedSessionId, removed?.profile)
+        if (!runtimeSessionId) {
+          throw new Error('Could not resume the session for its delete review.')
+        }
+
+        const result = await requestGateway<ReviewDeleteResponse>(
+          'session.review_delete',
+          {
+            runtime_session_id: runtimeSessionId,
+            session_id: storedSessionId
+          },
+          PROMPT_SUBMIT_REQUEST_TIMEOUT_MS
+        )
+        if (result.deleted !== storedSessionId) {
+          throw new Error('Delete review completed without deleting the requested session.')
+        }
+
+        setSessions(prev => prev.filter(session => !sessionMatchesStoredId(session, storedSessionId)))
+        tombstoneSessions([storedSessionId, removed?.id, removed?._lineage_root_id])
+        setSessionsTotal(prev => Math.max(0, prev - 1))
+        $pinnedSessionIds.set(previousPinned.filter(id => id !== storedSessionId && id !== removedPinId))
         clearQueuedPrompts(storedSessionId)
+        clearQueuedPrompts(runtimeSessionId)
 
-        if (closingRuntimeId) {
-          clearQueuedPrompts(closingRuntimeId)
-        }
-
-        // A tiled copy of this session must not outlive it: collapse the pane
-        // and evict its mirrored runtime state so nothing submits to (or renders)
-        // a deleted session.
+        // A tiled copy of this session must not outlive it.
         const tiledRuntimeId = runtimeIdByStoredSessionIdRef.current.get(storedSessionId)
         closeSessionTile(storedSessionId)
 
@@ -1480,6 +1497,8 @@ export function useSessionActions({
           sessionStateByRuntimeIdRef.current.delete(tiledRuntimeId)
           dropSessionState(tiledRuntimeId)
         }
+        broadcastSessionsChanged()
+        startFreshSessionDraft(true)
       } catch (err) {
         if (removed) {
           setSessions(prev => [removed, ...prev])
@@ -1516,13 +1535,12 @@ export function useSessionActions({
       }
     },
     [
-      activeSessionId,
       activeSessionIdRef,
       copy,
       navigate,
       requestGateway,
       runtimeIdByStoredSessionIdRef,
-      selectedStoredSessionId,
+      resumeSession,
       selectedStoredSessionIdRef,
       sessionStateByRuntimeIdRef,
       startFreshSessionDraft

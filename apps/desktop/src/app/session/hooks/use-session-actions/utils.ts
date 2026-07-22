@@ -9,7 +9,7 @@ import {
   textPart,
   upsertToolPart
 } from '@/lib/chat-messages'
-import { normalizePersonalityValue } from '@/lib/chat-runtime'
+import { DEFAULT_EXPERIENCE_REVIEW, normalizeExperienceReview, normalizePersonalityValue } from '@/lib/chat-runtime'
 import { embeddedImageUrls, textWithoutEmbeddedImages } from '@/lib/embedded-images'
 import { reconcileApprovalModeForProfile } from '@/store/approval-mode'
 import { requestDesktopOnboardingForCredentialWarning } from '@/store/onboarding'
@@ -29,6 +29,7 @@ import {
   setCurrentReasoningEffort,
   setCurrentServiceTier,
   setCurrentUsage,
+  setExperienceReview,
   setSessions,
   setWorkspaceCwdOwner,
   setYoloActive
@@ -1004,7 +1005,16 @@ export async function resolveSessionProfile(storedSessionId: null | string): Pro
 type SessionRuntimeStatePatch = Partial<
   Pick<
     ClientSessionState,
-    'branch' | 'cwd' | 'fast' | 'model' | 'personality' | 'provider' | 'reasoningEffort' | 'serviceTier' | 'yolo'
+    | 'branch'
+    | 'cwd'
+    | 'experienceReview'
+    | 'fast'
+    | 'model'
+    | 'personality'
+    | 'provider'
+    | 'reasoningEffort'
+    | 'serviceTier'
+    | 'yolo'
   >
 >
 
@@ -1120,6 +1130,10 @@ export function applyRuntimeInfo(
     sessionState.personality = normalizePersonalityValue(info.personality)
   }
 
+  if (info.experience_review) {
+    sessionState.experienceReview = normalizeExperienceReview(info.experience_review)
+  }
+
   if (typeof info.reasoning_effort === 'string') {
     sessionState.reasoningEffort = info.reasoning_effort
   }
@@ -1151,6 +1165,7 @@ export function applyStoredSessionPreviewRuntimeInfo(
   stored: { cwd?: null | string; model?: null | string } | undefined,
   storedSessionId: null | string
 ) {
+  setExperienceReview(DEFAULT_EXPERIENCE_REVIEW)
   setCurrentModel(stored?.model || '')
   setCurrentProvider('')
   setCurrentReasoningEffort('')

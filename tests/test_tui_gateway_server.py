@@ -4347,6 +4347,63 @@ def test_finalized_origin_ui_session_falls_back_to_live_continuation(monkeypatch
     assert server._notification_event_belongs_elsewhere("tip-sid", live_tip, evt) is False
 
 
+def test_prompt_submit_redirects_known_slash_command(monkeypatch):
+    captured = {}
+
+    def _slash_exec(rid, params):
+        captured.update(params)
+        return server._ok(rid, {"redirected": True})
+
+    monkeypatch.setitem(server._methods, "slash.exec", _slash_exec)
+
+    resp = server.handle_request(
+        {
+            "id": "1",
+            "method": "prompt.submit",
+            "params": {"session_id": "sid", "text": "/title Branch review"},
+        }
+    )
+
+    assert resp["result"] == {"redirected": True}
+    assert captured["session_id"] == "sid"
+    assert captured["command"] == "title Branch review"
+
+
+def test_prompt_submit_non_string_text_does_not_crash_slash_interception():
+    resp = server.handle_request(
+        {
+            "id": "1",
+            "method": "prompt.submit",
+            "params": {"session_id": "missing", "text": [{"type": "text", "text": "/title"}]},
+        }
+    )
+
+    assert resp["error"]["code"] == 4001
+    assert resp["error"]["message"] == "session not found"
+
+
+def test_prompt_submit_rejects_new_messages_after_branch_merge_is_queued(monkeypatch):
+    class _DB:
+        def get_pending_branch_merge(self, sid):
+            return {"id": sid, "branch_merge_summary": "reviewed summary"}
+
+    monkeypatch.setattr(server, "_get_db", lambda: _DB())
+    server._sessions["sid"] = _session(session_key="child")
+    try:
+        resp = server.handle_request(
+            {
+                "id": "1",
+                "method": "prompt.submit",
+                "params": {"session_id": "sid", "text": "late branch message"},
+            }
+        )
+    finally:
+        server._sessions.pop("sid", None)
+
+    assert resp["error"]["code"] == 4041
+    assert "branch merge is queued" in resp["error"]["message"]
+
+
 def test_prompt_submit_rejects_negative_truncate_ordinal(monkeypatch):
     """A negative truncate_before_user_ordinal must be rejected, not honoured.
 

@@ -80,7 +80,13 @@ import type { RpcEvent } from '@/types/hermes'
 import type { ClientSessionState } from '../../../types'
 import { finalizeInterruptedMessages } from '../use-prompt-actions/rewind'
 
-import { hasSessionInfoStatePatch, sessionInfoStatePatch, SUBAGENT_EVENT_TYPES, toTodoPayload } from './utils'
+import {
+  hasSessionInfoStatePatch,
+  reviewActivityForStatusEvent,
+  sessionInfoStatePatch,
+  SUBAGENT_EVENT_TYPES,
+  toTodoPayload
+} from './utils'
 
 function firstBillingLine(text: string): string {
   return (text || '').split('\n')[0]?.trim() ?? ''
@@ -506,6 +512,21 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
             }),
             payload?.stored_session_id || undefined
           )
+          if (statePatch.experienceReview) {
+            updateSessionState(
+              sessionId,
+              state => ({
+                ...state,
+                reviewActivity:
+                  statePatch.experienceReview?.phase === 'reviewing'
+                    ? 'experience'
+                    : state.reviewActivity === 'experience'
+                      ? null
+                      : state.reviewActivity
+              }),
+              payload?.stored_session_id || undefined
+            )
+          }
         }
 
         // The running→busy transition must reach EVERY session, not just the
@@ -562,6 +583,7 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
                 // already settled everything and this is a no-op.
                 messages: finalizeInterruptedMessages(state.messages, state.streamId),
                 pendingBranchGroup: null,
+                reviewActivity: null,
                 streamId: null,
                 turnStartedAt: null
               }
@@ -1179,6 +1201,35 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
           void refreshBackgroundProcesses(sessionId)
         } else if (sessionId && payload?.kind === 'goal') {
           applyGoalStatusText(sessionId, coerceGatewayText(payload?.text))
+        }
+      } else if (
+        event.type === 'experience_review.status' ||
+        event.type === 'branch_merge.status' ||
+        event.type === 'delete_review.status'
+      ) {
+        const text = coerceGatewayText(payload?.text).trim()
+
+        if (sessionId) {
+          updateSessionState(sessionId, state => ({
+            ...state,
+            reviewActivity: reviewActivityForStatusEvent(event.type, payload?.phase, state.reviewActivity)
+          }))
+        }
+
+        if (text && sessionId) {
+          flushQueuedDeltas(sessionId)
+          updateSessionState(sessionId, state => ({
+            ...state,
+            messages: [
+              ...state.messages,
+              {
+                id: `${event.type.replace('.', '-')}-${Date.now()}`,
+                role: 'system',
+                parts: [textPart(text)],
+                timestamp: Math.floor(Date.now() / 1000)
+              }
+            ]
+          }))
         }
       } else if (event.type === 'review.summary') {
         // Self-improvement background review saved something to memory/skills

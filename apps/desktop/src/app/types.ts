@@ -183,6 +183,8 @@ export interface ClientSessionState {
   fast: boolean
   yolo: boolean
   personality: string
+  experienceReview: ExperienceReviewInfo
+  reviewActivity: 'branch-merge' | 'delete' | 'experience' | null
   busy: boolean
   awaitingResponse: boolean
   streamId: string | null

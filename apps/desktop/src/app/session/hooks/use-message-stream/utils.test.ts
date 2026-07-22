@@ -6,9 +6,21 @@ import {
   completionErrorText,
   delegateTaskPayloads,
   hasSessionInfoStatePatch,
+  reviewActivityForStatusEvent,
   sessionInfoStatePatch,
   toTodoPayload
 } from './utils'
+
+describe('reviewActivityForStatusEvent', () => {
+  it('distinguishes batch and branch reviews and clears only the matching mode', () => {
+    expect(reviewActivityForStatusEvent('experience_review.status', 'reviewing', null)).toBe('experience')
+    expect(reviewActivityForStatusEvent('branch_merge.status', 'reviewing', null)).toBe('branch-merge')
+    expect(reviewActivityForStatusEvent('delete_review.status', 'reviewing', null)).toBe('delete')
+    expect(reviewActivityForStatusEvent('branch_merge.status', 'queued', 'branch-merge')).toBeNull()
+    expect(reviewActivityForStatusEvent('delete_review.status', 'complete', 'delete')).toBeNull()
+    expect(reviewActivityForStatusEvent('branch_merge.status', 'complete', 'experience')).toBe('experience')
+  })
+})
 
 const payload = (over: Record<string, unknown>): GatewayEventPayload => over as GatewayEventPayload
 
@@ -33,8 +45,20 @@ describe('toTodoPayload', () => {
 
 describe('sessionInfoStatePatch / hasSessionInfoStatePatch', () => {
   it('extracts only present runtime fields', () => {
-    const patch = sessionInfoStatePatch(payload({ model: 'gpt', fast: true, branch: 'main' }))
-    expect(patch).toMatchObject({ model: 'gpt', fast: true, branch: 'main' })
+    const patch = sessionInfoStatePatch(
+      payload({
+        model: 'gpt',
+        fast: true,
+        branch: 'main',
+        experience_review: { batch: 2, pending: true, phase: 'reviewing', threshold: 20, user_count: 20 }
+      })
+    )
+    expect(patch).toMatchObject({
+      model: 'gpt',
+      fast: true,
+      branch: 'main',
+      experienceReview: { batch: 2, pending: true, phase: 'reviewing', threshold: 20, user_count: 20 }
+    })
     expect(hasSessionInfoStatePatch(patch)).toBe(true)
     expect(hasSessionInfoStatePatch(sessionInfoStatePatch(payload({})))).toBe(false)
   })

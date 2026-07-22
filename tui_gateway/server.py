@@ -303,6 +303,7 @@ _LONG_HANDLERS = frozenset(
         "session.active_list",
         "session.branch",
         "session.compress",
+        "session.review_delete",
         "session.merge_branch",
         "session.model_all",
         "session.list",
@@ -5277,6 +5278,49 @@ def _project_info_for_cwd(cwd: str) -> dict | None:
         return None
 
 
+def _experience_review_info(session: dict | None) -> dict:
+    """Return the durable review checkpoint plus its live display phase."""
+    state = None
+    if session is not None:
+        cached = session.get("_experience_review_state")
+        if isinstance(cached, dict):
+            state = cached
+        else:
+            session_key = str(session.get("session_key") or "")
+            if session_key:
+                try:
+                    with _session_db(session) as review_db:
+                        if review_db is not None:
+                            state = review_db.get_experience_review_state(session_key)
+                except Exception:
+                    logger.debug(
+                        "experience review checkpoint read failed", exc_info=True
+                    )
+    if not isinstance(state, dict):
+        state = {"user_count": 0, "batch": 0, "pending": False}
+
+    normalized = {
+        "user_count": max(0, int(state.get("user_count") or 0)),
+        "batch": max(0, int(state.get("batch") or 0)),
+        "pending": bool(state.get("pending")),
+    }
+    if session is not None:
+        session["_experience_review_state"] = normalized
+
+    phase = (
+        "reviewing"
+        if bool((session or {}).get("_experience_review_running"))
+        else "queued"
+        if normalized["pending"]
+        else "counting"
+    )
+    return {
+        **normalized,
+        "phase": phase,
+        "threshold": _EXPERIENCE_REVIEW_USER_TURNS,
+    }
+
+
 def _session_info(agent, session: dict | None = None) -> dict:
     if session is None:
         for candidate in _sessions.values():
@@ -5347,6 +5391,7 @@ def _session_info(agent, session: dict | None = None) -> dict:
         "running": bool((session or {}).get("running")),
         "title": _session_live_title(session or {}, session_key) if session_key else "",
         "stored_session_id": session_key or "",
+        "experience_review": _experience_review_info(session),
         "desktop_contract": DESKTOP_BACKEND_CONTRACT,
         "version": "",
         "release_date": "",
@@ -7901,6 +7946,8 @@ def _drain_queued_prompt(rid, sid: str, session: dict) -> bool:
     claim-under-lock pattern used by the goal-continuation re-fire.
     """
     with session["history_lock"]:
+        if session.get("_delete_review_pending"):
+            return False
         queued = session.get("queued_prompt")
         if not queued or session.get("running"):
             return False
@@ -8096,6 +8143,7 @@ def _lazy_resume_info(
         "tools": {},
         "skills": {},
         "lazy": True,
+        "experience_review": _experience_review_info(session),
         "desktop_contract": DESKTOP_BACKEND_CONTRACT,
         "profile_name": _response_profile_name(profile),
     }
@@ -8291,12 +8339,14 @@ def _fallback_session_info(session: dict) -> dict:
     # repo) so a client can clear a stale label instead of retaining it — the
     # same contract `_lazy_session_info` above already follows.
     cwd = _session_cwd(session)
+
     return {
         "cwd": cwd,
         "branch": _git_branch_for_cwd(cwd),
         "project": _project_info_for_cwd(cwd),
         "lazy": True,
         "model": _resolve_model(),
+        "experience_review": _experience_review_info(session),
         "skills": {},
         "tools": {},
         # A lazy session (agent not built yet) is still served by *this* backend,
@@ -10422,6 +10472,8 @@ def _run_prompt_submit(
             else:
                 raw = str(result)
                 status = "complete"
+            completion_status = status
+            completion_text = raw if isinstance(raw, str) else str(raw)
 
             payload = {"text": raw, "usage": _get_usage(agent), "status": status}
             if last_reasoning:
@@ -10472,11 +10524,15 @@ def _run_prompt_submit(
                         if review_db is not None and review_key:
                             if is_experience_review:
                                 review_db.complete_experience_review(review_key)
+                                session["_experience_review_state"] = (
+                                    review_db.get_experience_review_state(review_key)
+                                )
                             elif internal_kind is None:
                                 review_state = review_db.record_experience_review_turn(
                                     review_key,
                                     threshold=_EXPERIENCE_REVIEW_USER_TURNS,
                                 )
+                                session["_experience_review_state"] = review_state
                                 if review_state.get("pending"):
                                     experience_review_followup = _experience_review_prompt(
                                         int(review_state.get("batch") or 0) + 1
@@ -10521,6 +10577,7 @@ def _run_prompt_submit(
             # not work toward the goal, and evaluating it would spend a turn.
             if (
                 not is_experience_review
+                and not is_destructive_review
                 and not compression_exhausted
                 and _is_successful_goal_turn(result, status, raw)
             ):
@@ -10595,6 +10652,7 @@ def _run_prompt_submit(
                 and isinstance(text, str)
                 and text.strip()
                 and not is_experience_review
+                and not is_destructive_review
             ):
                 try:
                     from agent.title_generator import maybe_auto_title
@@ -10647,6 +10705,7 @@ def _run_prompt_submit(
                 and raw.strip()
                 and _voice_tts_enabled()
                 and not is_experience_review
+                and not is_destructive_review
             ):
                 try:
                     spoken = raw
@@ -10751,6 +10810,8 @@ def _run_prompt_submit(
             apply_queued_model = False
             with session["history_lock"]:
                 session["running"] = False
+                if is_experience_review:
+                    session["_experience_review_running"] = False
                 session["last_active"] = time.time()
                 if not turn_error_retained:
                     _clear_inflight_turn(session)
