@@ -17,6 +17,10 @@ import {
   setCurrentProvider,
   setCurrentReasoningEffort,
   setCurrentServiceTier,
+  setExperienceReview,
+  setReviewActivity,
+  setSessionAttention,
+  setSessionWorking,
   setTurnStartedAt,
   setYoloActive
 } from '@/store/session'
@@ -43,6 +47,8 @@ function syncRuntimeMetadataToView(state: ClientSessionState) {
   setCurrentFastMode(state.fast ?? false)
   setYoloActive(state.yolo ?? false)
   setCurrentPersonality(state.personality ?? '')
+  setExperienceReview(state.experienceReview)
+  setReviewActivity(state.reviewActivity)
 }
 
 export function useSessionStateCache({
