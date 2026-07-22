@@ -6,7 +6,7 @@ import { getGlobalModelInfo } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { isBusySessionModelSwitch } from '@/lib/gateway-rpc'
 import { manualPickRemoved, modelOptionsQueryKey } from '@/lib/model-options'
-import { notifyError } from '@/store/notifications'
+import { notify, notifyError } from '@/store/notifications'
 import { $activeGatewayProfile } from '@/store/profile'
 import {
   $activeSessionId,
@@ -26,6 +26,16 @@ import type { ModelOptionsResponse } from '@/types/hermes'
 interface ModelControlsOptions {
   queryClient: QueryClient
   requestGateway: <T = unknown>(method: string, params?: Record<string, unknown>) => Promise<T>
+}
+
+interface AllSessionsModelResult {
+  total: number
+  switched: number
+  queued: number
+  failed: number
+  active_affected: boolean
+  active_queued: boolean
+  active_failed: boolean
 }
 
 export function useModelControls({ queryClient, requestGateway }: ModelControlsOptions) {
@@ -168,6 +178,38 @@ export function useModelControls({ queryClient, requestGateway }: ModelControlsO
   const selectModel = useCallback(
     async (selection: ModelSelection): Promise<boolean> => {
       const primaryRuntimeId = $activeSessionId.get()
+
+      if (selection.scope === 'all') {
+        try {
+          const result = await requestGateway<AllSessionsModelResult>('session.model_all', {
+            value: `${selection.model} --provider ${selection.provider} --session`,
+            active_session_id: primaryRuntimeId || ''
+          })
+
+          if (primaryRuntimeId && result.active_affected && result.active_queued) {
+            setPendingModelSelection({
+              model: selection.model,
+              provider: selection.provider,
+              sessionId: primaryRuntimeId
+            })
+          } else if (!result.active_failed && (!primaryRuntimeId || result.active_affected)) {
+            setPendingModelSelection(null)
+            setCurrentModel(selection.model)
+            setCurrentProvider(selection.provider)
+          }
+
+          void queryClient.invalidateQueries({ queryKey: ['model-options'] })
+          notify({
+            kind: result.failed > 0 ? 'warning' : 'success',
+            message: copy.modelSwitchAllResult(result.switched, result.queued, result.failed)
+          })
+          return true
+        } catch (err) {
+          notifyError(err, copy.modelSwitchFailed)
+          return false
+        }
+      }
+
       const liveSessionId = 'sessionId' in selection ? (selection.sessionId ?? null) : primaryRuntimeId
       const touchesPrimary = !liveSessionId || liveSessionId === primaryRuntimeId
 
@@ -278,7 +320,7 @@ export function useModelControls({ queryClient, requestGateway }: ModelControlsO
         return false
       }
     },
-    [copy.modelSwitchFailed, queryClient, requestGateway, updateModelOptionsCache]
+    [copy, queryClient, requestGateway, updateModelOptionsCache]
   )
 
   return { applySavedMainModel, refreshCurrentModel, selectModel }

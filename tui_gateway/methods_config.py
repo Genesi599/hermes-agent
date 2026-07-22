@@ -16,6 +16,144 @@ method = _registry.method
 _profile_scoped = _registry.profile_scoped
 
 
+@method("session.model_all")
+def _(rid, params: dict) -> dict:
+    """Switch every human-facing stored session in the active profile."""
+    value = str(params.get("value") or "").strip()
+    active_runtime_id = str(params.get("active_session_id") or "").strip()
+    if not value:
+        return _err(rid, 4002, "model value required")
+
+    db = _get_db()
+    if db is None:
+        return _db_unavailable_error(rid, code=5006)
+
+    try:
+        resolved = _apply_model_switch(
+            "",
+            {"agent": None},
+            value,
+            confirm_expensive_model=True,
+            pin_session_override=False,
+            persist_override=False,
+        )
+
+        target_ids = []
+        seen_ids = set()
+        offset = 0
+        page_size = 500
+        while True:
+            page = db.list_sessions_rich(
+                source=None,
+                exclude_sources=["tool", "cron"],
+                limit=page_size,
+                offset=offset,
+                order_by_last_active=True,
+                include_archived=False,
+                compact_rows=True,
+            )
+            for row in page:
+                session_id = str(row.get("id") or "").strip()
+                if session_id and session_id not in seen_ids:
+                    seen_ids.add(session_id)
+                    target_ids.append(session_id)
+            if len(page) < page_size:
+                break
+            offset += len(page)
+
+        if target_ids:
+            updated = db.update_sessions_model_runtime(
+                target_ids,
+                model=resolved["value"],
+                provider=resolved["provider"],
+                base_url=resolved.get("base_url") or None,
+                api_mode=resolved.get("api_mode") or None,
+            )
+            if updated != len(target_ids):
+                raise RuntimeError("session list changed during model update; retry")
+
+        _persist_model_assignment(
+            model=resolved["value"],
+            provider=resolved["provider"],
+            base_url=resolved.get("base_url") or "",
+        )
+
+        target_set = set(target_ids)
+        live_by_stored_id = {}
+        with _sessions_lock:
+            for runtime_id, session in list(_sessions.items()):
+                stored_id = str(session.get("session_key") or "").strip()
+                if stored_id in target_set:
+                    live_by_stored_id.setdefault(stored_id, []).append((runtime_id, session))
+
+        switched_ids = target_set - set(live_by_stored_id)
+        queued_ids = set()
+        failed_ids = set()
+        active_affected = False
+        active_queued = False
+        active_failed = False
+
+        for stored_id, runtimes in live_by_stored_id.items():
+            stored_queued = False
+            stored_failed = False
+            for runtime_id, session in runtimes:
+                is_active = runtime_id == active_runtime_id
+                active_affected = active_affected or is_active
+                lock = session.get("history_lock")
+                if lock is None:
+                    stored_failed = True
+                    active_failed = active_failed or is_active
+                    continue
+                with lock:
+                    if session.get("running") or session.get("model_switching"):
+                        session["pending_model_switch"] = {
+                            "value": value,
+                            "confirm_expensive_model": True,
+                        }
+                        stored_queued = True
+                        active_queued = active_queued or is_active
+                        continue
+                    session["model_switching"] = True
+                try:
+                    _apply_model_switch(
+                        runtime_id,
+                        session,
+                        value,
+                        confirm_expensive_model=True,
+                    )
+                except Exception as exc:
+                    stored_failed = True
+                    active_failed = active_failed or is_active
+                    logger.warning("batch model switch failed for stored session %s: %s", stored_id, exc)
+                finally:
+                    with lock:
+                        session["model_switching"] = False
+            if stored_failed:
+                failed_ids.add(stored_id)
+            elif stored_queued:
+                queued_ids.add(stored_id)
+            else:
+                switched_ids.add(stored_id)
+
+        return _ok(
+            rid,
+            {
+                "model": resolved["value"],
+                "provider": resolved["provider"],
+                "total": len(target_ids),
+                "switched": len(switched_ids),
+                "queued": len(queued_ids),
+                "failed": len(failed_ids),
+                "active_affected": active_affected,
+                "active_queued": active_queued,
+                "active_failed": active_failed,
+                "default_updated": True,
+            },
+        )
+    except Exception as exc:
+        return _err(rid, 5001, str(exc))
+
+
 @method("projects.discover_repos")
 def _(rid, params: dict) -> dict:
     """Repos for the desktop overview: scanned-from-disk (cached) ∪ session-derived."""

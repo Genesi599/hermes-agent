@@ -5991,6 +5991,75 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
             )
         self._execute_write(_do)
 
+    def update_sessions_model_runtime(
+        self,
+        session_ids: List[str],
+        *,
+        model: str,
+        provider: str,
+        base_url: Optional[str] = None,
+        api_mode: Optional[str] = None,
+    ) -> int:
+        """Atomically update the durable model route for stored sessions."""
+        ids = list(dict.fromkeys(str(session_id).strip() for session_id in session_ids))
+        ids = [session_id for session_id in ids if session_id]
+        target_model = str(model or "").strip()
+        target_provider = str(provider or "").strip()
+        if not ids:
+            return 0
+        if not target_model or not target_provider:
+            raise ValueError("model and provider are required")
+
+        def _do(conn):
+            rows = []
+            for start in range(0, len(ids), 400):
+                chunk = ids[start : start + 400]
+                placeholders = ",".join("?" for _ in chunk)
+                rows.extend(
+                    conn.execute(
+                        f"SELECT id, model_config FROM sessions WHERE id IN ({placeholders})",
+                        chunk,
+                    ).fetchall()
+                )
+
+            updated = 0
+            for row in rows:
+                session_id = row["id"] if isinstance(row, sqlite3.Row) else row[0]
+                raw_config = row["model_config"] if isinstance(row, sqlite3.Row) else row[1]
+                if raw_config:
+                    try:
+                        model_config = json.loads(raw_config)
+                    except (TypeError, ValueError) as exc:
+                        raise ValueError(f"invalid model_config for session {session_id}") from exc
+                    if not isinstance(model_config, dict):
+                        raise ValueError(f"invalid model_config for session {session_id}")
+                else:
+                    model_config = {}
+
+                model_config["model"] = target_model
+                model_config["provider"] = target_provider
+                model_config.pop("api_key", None)
+                if base_url:
+                    model_config["base_url"] = str(base_url)
+                else:
+                    model_config.pop("base_url", None)
+                if api_mode:
+                    model_config["api_mode"] = str(api_mode)
+                else:
+                    model_config.pop("api_mode", None)
+
+                conn.execute(
+                    "UPDATE sessions SET model = ?, model_config = ?, "
+                    "system_prompt_hash = NULL, system_prompt = NULL WHERE id = ?",
+                    (target_model, json.dumps(model_config), session_id),
+                )
+                updated += 1
+
+            self._delete_unreferenced_system_prompts(conn)
+            return updated
+
+        return self._execute_write(_do) or 0
+
     def update_system_prompt(
         self, session_id: str, system_prompt: Optional[str]
     ) -> None:

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { useI18n } from '@/i18n'
 import { modelOptionsQueryKey, requestModelOptions } from '@/lib/model-options'
@@ -17,16 +17,26 @@ import { Button } from './ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
 import { HighlightMatches } from './ui/highlight-matches'
+import { SegmentedControl } from './ui/segmented-control'
 import { Skeleton } from './ui/skeleton'
 
+export type ModelApplyScope = 'current' | 'all'
+
+export interface ModelPickerSelection {
+  provider: string
+  model: string
+  scope: ModelApplyScope
+}
+
 interface ModelPickerDialogProps {
+  allowApplyAll?: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
   gw?: HermesGateway
   sessionId?: string | null
   currentModel: string
   currentProvider: string
-  onSelect: (selection: { provider: string; model: string }) => void
+  onSelect: (selection: ModelPickerSelection) => void
   profile?: string
   /**
    * Optional class for DialogContent. Use it to lift the picker onto a higher
@@ -38,6 +48,7 @@ interface ModelPickerDialogProps {
 }
 
 export function ModelPickerDialog({
+  allowApplyAll = false,
   open,
   onOpenChange,
   gw,
@@ -56,6 +67,11 @@ export function ModelPickerDialog({
   // it and do a plain substring filter that preserves array order — matching
   // the `hermes model` CLI picker, which shows the curated list verbatim.
   const [search, setSearch] = useState('')
+  const [applyScope, setApplyScope] = useState<ModelApplyScope>('current')
+
+  useEffect(() => {
+    if (!open) setApplyScope('current')
+  }, [open])
 
   const modelOptions = useQuery({
     queryKey: modelOptionsQueryKey(profile, sessionId),
@@ -79,7 +95,7 @@ export function ModelPickerDialog({
     : null
 
   const selectModel = (provider: ModelOptionProvider, model: string) => {
-    onSelect({ provider: provider.slug, model })
+    onSelect({ provider: provider.slug, model, scope: applyScope })
     onOpenChange(false)
   }
 
@@ -105,6 +121,23 @@ export function ModelPickerDialog({
             {optionsProvider || currentProvider ? ` · ${optionsProvider || currentProvider}` : ''}
           </DialogDescription>
         </DialogHeader>
+
+        {allowApplyAll ? (
+          <div className="space-y-1.5 border-b border-border px-4 py-2.5">
+            <SegmentedControl
+              className="w-full"
+              onChange={setApplyScope}
+              options={[
+                { id: 'current', label: copy.applyCurrent },
+                { id: 'all', label: copy.applyAll }
+              ]}
+              value={applyScope}
+            />
+            <p className="text-xs text-muted-foreground">
+              {applyScope === 'all' ? copy.applyAllDescription : copy.applyCurrentDescription}
+            </p>
+          </div>
+        ) : null}
 
         <Command className="rounded-none bg-card" shouldFilter={false}>
           <CommandInput autoFocus onValueChange={setSearch} placeholder={copy.search} value={search} />
