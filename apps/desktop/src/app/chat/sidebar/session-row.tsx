@@ -28,6 +28,8 @@ import { sessionCostUsd } from '@/store/sidebar-archive'
 
 import { SessionStatusDot } from '../session-status-dot'
 
+import type { ClientSessionState } from '../../types'
+
 import {
   SidebarRowBody,
   SidebarRowGrab,
@@ -35,7 +37,7 @@ import {
   SidebarRowLead,
   SidebarRowLeadGlyph,
   SidebarRowShell
-} from './chrome'
+} from './chrome' 
 import { SessionActionsMenu, SessionContextMenu } from './session-actions-menu'
 import { useProfilePrewarm } from './use-profile-prewarm'
 

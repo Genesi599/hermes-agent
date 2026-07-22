@@ -82,6 +82,7 @@ import { finalizeInterruptedMessages } from '../use-prompt-actions/rewind'
 
 import {
   hasSessionInfoStatePatch,
+  reviewActivityForInternalKind,
   reviewActivityForStatusEvent,
   sessionInfoStatePatch,
   SUBAGENT_EVENT_TYPES,
@@ -642,6 +643,7 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
           if (state.interrupted) {
             return state
           }
+          const reviewActivity = reviewActivityForInternalKind(payload?.internal_kind)
 
           return {
             ...state,
@@ -650,6 +652,7 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
             sawAssistantPayload: false,
             interrupted: false,
             interimBoundaryPending: false,
+            reviewActivity: reviewActivity ?? state.reviewActivity,
             turnStartedAt: Date.now()
           }
         })

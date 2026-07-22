@@ -69,6 +69,7 @@ export type GatewayEventPayload = {
   install_warning?: string
   personality?: string
   experience_review?: ExperienceReviewInfo
+  internal_kind?: string | null
   usage?: Partial<UsageStats>
   // agent.terminal.output — live chunk for a read-only agent terminal tab
   process_id?: string

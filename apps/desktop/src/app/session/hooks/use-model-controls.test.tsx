@@ -365,6 +365,7 @@ describe('useModelControls', () => {
   })
 
   it('switches all stored conversations and keeps the active running model marked as next', async () => {
+    $activeSessionId.set('session-1')
     setCurrentModel('old/model')
     setCurrentProvider('old-provider')
 
@@ -382,9 +383,7 @@ describe('useModelControls', () => {
 
     let controls!: Controls
 
-    render(
-      <Harness activeSessionId="session-1" onReady={value => (controls = value)} requestGateway={requestGateway} />
-    )
+    render(<Harness onReady={value => (controls = value)} requestGateway={requestGateway} />)
 
     await expect(
       controls.selectModel({ model: 'next/model', provider: 'next-provider', scope: 'all' })
