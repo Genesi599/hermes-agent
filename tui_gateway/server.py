@@ -7342,6 +7342,24 @@ def _coerce_seed_history(value: Any) -> list[dict]:
     return history
 
 
+def _branch_boundary_message(session: dict) -> str | None:
+    """Return a transient instruction separating inherited branch context."""
+    parent_id = str(session.get("parent_session_id") or "").strip()
+    if not parent_id:
+        return None
+    try:
+        seed_count = max(0, int(session.get("branch_seed_message_count") or 0))
+    except (TypeError, ValueError):
+        seed_count = 0
+    return (
+        "Branch boundary: the preceding conversation is inherited context from a "
+        "parent session. It may contain an unfinished parent request. Do not "
+        "resume or continue that request automatically; respond only to the new "
+        "user message in this child session. The child starts after "
+        f"{seed_count} inherited messages."
+    )
+
+
 def _content_display_text(content: Any) -> str:
     if content is None:
         return ""

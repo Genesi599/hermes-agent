@@ -19,6 +19,8 @@ import {
   appendLiveSessionProjection,
   applyRuntimeInfo,
   applyStoredSessionPreviewRuntimeInfo,
+  branchMessagesAtStableBoundary,
+  branchMessagesThroughPoint,
   chatMessageArraysEquivalent,
   chatMessagesEquivalent,
   chatPartsEquivalent,
@@ -244,6 +246,23 @@ describe('toBranchMessages', () => {
 
     expect(out.map(b => b.source.id)).toEqual(['u', 'a'])
     expect(out[0]).toMatchObject({ content: 'hi', role: 'user' })
+  })
+})
+
+describe('branch boundaries', () => {
+  const transcript = [
+    msg('u1', 'user', 'first question'),
+    msg('a1', 'assistant', 'first answer'),
+    msg('u2', 'user', 'unfinished parent request')
+  ]
+
+  it('copies the full prefix through a selected message', () => {
+    expect(branchMessagesThroughPoint(transcript, 'a1').map(message => message.source.id)).toEqual(['u1', 'a1'])
+  })
+
+  it('drops a trailing user request when the parent is still working', () => {
+    expect(branchMessagesAtStableBoundary(transcript, true).map(message => message.source.id)).toEqual(['u1', 'a1'])
+    expect(branchMessagesAtStableBoundary(transcript, false).map(message => message.source.id)).toEqual(['u1', 'a1', 'u2'])
   })
 })
 
