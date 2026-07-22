@@ -3,8 +3,9 @@ import { useStore } from '@nanostores/react'
 import { reviewActivityLabel, ReviewActivityPulse } from '@/components/chat/review-activity'
 import { Codicon } from '@/components/ui/codicon'
 import { cn } from '@/lib/utils'
-import { $experienceReview, $reviewActivity } from '@/store/session'
 import type { ExperienceReviewInfo } from '@/types/hermes'
+
+import { useSessionView } from './session-view'
 
 export function experienceReviewLabel(state: ExperienceReviewInfo): string {
   if (state.phase === 'reviewing') {
@@ -19,8 +20,9 @@ export function experienceReviewLabel(state: ExperienceReviewInfo): string {
 }
 
 export function ExperienceReviewStatus() {
-  const state = useStore($experienceReview)
-  const reviewActivity = useStore($reviewActivity)
+  const view = useSessionView()
+  const state = useStore(view.$experienceReview)
+  const reviewActivity = useStore(view.$reviewActivity)
   const reviewing = state.phase === 'reviewing'
   const activeReview = reviewActivity ?? (reviewing ? 'experience' : null)
   const label = activeReview
