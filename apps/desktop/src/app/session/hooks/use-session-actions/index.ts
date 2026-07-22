@@ -55,6 +55,7 @@ import {
   publishSessionState,
   type TileDock
 } from '@/store/session-states'
+import { isSessionFamilyPinned, pinSessionFamily } from '@/store/session-pins'
 import { broadcastSessionsChanged } from '@/store/session-sync'
 import { isWatchWindow } from '@/store/windows'
 import type { SessionCreateResponse, SessionResumeResponse, UsageStats } from '@/types/hermes'
@@ -1015,6 +1016,7 @@ export function useSessionActions({
       try {
         const rows = $sessions.get()
         const parent = parentStoredId ? rows.find(session => sessionMatchesStoredId(session, parentStoredId)) : null
+        const inheritParentPin = parentStoredId ? isSessionFamilyPinned(parentStoredId, rows) : false
 
         const siblings = parentStoredId
           ? rows.filter(session => session.parent_session_id?.trim() === parentStoredId).length
@@ -1047,6 +1049,11 @@ export function useSessionActions({
           parentStoredId,
           parent ? parent.last_active || parent.started_at : undefined
         )
+
+        if (inheritParentPin) {
+          pinSessionFamily(routedSessionId)
+        }
+
         ensureSessionState(branched.session_id, routedSessionId)
         setActiveSessionId(branched.session_id)
         activeSessionIdRef.current = branched.session_id
