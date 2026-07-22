@@ -67,8 +67,7 @@ import {
   setSidebarWorkspaceOrderIds,
   setSidebarWorkspaceParentOrderIds,
   SIDEBAR_SESSIONS_PAGE_SIZE,
-  toggleSidebarMessagingOpen,
-  unpinSession
+  toggleSidebarMessagingOpen
 } from '@/store/layout'
 import {
   $newChatProfile,
@@ -121,7 +120,8 @@ import {
 import { $sessionDotStateById, sessionStatusBucket } from '@/store/session-dot-state'
 import { $focusedStoredSessionId, $workingSessionIds, type SplitDir } from '@/store/session-states'
 import { $archivedSessions, loadArchivedSessions } from '@/store/sidebar-archive'
-import { $sidebarSessionRankIds } from '@/store/sidebar-sort'
+import { expandPinnedSessionFamilies, pinSessionFamily, unpinSessionFamily } from '@/store/session-pins'
+import { $sidebarSessionRankIds } from '@/store/sidebar-sort' 
 
 import {
   type AppView,
@@ -502,11 +502,20 @@ export function ChatSidebar({
     [visibleSessions, cronSessions, messagingSessions]
   )
 
+  const expandedPinnedSessionIds = useMemo(
+    () => expandPinnedSessionFamilies([...cronSessions, ...visibleSessions], pinnedSessionIds),
+    [cronSessions, pinnedSessionIds, visibleSessions]
+  )
+
+  // Migrate old single-row pins and immediately include newly-created Branch
+  // children without moving the family's existing position in the pinned list.
+  useEffect(() => pinSessions(expandedPinnedSessionIds), [expandedPinnedSessionIds])
+
   const pinnedSessions = useMemo(() => {
     const seen = new Set<string>()
     const out: SessionInfo[] = []
 
-    for (const pinId of pinnedSessionIds) {
+    for (const pinId of expandedPinnedSessionIds) {
       const session = sessionByAnyId.get(pinId)
 
       if (session && !seen.has(session.id)) {
@@ -516,7 +525,7 @@ export function ChatSidebar({
     }
 
     return out
-  }, [pinnedSessionIds, sessionByAnyId])
+  }, [expandedPinnedSessionIds, sessionByAnyId])
 
   // Every id a pin is reachable under: the raw stored ids, plus BOTH identities
   // of each session we resolved one to. A pin is stored on the durable lineage
@@ -1517,7 +1526,7 @@ export function ChatSidebar({
                 onMergeSession={onMergeSession}
                 onResumeSession={onResumeSession}
                 onToggle={() => undefined}
-                onTogglePin={pinSession}
+                onTogglePin={pinSessionFamily}
                 open
                 pinned={false}
                 rootClassName="min-h-32 flex-1 overflow-hidden p-0"
@@ -1540,7 +1549,7 @@ export function ChatSidebar({
                 onReorderSessions={reorderPinned}
                 onResumeSession={onResumeSession}
                 onToggle={() => setSidebarPinsOpen(!pinsOpen)}
-                onTogglePin={unpinSession}
+                onTogglePin={unpinSessionFamily}
                 open={pinsOpen}
                 pinned
                 rootClassName="shrink-0 p-0 pb-1"
@@ -1682,7 +1691,7 @@ export function ChatSidebar({
                 onReorderSessions={showAllProfiles ? undefined : reorderSessions}
                 onResumeSession={onResumeSession}
                 onToggle={() => setSidebarRecentsOpen(!agentsOpen)}
-                onTogglePin={pinSession}
+                onTogglePin={pinSessionFamily}
                 open={agentsOpen}
                 pinned={false}
                 projectBackRow={
@@ -1739,7 +1748,7 @@ export function ChatSidebar({
                     onDeleteSession={onDeleteSession}
                     onResumeSession={onResumeSession}
                     onToggle={() => toggleSidebarMessagingOpen(group.sourceId)}
-                    onTogglePin={pinSession}
+                    onTogglePin={pinSessionFamily}
                     open={messagingOpenIds.includes(group.sourceId)}
                     pinned={false}
                     rootClassName="shrink-0 p-0"
