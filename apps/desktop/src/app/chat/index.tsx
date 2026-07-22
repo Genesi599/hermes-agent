@@ -42,6 +42,7 @@ import {
   sessionPinId,
   shouldMigrateComposerScope
 } from '@/store/session'
+import { isSessionFamilyPinned } from '@/store/session-pins'
 import { isSecondaryWindow, isWatchWindow } from '@/store/windows'
 import type { ModelOptionsResponse } from '@/types/hermes'
 
@@ -126,9 +127,9 @@ function ChatHeader({
   // (tip) id — resolve through the loaded row so the menu reflects the pin
   // state after auto-compression rotates the id.
   const selectedIsPinned = activeStoredSession
-    ? pinnedSessionIds.includes(sessionPinId(activeStoredSession))
+    ? isSessionFamilyPinned(sessionPinId(activeStoredSession), sessions, pinnedSessionIds)
     : selectedSessionId
-      ? pinnedSessionIds.includes(selectedSessionId)
+      ? isSessionFamilyPinned(selectedSessionId, sessions, pinnedSessionIds)
       : false
 
   // Secondary windows (new-session scratch, subagent watch, cmd-click pop-out)
