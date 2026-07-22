@@ -10664,6 +10664,101 @@ def test_config_set_model_allowed_when_idle(monkeypatch):
         server._sessions.pop("sid", None)
 
 
+def test_session_model_all_switches_idle_and_offline_and_queues_running(monkeypatch):
+    calls = {"applied": [], "persisted": None, "default": None, "list": []}
+
+    class FakeDB:
+        def list_sessions_rich(self, **kwargs):
+            calls["list"].append(kwargs)
+            if kwargs.get("offset", 0):
+                return []
+            return [
+                {"id": "stored-idle", "source": "desktop"},
+                {"id": "stored-running", "source": "desktop"},
+                {"id": "stored-offline", "source": "desktop"},
+            ]
+
+        def update_sessions_model_runtime(self, session_ids, **route):
+            calls["persisted"] = (session_ids, route)
+            return len(session_ids)
+
+    def fake_apply(sid, _session_value, raw, **_kwargs):
+        if sid:
+            calls["applied"].append((sid, raw))
+        return {
+            "value": "new/model",
+            "provider": "new-provider",
+            "base_url": "https://new.example/v1",
+            "api_mode": "chat_completions",
+            "warning": "",
+            "confirm_required": False,
+        }
+
+    monkeypatch.setattr(server, "_get_db", lambda: FakeDB())
+    monkeypatch.setattr(server, "_apply_model_switch", fake_apply)
+    monkeypatch.setattr(
+        server,
+        "_persist_model_assignment",
+        lambda **route: calls.__setitem__("default", route),
+    )
+
+    server._sessions["runtime-idle"] = _session(
+        session_key="stored-idle", running=False
+    )
+    server._sessions["runtime-running"] = _session(
+        session_key="stored-running", running=True
+    )
+    try:
+        resp = server.handle_request(
+            {
+                "id": "1",
+                "method": "session.model_all",
+                "params": {
+                    "value": "new/model --provider new-provider --session",
+                    "active_session_id": "runtime-running",
+                },
+            }
+        )
+
+        assert resp["result"] == {
+            "model": "new/model",
+            "provider": "new-provider",
+            "total": 3,
+            "switched": 2,
+            "queued": 1,
+            "failed": 0,
+            "active_affected": True,
+            "active_queued": True,
+            "active_failed": False,
+            "default_updated": True,
+        }
+        assert calls["applied"] == [
+            ("runtime-idle", "new/model --provider new-provider --session")
+        ]
+        assert calls["persisted"] == (
+            ["stored-idle", "stored-running", "stored-offline"],
+            {
+                "model": "new/model",
+                "provider": "new-provider",
+                "base_url": "https://new.example/v1",
+                "api_mode": "chat_completions",
+            },
+        )
+        assert calls["default"] == {
+            "model": "new/model",
+            "provider": "new-provider",
+            "base_url": "https://new.example/v1",
+        }
+        assert calls["list"][0]["exclude_sources"] == ["tool", "cron"]
+        assert server._sessions["runtime-running"]["pending_model_switch"] == {
+            "value": "new/model --provider new-provider --session",
+            "confirm_expensive_model": True,
+        }
+    finally:
+        server._sessions.pop("runtime-idle", None)
+        server._sessions.pop("runtime-running", None)
+
+
 def test_queued_model_switch_applies_latest_choice_before_next_prompt(monkeypatch):
     session = _session(
         running=False,

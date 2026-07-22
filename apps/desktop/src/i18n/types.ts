@@ -2505,6 +2505,7 @@ export interface Translations {
     cwdStagedTitle: string
     cwdStagedMessage: string
     modelSwitchFailed: string
+    modelSwitchAllResult: (switched: number, queued: number, failed: number) => string
     sessionExported: string
     sessionExportFailed: string
     imageSaved: string

@@ -3114,6 +3114,8 @@ export const zh: Translations = {
     cwdStagedTitle: '工作目录已暂存',
     cwdStagedMessage: '重启桌面后端后，工作目录更改才会应用到当前活跃会话。',
     modelSwitchFailed: '模型切换失败',
+    modelSwitchAllResult: (switched, queued, failed) =>
+      `全部对话已更新：${switched} 个已切换，${queued} 个已排队，${failed} 个失败。`,
     sessionExported: '会话已导出',
     sessionExportFailed: '无法导出会话',
     imageSaved: '图片已保存',

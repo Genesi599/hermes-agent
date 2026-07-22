@@ -2665,6 +2665,8 @@ export const zhHant = defineLocale({
     cwdStagedTitle: '工作目錄已暫存',
     cwdStagedMessage: '重新啟動桌面後端後，工作目錄變更才會套用至此作用中工作階段。',
     modelSwitchFailed: '模型切換失敗',
+    modelSwitchAllResult: (switched, queued, failed) =>
+      `全部對話已更新：${switched} 個已切換，${queued} 個已排隊，${failed} 個失敗。`,
     sessionExported: '工作階段已匯出',
     sessionExportFailed: '無法匯出工作階段',
     imageSaved: '圖片已儲存',

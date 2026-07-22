@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { useSessionView } from '@/app/chat/session-view'
+import type { ModelApplyScope } from '@/components/model-picker'
 import { Codicon } from '@/components/ui/codicon'
 import { DropdownMenuItem, dropdownMenuRow } from '@/components/ui/dropdown-menu'
 import type { HermesGateway } from '@/hermes'
@@ -30,6 +31,7 @@ export { ModelMenuCloseContext } from './model-catalog-menu'
 export interface ModelSelection {
   model: string
   provider: string
+  scope?: 'all' | 'current'
   /** Runtime id of the surface that opened the menu. When set, the switch
    *  targets that session (a tile) instead of the primary `$activeSessionId`. */
   sessionId?: null | string

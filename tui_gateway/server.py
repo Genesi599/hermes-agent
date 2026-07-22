@@ -304,6 +304,7 @@ _LONG_HANDLERS = frozenset(
         "session.branch",
         "session.compress",
         "session.merge_branch",
+        "session.model_all",
         "session.list",
         "session.resume",
         # Workspace re-home runs git branch/root subprocess probes against an
@@ -4464,17 +4465,17 @@ def _restart_slash_worker(sid: str, session: dict):
     _attach_worker(sid, session, new_worker)
 
 
-def _persist_model_switch(result) -> None:
+def _persist_model_assignment(*, model: str, provider: str, base_url: str = "") -> None:
     # Use targeted, atomic key writes (comment/ordering-preserving) instead of
     # rewriting the whole `model:` block. A full-block rewrite via save_config()
     # destroys sibling keys the user set under `model:` — `model_slots`,
     # `model_fallback`, etc. — when switching models from the TUI (#48305).
     from cli import save_config_value
 
-    save_config_value("model.default", result.new_model)
-    save_config_value("model.provider", result.target_provider)
-    if result.base_url:
-        save_config_value("model.base_url", result.base_url)
+    save_config_value("model.default", model)
+    save_config_value("model.provider", provider)
+    if base_url:
+        save_config_value("model.base_url", base_url)
     else:
         # Clear any stale base_url when switching to a provider that doesn't use
         # one (e.g. custom endpoint -> native provider). Reads coalesce null to
@@ -4518,6 +4519,14 @@ def _restore_agent_model_runtime(agent, snapshot: dict | None) -> None:
             base_url=snapshot.get("base_url", ""),
             api_mode=snapshot.get("api_mode", ""),
         )
+
+
+def _persist_model_switch(result) -> None:
+    _persist_model_assignment(
+        model=result.new_model,
+        provider=result.target_provider,
+        base_url=result.base_url,
+    )
 
 
 def _apply_model_switch(
@@ -4728,6 +4737,9 @@ def _apply_model_switch(
         _persist_model_switch(result)
     return {
         "value": result.new_model,
+        "provider": result.target_provider,
+        "base_url": result.base_url or "",
+        "api_mode": result.api_mode or "",
         "warning": result.warning_message or "",
         "confirm_required": False,
         "scope": "once" if one_turn else ("global" if persist_global else "session"),
