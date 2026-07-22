@@ -11,12 +11,14 @@ describe('ExperienceReviewStatus review animation', () => {
     setReviewActivity(null)
   })
 
-  it('shows the dedicated Fourier loader for a branch merge review', () => {
+  it('shows the dedicated wave animation for a branch merge review', () => {
     setReviewActivity('branch-merge')
     render(<ExperienceReviewStatus />)
 
     expect(screen.getByText('分支合并复盘')).toBeTruthy()
-    expect(screen.getByTestId('experience-review-status').querySelector('svg')).not.toBeNull()
+    expect(
+      screen.getByTestId('experience-review-status').querySelector('[data-review-animation="wave"]')
+    ).not.toBeNull()
   })
 
   it('labels delete review separately', () => {
@@ -24,6 +26,16 @@ describe('ExperienceReviewStatus review animation', () => {
     render(<ExperienceReviewStatus />)
 
     expect(screen.getByText('删除前复盘')).toBeTruthy()
-    expect(screen.getByTestId('experience-review-status').querySelector('svg')).not.toBeNull()
+    expect(
+      screen.getByTestId('experience-review-status').querySelector('[data-review-animation="wave"]')
+    ).not.toBeNull()
+  })
+
+  it('does not show the review wave while only counting normal messages', () => {
+    render(<ExperienceReviewStatus />)
+
+    expect(
+      screen.getByTestId('experience-review-status').querySelector('[data-review-animation="wave"]')
+    ).toBeNull()
   })
 })

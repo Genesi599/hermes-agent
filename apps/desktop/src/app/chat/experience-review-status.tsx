@@ -1,8 +1,7 @@
 import { useStore } from '@nanostores/react'
 
-import { reviewActivityLabel } from '@/components/assistant-ui/thread/status'
+import { reviewActivityLabel, ReviewActivityPulse } from '@/components/chat/review-activity'
 import { Codicon } from '@/components/ui/codicon'
-import { Loader } from '@/components/ui/loader'
 import { cn } from '@/lib/utils'
 import { $experienceReview, $reviewActivity } from '@/store/session'
 import type { ExperienceReviewInfo } from '@/types/hermes'
@@ -39,14 +38,7 @@ export function ExperienceReviewStatus() {
       title={`第 ${state.batch + 1} 批 · ${label}`}
     >
       {activeReview ? (
-        <Loader
-          aria-hidden="true"
-          className="size-4 shrink-0 text-teal-500/85"
-          pathSteps={72}
-          role="presentation"
-          strokeScale={0.52}
-          type="fourier-flow"
-        />
+        <ReviewActivityPulse className="text-teal-500/90" />
       ) : (
         <Codicon name="checklist" size="0.75rem" />
       )}

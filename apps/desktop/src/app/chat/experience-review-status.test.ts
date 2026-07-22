@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { reviewActivityLabel } from '@/components/assistant-ui/thread/status'
+import { reviewActivityLabel } from '@/components/chat/review-activity'
 
 import { experienceReviewLabel } from './experience-review-status'
 

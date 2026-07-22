@@ -21,6 +21,8 @@ import { $attentionSessionIds } from '@/store/session-states'
 
 import { SessionStatusDot } from '../session-status-dot'
 
+import type { ClientSessionState } from '../../types'
+
 import { SidebarRowBody, SidebarRowGrab, SidebarRowLabel, SidebarRowLead, SidebarRowShell } from './chrome'
 import { SessionActionsMenu, SessionContextMenu } from './session-actions-menu'
 import { sessionShowsRunningArc } from './session-row-state'
