@@ -9,6 +9,10 @@ const POPOUT_STORAGE_KEY = 'hermes.desktop.composerPopout.zones.v1'
 const LEGACY_ENABLED_KEY = 'hermes.desktop.composerPopout.enabled'
 const LEGACY_POSITION_KEY = 'hermes.desktop.composerPopout.position'
 
+// Personal build: keep the composer docked. This gates every gesture/toggle
+// path while preserving the implementation for straightforward upstream merges.
+export const COMPOSER_POPOUT_ENABLED = false
+
 /** Where the floating composer's bottom-right corner sits, measured as an inset
  *  from the viewport's bottom/right edges. Anchoring to the bottom-right keeps
  *  the box visually pinned to its default corner as the window resizes and as
