@@ -238,7 +238,7 @@ export function SidebarSessionRow({
               ariaLabel={handleLabel}
               dragging={dragging}
               dragHandleProps={dragHandleProps}
-              leadClassName={needsInput ? 'overflow-visible' : undefined}
+              leadClassName={needsInput || branchStem ? 'overflow-visible' : undefined}
             >
               <SessionRowLeadDot
                 branchStem={branchStem}
@@ -248,7 +248,10 @@ export function SidebarSessionRow({
               />
             </SidebarRowGrab>
           ) : (
-            <SidebarRowLead className={needsInput ? 'overflow-visible' : 'overflow-hidden'}>
+            <SidebarRowLead
+              className={needsInput || branchStem ? 'overflow-visible' : 'overflow-hidden'}
+              data-branch-lead={branchStem ? 'true' : undefined}
+            >
               <SessionRowLeadDot branchStem={branchStem} dotState={dotState} projectColor={projectColor} />
             </SidebarRowLead>
           )}
