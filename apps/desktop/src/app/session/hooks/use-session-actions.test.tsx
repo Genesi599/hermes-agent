@@ -1,6 +1,6 @@
 import { act, cleanup, render, waitFor } from '@testing-library/react'
 import type { MutableRefObject } from 'react'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { $terminalTakeover, setTerminalTakeover } from '@/app/right-sidebar/store'
@@ -1550,22 +1550,25 @@ function MergeHarness({
   onReady: (merge: (storedSessionId: string, sessionProfile?: string | null) => Promise<void>) => void
   requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
 }) {
-  const ref = <T,>(value: T): MutableRefObject<T> => ({ current: value })
-  const activeSessionIdRef = ref<string | null>('runtime-child')
-  const selectedStoredSessionIdRef = ref<string | null>('child')
+  const activeSessionIdRef = useRef<string | null>('runtime-child')
+  const selectedStoredSessionIdRef = useRef<string | null>('child')
+  const runtimeIdByStoredSessionIdRef = useRef(new Map([['child', 'runtime-child']]))
+  const sessionStateByRuntimeIdRef = useRef(
+    new Map([['runtime-child', createClientSessionState('child')]])
+  )
   const actions = useSessionActions({
     activeSessionId: 'runtime-child',
     activeSessionIdRef,
-    busyRef: ref(false),
-    creatingSessionRef: ref(false),
+    busyRef: useRef(false),
+    creatingSessionRef: useRef(false),
     ensureSessionState: () => ({}) as ClientSessionState,
     getRouteToken: () => 'token',
     navigate: vi.fn() as never,
     requestGateway,
-    runtimeIdByStoredSessionIdRef: ref(new Map<string, string>()),
+    runtimeIdByStoredSessionIdRef,
     selectedStoredSessionId: 'child',
     selectedStoredSessionIdRef,
-    sessionStateByRuntimeIdRef: ref(new Map<string, ClientSessionState>()),
+    sessionStateByRuntimeIdRef,
     syncSessionStateToView: vi.fn(),
     updateSessionState: () => ({}) as ClientSessionState
   })
@@ -1647,30 +1650,61 @@ describe('mergeBranchIntoParent', () => {
 // paints, or it shows a totally different thread under the current route.
 
 function DeleteHarness({
+  initialRuntimeStoredSessionId = 'stored-delete',
   onReady,
   requestGateway
 }: {
+  initialRuntimeStoredSessionId?: string
   onReady: (remove: (storedSessionId: string) => Promise<void>) => void
   requestGateway: <T>(method: string, params?: Record<string, unknown>, timeoutMs?: number) => Promise<T>
 }) {
-  const ref = <T,>(value: T): MutableRefObject<T> => ({ current: value })
-  const activeSessionIdRef = ref<string | null>('runtime-delete')
-  const selectedStoredSessionIdRef = ref<string | null>('stored-delete')
+  const activeSessionIdRef = useRef<string | null>('runtime-delete')
+  const selectedStoredSessionIdRef = useRef<string | null>('stored-delete')
+  const runtimeIdByStoredSessionIdRef = useRef(new Map([['stored-delete', 'runtime-delete']]))
+  const sessionStateByRuntimeIdRef = useRef(
+    new Map([['runtime-delete', createClientSessionState(initialRuntimeStoredSessionId)]])
+  )
   const actions = useSessionActions({
     activeSessionId: 'runtime-delete',
     activeSessionIdRef,
-    busyRef: ref(false),
-    creatingSessionRef: ref(false),
-    ensureSessionState: () => ({}) as ClientSessionState,
+    busyRef: useRef(false),
+    creatingSessionRef: useRef(false),
+    ensureSessionState: (runtimeId, storedSessionId) => {
+      const existing = sessionStateByRuntimeIdRef.current.get(runtimeId)
+
+      if (existing) {
+        return existing
+      }
+
+      const created = createClientSessionState(storedSessionId ?? null)
+
+      sessionStateByRuntimeIdRef.current.set(runtimeId, created)
+      if (storedSessionId) {
+        runtimeIdByStoredSessionIdRef.current.set(storedSessionId, runtimeId)
+      }
+
+      return created
+    },
     getRouteToken: () => 'token',
     navigate: vi.fn() as never,
     requestGateway,
-    runtimeIdByStoredSessionIdRef: ref(new Map<string, string>()),
+    runtimeIdByStoredSessionIdRef,
     selectedStoredSessionId: 'stored-delete',
     selectedStoredSessionIdRef,
-    sessionStateByRuntimeIdRef: ref(new Map<string, ClientSessionState>()),
+    sessionStateByRuntimeIdRef,
     syncSessionStateToView: vi.fn(),
-    updateSessionState: () => ({}) as ClientSessionState
+    updateSessionState: (runtimeId, updater, storedSessionId) => {
+      const current =
+        sessionStateByRuntimeIdRef.current.get(runtimeId) ?? createClientSessionState(storedSessionId ?? null)
+      const updated = updater(current)
+
+      sessionStateByRuntimeIdRef.current.set(runtimeId, updated)
+      if (storedSessionId) {
+        runtimeIdByStoredSessionIdRef.current.set(storedSessionId, runtimeId)
+      }
+
+      return updated
+    }
   })
 
   useEffect(() => {
@@ -1711,6 +1745,46 @@ describe('removeSession delete review', () => {
     expect(deleteSession).not.toHaveBeenCalled()
     expect($sessions.get()).toEqual([])
     expect($unreadFinishedSessionIds.get()).toEqual([])
+  })
+
+  it('re-resumes when the selected runtime belongs to another stored session', async () => {
+    const requestGateway = vi.fn(async (method: string) => {
+      if (method === 'session.resume') {
+        return {
+          info: {},
+          messages: [],
+          resumed: 'stored-delete',
+          running: false,
+          session_id: 'runtime-fresh',
+          session_key: 'stored-delete'
+        } as never
+      }
+
+      if (method === 'session.review_delete') {
+        return { deleted: 'stored-delete', summary: 'review complete' } as never
+      }
+
+      return {} as never
+    })
+    vi.mocked(getSessionMessages).mockResolvedValue({ messages: [], session_id: 'stored-delete' } as never)
+    setSessions([storedSession({ id: 'stored-delete', message_count: 0 })])
+
+    let remove: ((storedSessionId: string) => Promise<void>) | null = null
+    render(
+      <DeleteHarness
+        initialRuntimeStoredSessionId="another-session"
+        onReady={action => (remove = action)}
+        requestGateway={requestGateway}
+      />
+    )
+    await waitFor(() => expect(remove).not.toBeNull())
+    await expect(remove!('stored-delete')).resolves.toBeUndefined()
+
+    expect(requestGateway).toHaveBeenCalledWith(
+      'session.review_delete',
+      { runtime_session_id: 'runtime-fresh', session_id: 'stored-delete' },
+      1_800_000
+    )
   })
 })
 

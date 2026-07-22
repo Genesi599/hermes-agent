@@ -211,6 +211,25 @@ interface ReviewDeleteResponse {
   summary: string
 }
 
+function activeRuntimeForStoredSession(
+  storedSessionId: string,
+  selectedStoredSessionId: string | null,
+  activeRuntimeId: string | null,
+  runtimeIdByStoredSessionId: Map<string, string>,
+  sessionStateByRuntimeId: Map<string, ClientSessionState>
+): string | null {
+  if (!activeRuntimeId || selectedStoredSessionId !== storedSessionId) {
+    return null
+  }
+
+  const mappedRuntimeId = runtimeIdByStoredSessionId.get(storedSessionId)
+  const runtimeState = sessionStateByRuntimeId.get(activeRuntimeId)
+
+  return mappedRuntimeId === activeRuntimeId && runtimeState?.storedSessionId === storedSessionId
+    ? activeRuntimeId
+    : null
+}
+
 export function useSessionActions({
   activeSessionId,
   activeSessionIdRef,
@@ -1393,12 +1412,21 @@ export function useSessionActions({
         throw new Error('Only a branch session can be merged into its parent.')
       }
 
-      let runtimeSessionId = selectedStoredSessionIdRef.current === storedSessionId ? activeSessionIdRef.current : null
+      const currentRuntimeForBranch = () =>
+        activeRuntimeForStoredSession(
+          storedSessionId,
+          selectedStoredSessionIdRef.current,
+          activeSessionIdRef.current,
+          runtimeIdByStoredSessionIdRef.current,
+          sessionStateByRuntimeIdRef.current
+        )
+
+      let runtimeSessionId = currentRuntimeForBranch()
 
       if (!runtimeSessionId) {
         navigate(sessionRoute(storedSessionId))
         await resumeSession(storedSessionId, true)
-        runtimeSessionId = selectedStoredSessionIdRef.current === storedSessionId ? activeSessionIdRef.current : null
+        runtimeSessionId = currentRuntimeForBranch()
       } else {
         await ensureGatewayProfile(sessionProfile ?? child.profile)
       }
@@ -1489,13 +1517,21 @@ export function useSessionActions({
       }
 
       try {
-        let runtimeSessionId =
-          selectedStoredSessionIdRef.current === storedSessionId ? activeSessionIdRef.current : null
+        const currentRuntimeForDelete = () =>
+          activeRuntimeForStoredSession(
+            storedSessionId,
+            selectedStoredSessionIdRef.current,
+            activeSessionIdRef.current,
+            runtimeIdByStoredSessionIdRef.current,
+            sessionStateByRuntimeIdRef.current
+          )
+
+        let runtimeSessionId = currentRuntimeForDelete()
 
         if (!runtimeSessionId) {
           navigate(sessionRoute(storedSessionId))
           await resumeSession(storedSessionId, true)
-          runtimeSessionId = selectedStoredSessionIdRef.current === storedSessionId ? activeSessionIdRef.current : null
+          runtimeSessionId = currentRuntimeForDelete()
         } else {
           await ensureGatewayProfile(removed?.profile)
         }
