@@ -252,7 +252,8 @@ export function useSessionListActions({ profileScope }: UseSessionListActionsArg
     const loaded = $sessions.get().filter(inKey).length
 
     const result = await listAllProfileSessions(loaded + SIDEBAR_SESSIONS_PAGE_SIZE, 1, 'exclude', 'recent', key, {
-      excludeSources: SIDEBAR_EXCLUDED_SOURCES
+      excludeSources: SIDEBAR_EXCLUDED_SOURCES,
+      includeNamedEmpty: true
     })
 
     const keep = sessionsToKeep(key)
