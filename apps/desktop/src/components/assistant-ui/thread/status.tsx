@@ -11,7 +11,21 @@ import { cn } from '@/lib/utils'
 import { $backgroundResume } from '@/store/background-delegation'
 import { $compactionActive } from '@/store/compaction'
 import { $activeSessionAwaitingInput } from '@/store/prompts'
-import { $activeSessionId, $turnStartedAt } from '@/store/session'
+import { $activeSessionId, $reviewActivity, $turnStartedAt } from '@/store/session'
+
+type ReviewActivity = 'branch-merge' | 'delete' | 'experience'
+
+export function reviewActivityLabel(activity: ReviewActivity): string {
+  if (activity === 'branch-merge') {
+    return '分支合并复盘'
+  }
+
+  if (activity === 'delete') {
+    return '删除前复盘'
+  }
+
+  return '批次经验复盘'
+}
 
 const StatusRow: FC<{ children: ReactNode; label: string } & React.ComponentPropsWithoutRef<'div'>> = ({
   children,
@@ -44,6 +58,23 @@ function useActiveTurnTimerKey(): string | undefined {
   return activeSessionId && turnStartedAt ? `turn:${activeSessionId}:${turnStartedAt}` : undefined
 }
 
+const ReviewActivityIndicator: FC<{ activity: ReviewActivity; elapsed: number }> = ({ activity, elapsed }) => (
+  <>
+    <Loader
+      aria-hidden="true"
+      className="size-5 shrink-0 text-teal-500/85"
+      pathSteps={96}
+      role="presentation"
+      strokeScale={0.58}
+      type="fourier-flow"
+    />
+    <span className="min-w-0 truncate font-medium text-teal-600/80 dark:text-teal-300/75">
+      {reviewActivityLabel(activity)}
+    </span>
+    <ActivityTimerText seconds={elapsed} />
+  </>
+)
+
 export const CenteredThreadSpinner: FC = () => {
   const { t } = useI18n()
 
@@ -70,6 +101,15 @@ export const ResponseLoadingIndicator: FC = () => {
   const timerKey = useActiveTurnTimerKey()
   const elapsed = useElapsedSeconds(true, timerKey)
   const compacting = useStore($compactionActive)
+  const reviewActivity = useStore($reviewActivity)
+
+  if (reviewActivity) {
+    return (
+      <StatusRow data-slot="aui_review-loading" label={reviewActivityLabel(reviewActivity)}>
+        <ReviewActivityIndicator activity={reviewActivity} elapsed={elapsed} />
+      </StatusRow>
+    )
+  }
 
   return (
     <StatusRow
@@ -144,6 +184,7 @@ export const StreamStallIndicator: FC = () => {
   const [stalled, setStalled] = useState(false)
   const compacting = useStore($compactionActive)
   const turnTimerKey = useActiveTurnTimerKey()
+  const reviewActivity = useStore($reviewActivity)
   // A pending clarify / approval / sudo / secret means the turn is paused on the
   // user, not working — so don't resurrect the "thinking" timer while they
   // decide (matches the pet's awaitingInput pose taking priority over busy).
@@ -156,11 +197,23 @@ export const StreamStallIndicator: FC = () => {
     return () => window.clearTimeout(id)
   }, [activity])
 
-  const active = (stalled || compacting) && !awaitingInput
+  const active = (Boolean(reviewActivity) || stalled || compacting) && !awaitingInput
   const elapsed = useElapsedSeconds(active, compacting ? turnTimerKey : undefined)
 
   if (!active) {
     return null
+  }
+
+  if (reviewActivity) {
+    return (
+      <StatusRow
+        className="mt-1.5"
+        data-slot="aui_review-stall"
+        label={reviewActivityLabel(reviewActivity)}
+      >
+        <ReviewActivityIndicator activity={reviewActivity} elapsed={elapsed} />
+      </StatusRow>
+    )
   }
 
   return (

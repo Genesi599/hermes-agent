@@ -4,18 +4,22 @@ import {
   useAuiState,
   useMessagePartReasoning
 } from '@assistant-ui/react'
+import { useStore } from '@nanostores/react'
 import { type ComponentProps, type FC, type ReactNode, useEffect, useRef, useState } from 'react'
 
 import { ClarifyTool } from '@/components/assistant-ui/clarify-tool'
 import { MarkdownText, MarkdownTextContent } from '@/components/assistant-ui/markdown-text'
+import { reviewActivityLabel } from '@/components/assistant-ui/thread/status'
 import { ToolFallback, ToolGroupSlot } from '@/components/assistant-ui/tool/fallback'
 import { useElapsedSeconds } from '@/components/chat/activity-timer'
 import { ActivityTimerText } from '@/components/chat/activity-timer-text'
 import { DisclosureRow } from '@/components/chat/disclosure-row'
 import { GeneratedImage } from '@/components/chat/generated-image-result'
+import { Loader } from '@/components/ui/loader'
 import { useI18n } from '@/i18n'
 import { useEnterAnimation } from '@/lib/use-enter-animation'
 import { cn } from '@/lib/utils'
+import { $reviewActivity } from '@/store/session'
 
 const ImageGenerateTool: FC<ToolCallMessagePartProps> = ({ args, result }) => {
   const aspectRatio = typeof args?.aspect_ratio === 'string' ? args.aspect_ratio : undefined
@@ -57,6 +61,8 @@ const ThinkingDisclosure: FC<{
   // explicit toggle wins from then on.
   const [userOpen, setUserOpen] = useState<boolean | null>(null)
   const elapsed = useElapsedSeconds(pending, timerKey)
+  const activeReview = useStore($reviewActivity)
+  const messageReview = pending ? activeReview : null
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
   const enterRef = useEnterAnimation(messageRunning, timerKey)
@@ -102,13 +108,24 @@ const ThinkingDisclosure: FC<{
     >
       <DisclosureRow onToggle={() => setUserOpen(!open)} open={open}>
         <span className="flex min-w-0 items-baseline gap-1.5">
+          {messageReview && (
+            <Loader
+              aria-hidden="true"
+              className="size-4 shrink-0 self-center text-teal-500/85"
+              pathSteps={72}
+              role="presentation"
+              strokeScale={0.52}
+              type="fourier-flow"
+            />
+          )}
           <span
             className={cn(
               'text-[length:var(--conversation-tool-font-size)] font-medium leading-(--conversation-line-height) text-(--ui-text-secondary)',
-              pending && 'shimmer text-foreground/55'
+              pending && !messageReview && 'shimmer text-foreground/55',
+              messageReview && 'text-teal-600/80 dark:text-teal-300/75'
             )}
           >
-            {t.assistant.thread.thinking}
+            {messageReview ? reviewActivityLabel(messageReview) : t.assistant.thread.thinking}
           </span>
           {pending && (
             <ActivityTimerText

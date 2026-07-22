@@ -126,6 +126,41 @@ class TestSessionLifecycle:
         assert db.get_experience_review_state("review-session")["completed_at"] is not None
         assert db.complete_experience_review("review-session") is False
 
+    def test_branch_merge_queue_persists_until_child_is_deleted(self, db):
+        db.create_session("parent", source="desktop")
+        db.create_session(
+            "child",
+            source="desktop",
+            parent_session_id="parent",
+        )
+        assert db.set_session_title("child", "branch #1") is True
+
+        assert db.queue_branch_merge("child", "reviewed summary") is True
+        pending = db.list_pending_branch_merges("parent")
+        assert len(pending) == 1
+        assert pending[0]["id"] == "child"
+        assert pending[0]["parent_session_id"] == "parent"
+        assert pending[0]["title"] == "branch #1"
+        assert pending[0]["branch_merge_summary"] == "reviewed summary"
+        assert pending[0]["branch_merge_requested_at"] > 0
+        assert db.get_pending_branch_merge("child") == {
+            "id": "child",
+            "parent_session_id": "parent",
+            "branch_merge_summary": "reviewed summary",
+            "branch_merge_requested_at": pending[0]["branch_merge_requested_at"],
+        }
+
+        second = SessionDB(db_path=db.db_path)
+        try:
+            assert second.list_pending_branch_merges("parent")[0][
+                "branch_merge_summary"
+            ] == "reviewed summary"
+        finally:
+            second.close()
+
+        assert db.delete_session("child") is True
+        assert db.list_pending_branch_merges("parent") == []
+
     def test_create_session_enriches_null_metadata_on_conflict(self, db):
         """Gateway creates a bare row first; the agent's later create_session
         must backfill model/model_config/system_prompt without clobbering the

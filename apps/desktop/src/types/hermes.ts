@@ -460,6 +460,16 @@ export interface SessionResumeResponse {
   status?: string
 }
 
+export type ExperienceReviewPhase = 'counting' | 'queued' | 'reviewing'
+
+export interface ExperienceReviewInfo {
+  batch: number
+  pending: boolean
+  phase: ExperienceReviewPhase
+  threshold: number
+  user_count: number
+}
+
 export interface SessionRuntimeInfo {
   approval_mode?: 'manual' | 'off' | 'smart'
   branch?: string
@@ -467,6 +477,7 @@ export interface SessionRuntimeInfo {
   credential_warning?: string
   cwd?: string
   desktop_contract?: number
+  experience_review?: ExperienceReviewInfo
   fast?: boolean
   install_warning?: string
   model?: string

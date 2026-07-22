@@ -4,7 +4,7 @@ import { dedupeGeneratedImageEchoesInParts } from '@/lib/generated-images'
 import { mediaDisplayLabel, mediaMarkdownHref } from '@/lib/media'
 import { normalize } from '@/lib/text'
 import { parseTodos } from '@/lib/todos'
-import type { SessionMessage, UsageStats } from '@/types/hermes'
+import type { ExperienceReviewInfo, SessionMessage, UsageStats } from '@/types/hermes'
 
 export const INTERNAL_TURN_PREFIX = '[HERMES_INTERNAL_'
 
@@ -27,6 +27,7 @@ export type GatewayEventPayload = {
   text?: string
   rendered?: string
   status?: string
+  phase?: string
   message?: string
   id?: string
   name?: string
@@ -56,6 +57,7 @@ export type GatewayEventPayload = {
   credential_warning?: string
   install_warning?: string
   personality?: string
+  experience_review?: ExperienceReviewInfo
   usage?: Partial<UsageStats>
   // agent.terminal.output — live chunk for a read-only agent terminal tab
   process_id?: string

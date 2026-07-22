@@ -2,15 +2,18 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Tip } from '@/components/ui/tooltip'
-import { deleteSession, listAllProfileSessions, setSessionArchived } from '@/hermes'
+import { listAllProfileSessions, PROMPT_SUBMIT_REQUEST_TIMEOUT_MS, setSessionArchived } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { sessionTitle } from '@/lib/chat-runtime'
 import { triggerHaptic } from '@/lib/haptics'
 import { Archive, ArchiveOff, FolderOpen, Loader2, Trash2 } from '@/lib/icons'
 import { notify, notifyError } from '@/store/notifications'
+import { ensureGatewayProfile } from '@/store/profile'
 import { untombstoneSessions } from '@/store/projects'
 import { applyConfiguredDefaultProjectDir, ensureDefaultWorkspaceCwd, setSessions } from '@/store/session'
-import type { SessionInfo } from '@/types/hermes'
+import type { SessionInfo, SessionResumeResponse } from '@/types/hermes'
+
+import { useGatewayRequest } from '../gateway/hooks/use-gateway-request'
 
 import { EmptyState, ListRow, LoadingState, SectionHeading, SettingsContent } from './primitives'
 import { useDeepLinkHighlight } from './use-deep-link-highlight'
@@ -35,6 +38,7 @@ function workspaceLabel(cwd: null | string | undefined): string {
 
 export function SessionsSettings() {
   const { t } = useI18n()
+  const { requestGateway } = useGatewayRequest()
   const s = t.settings.sessions
   const [sessions, setLocalSessions] = useState<SessionInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -88,7 +92,19 @@ export function SessionsSettings() {
       setBusyId(session.id)
 
       try {
-        await deleteSession(session.id, session.profile)
+        await ensureGatewayProfile(session.profile)
+        const resumed = await requestGateway<SessionResumeResponse>('session.resume', {
+          session_id: session.id,
+          source: 'desktop'
+        })
+        await requestGateway(
+          'session.review_delete',
+          {
+            runtime_session_id: resumed.session_id,
+            session_id: session.id
+          },
+          PROMPT_SUBMIT_REQUEST_TIMEOUT_MS
+        )
         setLocalSessions(prev => prev.filter(s => s.id !== session.id))
         triggerHaptic('warning')
       } catch (err) {
@@ -97,7 +113,7 @@ export function SessionsSettings() {
         setBusyId(null)
       }
     },
-    [s]
+    [requestGateway, s]
   )
 
   useDeepLinkHighlight({
