@@ -369,7 +369,7 @@ function SidebarSessionRowImpl({
               ariaLabel={handleLabel}
               dragging={dragging}
               dragHandleProps={dragHandleProps}
-              leadClassName={needsInput ? 'overflow-visible' : undefined}
+              leadClassName={needsInput || branchStem ? 'overflow-visible' : undefined}
             >
               {lead ?? (
                 <SessionStatusDot
