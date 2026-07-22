@@ -1729,6 +1729,7 @@ _TRANSIENT_TRANSPORT_ERRORS = frozenset({
     "ReadTimeout", "ConnectTimeout", "PoolTimeout",
     "ConnectError", "RemoteProtocolError",
     "APIConnectionError", "APITimeoutError",
+    "TimeoutError", "ConnectionError", "OSError",
 })
 
 
