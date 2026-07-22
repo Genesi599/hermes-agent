@@ -130,12 +130,6 @@ import {
 } from '@/store/session-pins' 
 import { $focusedStoredSessionId, $workingSessionIds, type SplitDir } from '@/store/session-states'
 import { $archivedSessions, loadArchivedSessions } from '@/store/sidebar-archive' 
-import {
-  expandPinnedSessionFamilies,
-  expandSessionFamilyMemberIds,
-  pinSessionFamily,
-  unpinSessionFamily
-} from '@/store/session-pins'
 import { $sidebarSessionRankIds } from '@/store/sidebar-sort' 
 
 import {
