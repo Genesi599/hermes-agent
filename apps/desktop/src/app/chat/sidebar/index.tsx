@@ -118,9 +118,9 @@ import {
   setCurrentCwd
 } from '@/store/session'
 import { $sessionDotStateById, sessionStatusBucket } from '@/store/session-dot-state'
+import { expandPinnedSessionFamilies, pinSessionFamily, unpinSessionFamily } from '@/store/session-pins'
 import { $focusedStoredSessionId, $workingSessionIds, type SplitDir } from '@/store/session-states'
 import { $archivedSessions, loadArchivedSessions } from '@/store/sidebar-archive'
-import { expandPinnedSessionFamilies, pinSessionFamily, unpinSessionFamily } from '@/store/session-pins'
 import { $sidebarSessionRankIds } from '@/store/sidebar-sort' 
 
 import {
