@@ -8,10 +8,8 @@ import type { ChatMessage } from '@/lib/chat-messages'
 import {
   persistBoolean,
   persistString,
-  persistStringArray,
   storedBoolean,
-  storedString,
-  storedStringArray
+  storedString
 } from '@/lib/storage'
 import type { ExperienceReviewInfo, SessionInfo, UsageStats } from '@/types/hermes'
 
@@ -670,14 +668,40 @@ export const markAllSessionsRead = () => {
   }
 }
 
+export function markSessionUnread(sessionId: string | null | undefined) {
+  const id = sessionId?.trim()
+
+  if (!id || $unreadFinishedSessionIds.get().includes(id)) {
+    return
+  }
+
+  $unreadFinishedSessionIds.set([...$unreadFinishedSessionIds.get(), id])
+}
+
+export function clearSessionUnread(sessionId: string | null | undefined) {
+  clearUnreadSessionIds([sessionId])
+}
+
+/** Clear every durable alias belonging to a deleted, archived, or merged session. */
+export function clearUnreadSessionIds(sessionIds: Array<string | null | undefined>) {
+  const ids = new Set(sessionIds.map(id => id?.trim()).filter((id): id is string => Boolean(id)))
+
+  if (!ids.size) {
+    return
+  }
+
+  const current = $unreadFinishedSessionIds.get()
+  const next = current.filter(id => !ids.has(id))
+
+  if (next.length !== current.length) {
+    $unreadFinishedSessionIds.set(next)
+  }
+}
+
 export const setSelectedStoredSessionId = (next: Updater<string | null>) => {
   updateAtom($selectedStoredSessionId, next)
   // Opening a session clears its unread state — the user is now looking at it.
-  const id = $selectedStoredSessionId.get()
-
-  if (id && $unreadFinishedSessionIds.get().includes(id)) {
-    $unreadFinishedSessionIds.set($unreadFinishedSessionIds.get().filter(x => x !== id))
-  }
+  clearSessionUnread($selectedStoredSessionId.get())
 }
 
 export const setMessages = (next: Updater<ChatMessage[]>) => updateAtom($messages, next)

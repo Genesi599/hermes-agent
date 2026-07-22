@@ -90,6 +90,16 @@ describe('computed $attentionSessionIds', () => {
   })
 })
 
+describe('session unread cleanup', () => {
+  it('clears every durable alias for a removed session', () => {
+    $unreadFinishedSessionIds.set(['tip', 'root', 'keep'])
+
+    clearUnreadSessionIds(['missing', 'tip', 'root'])
+
+    expect($unreadFinishedSessionIds.get()).toEqual(['keep'])
+  })
+})
+
 describe('sessionPinId', () => {
   it('uses the live id when there is no compression lineage', () => {
     expect(sessionPinId(session({ id: 'abc' }))).toBe('abc')

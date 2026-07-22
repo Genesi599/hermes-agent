@@ -23,6 +23,7 @@ import {
   $resumeFailedSessionId,
   $selectedStoredSessionId,
   $sessions,
+  $unreadFinishedSessionIds,
   setActiveSessionId,
   setActiveSessionStoredIdRotation,
   setCurrentCwd,
@@ -690,6 +691,7 @@ describe('resumeSession cancellation', () => {
     setActiveSessionId(null)
     setMessages([])
     setSessions([])
+    $unreadFinishedSessionIds.set([])
     vi.mocked(ensureGatewayProfile).mockReset()
     vi.mocked(ensureGatewayProfile).mockResolvedValue(undefined)
     vi.restoreAllMocks()
@@ -1624,6 +1626,7 @@ describe('removeSession delete review', () => {
       return {} as never
     })
     setSessions([storedSession({ id: 'stored-delete', message_count: 3 })])
+    $unreadFinishedSessionIds.set(['stored-delete'])
 
     let remove: ((storedSessionId: string) => Promise<void>) | null = null
     render(<DeleteHarness onReady={action => (remove = action)} requestGateway={requestGateway} />)
@@ -1637,6 +1640,7 @@ describe('removeSession delete review', () => {
     )
     expect(deleteSession).not.toHaveBeenCalled()
     expect($sessions.get()).toEqual([])
+    expect($unreadFinishedSessionIds.get()).toEqual([])
   })
 })
 
