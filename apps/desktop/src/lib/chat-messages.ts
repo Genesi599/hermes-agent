@@ -37,6 +37,7 @@ export type GatewayEventPayload = {
   text?: string
   rendered?: string
   status?: string
+  phase?: string
   message?: string
   id?: string
   name?: string
@@ -66,6 +67,7 @@ export type GatewayEventPayload = {
   credential_warning?: string
   install_warning?: string
   personality?: string
+  experience_review?: ExperienceReviewInfo
   usage?: Partial<UsageStats>
   // agent.terminal.output — live chunk for a read-only agent terminal tab
   process_id?: string
