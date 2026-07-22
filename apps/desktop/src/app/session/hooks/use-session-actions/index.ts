@@ -78,6 +78,8 @@ import {
   applyRuntimeInfo,
   applyStoredSessionPreviewRuntimeInfo,
   type BranchMessage,
+  branchMessagesAtStableBoundary,
+  branchMessagesThroughPoint,
   chatMessageArraysEquivalent,
   isSessionGoneError,
   patchSessionWorkspace,
@@ -88,7 +90,6 @@ import {
   restoreInflightView,
   sessionMatchesStoredId,
   sessionShouldHaveTranscript,
-  toBranchMessages,
   upsertOptimisticSession
 } from './utils'
 
@@ -1292,7 +1293,7 @@ export function useSessionActions({
       try {
         await ensureGatewayProfile(profile)
         const { messages } = await getSessionMessages(storedSessionId, profile)
-        const branchMessages = toBranchMessages(toChatMessages(messages))
+        const branchMessages = branchMessagesAtStableBoundary(toChatMessages(messages), stored?.status === 'working')
 
         if (!branchMessages.length) {
           notify({ kind: 'warning', title: copy.nothingToBranch, message: copy.branchNoText })
