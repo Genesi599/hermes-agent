@@ -531,6 +531,15 @@ export function ChatSidebar({
 
   useEffect(() => pinSessions(expandedPinnedSessionIds), [expandedPinnedSessionIds])
 
+  const expandedPinnedSessionIds = useMemo(
+    () => expandPinnedSessionFamilies([...cronSessions, ...visibleSessions], pinnedSessionIds),
+    [cronSessions, pinnedSessionIds, visibleSessions]
+  )
+
+  // Migrate old single-row pins and immediately include newly-created Branch
+  // children without moving the family's existing position in the pinned list.
+  useEffect(() => pinSessions(expandedPinnedSessionIds), [expandedPinnedSessionIds])
+
   const pinnedSessions = useMemo(() => {
     const seen = new Set<string>()
     const out: SessionInfo[] = []

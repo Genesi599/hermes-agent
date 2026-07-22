@@ -67,6 +67,7 @@ import {
   publishSessionState,
   type TileDock
 } from '@/store/session-states'
+import { isSessionFamilyPinned, pinSessionFamily } from '@/store/session-pins'
 import { broadcastSessionsChanged } from '@/store/session-sync'
 import { isWatchWindow } from '@/store/windows'
 import type { SessionCreateResponse, SessionMessage, SessionResumeResponse, UsageStats } from '@/types/hermes'
