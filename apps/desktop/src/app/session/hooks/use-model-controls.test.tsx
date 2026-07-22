@@ -370,6 +370,7 @@ describe('useModelControls', () => {
   })
 
   it('switches all stored conversations and keeps the active running model marked as next', async () => {
+    $activeSessionId.set('session-1')
     setCurrentModel('old/model')
     setCurrentProvider('old-provider')
 
