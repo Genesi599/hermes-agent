@@ -700,6 +700,59 @@
   font-size: 0.875em;
 }
 
+.review-activity-wave > span {
+  animation: review-activity-wave 900ms ease-in-out infinite;
+  transform-origin: center;
+}
+
+.review-activity-wave > span:nth-child(2) { animation-delay: 100ms; }
+.review-activity-wave > span:nth-child(3) { animation-delay: 200ms; }
+.review-activity-wave > span:nth-child(4) { animation-delay: 300ms; }
+.review-activity-wave > span:nth-child(5) { animation-delay: 400ms; }
+
+@keyframes review-activity-wave {
+  0%, 100% { opacity: 0.35; transform: scaleY(0.25); }
+  50% { opacity: 1; transform: scaleY(1); }
+}
+
+.review-session-underline {
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  height: 0.125rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.125rem;
+  overflow: hidden;
+}
+
+.review-session-underline > span {
+  background: currentColor;
+  transform: scaleX(0.2);
+  transform-origin: center;
+  animation: review-session-underline 1.05s ease-in-out infinite;
+}
+
+.review-session-underline > span:nth-child(2) { animation-delay: 90ms; }
+.review-session-underline > span:nth-child(3) { animation-delay: 180ms; }
+.review-session-underline > span:nth-child(4) { animation-delay: 270ms; }
+.review-session-underline > span:nth-child(5) { animation-delay: 360ms; }
+
+@keyframes review-session-underline {
+  0%, 100% { opacity: 0.25; transform: scaleX(0.2); }
+  50% { opacity: 1; transform: scaleX(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .review-activity-wave > span,
+  .review-session-underline > span {
+    animation: none;
+    opacity: 0.75;
+  }
+}
+
 /* Hover-reveal suppression — the shared, declarative escape hatch.
    A collapsed pane slides in when the pointer dwells on its thin edge trigger.
    Controls that sit over that edge gutter would drag the panel in by accident.

@@ -550,6 +550,7 @@ export const $experienceReview = atom<ExperienceReviewInfo>({
   user_count: 0
 })
 export const $reviewActivity = atom<ClientSessionState['reviewActivity']>(null)
+export const $reviewActivityBySessionId = atom<Record<string, NonNullable<ClientSessionState['reviewActivity']>>>({})
 
 // Streaming-stable derivations of $messages. During a token stream the array
 // is replaced ~30×/s; components that only care about coarse facts (is the
@@ -707,6 +708,29 @@ export const setMessages = (next: Updater<ChatMessage[]>) => updateAtom($message
 export const setExperienceReview = (next: Updater<ExperienceReviewInfo>) => updateAtom($experienceReview, next)
 export const setReviewActivity = (next: Updater<ClientSessionState['reviewActivity']>) =>
   updateAtom($reviewActivity, next)
+export function setSessionReviewActivity(
+  sessionId: string | null | undefined,
+  activity: ClientSessionState['reviewActivity']
+) {
+  if (!sessionId) {
+    return
+  }
+
+  updateAtom($reviewActivityBySessionId, current => {
+    if (activity) {
+      return current[sessionId] === activity ? current : { ...current, [sessionId]: activity }
+    }
+
+    if (!(sessionId in current)) {
+      return current
+    }
+
+    const next = { ...current }
+    delete next[sessionId]
+
+    return next
+  })
+}
 export const setFreshDraftReady = (next: Updater<boolean>) => updateAtom($freshDraftReady, next)
 export const setResumeFailedSessionId = (next: Updater<string | null>) => updateAtom($resumeFailedSessionId, next)
 export const setResumeExhaustedSessionId = (next: Updater<string | null>) => updateAtom($resumeExhaustedSessionId, next)

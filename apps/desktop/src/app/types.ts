@@ -1,7 +1,7 @@
 import type * as React from 'react'
 
 import type { ChatMessage } from '@/lib/chat-messages'
-import type { SessionMessage, UsageStats } from '@/types/hermes'
+import type { ExperienceReviewInfo, SessionMessage, UsageStats } from '@/types/hermes'
 
 export interface ContextSuggestion {
   text: string
@@ -183,6 +183,8 @@ export interface ClientSessionState {
   fast: boolean
   yolo: boolean
   personality: string
+  experienceReview: ExperienceReviewInfo
+  reviewActivity: 'branch-merge' | 'delete' | 'experience' | null
   busy: boolean
   awaitingResponse: boolean
   streamId: string | null

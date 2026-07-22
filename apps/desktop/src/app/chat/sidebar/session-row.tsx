@@ -6,6 +6,7 @@ import { PrTag } from '@/app/chat/pr-tag'
 import { ProfileTag } from '@/app/chat/profile-tag'
 import { startSessionDrag } from '@/app/chat/session-drag'
 import { PlatformAvatar } from '@/app/messaging/platform-icon'
+import { ReviewActivityUnderline } from '@/components/chat/review-activity'
 import { openSession } from '@/app/open-session'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
@@ -25,6 +26,8 @@ import { normalizeProfileKey } from '@/store/profile'
 import { $pullRequestsByBranch, sessionPrKey } from '@/store/pull-requests'
 import { $sessionDotStateById, hasLiveTurn, showsRunningArc } from '@/store/session-dot-state'
 import { sessionCostUsd } from '@/store/sidebar-archive'
+import { $reviewActivityBySessionId } from '@/store/session'
+import { $attentionSessionIds } from '@/store/session-states' 
 
 import { SessionStatusDot } from '../session-status-dot'
 
@@ -190,6 +193,7 @@ function SidebarSessionRowImpl({
   const needsInput = useStore($attentionSessionIds).includes(session.id)
   const isUnread = useStore($unreadSessionIds).includes(session.id)
   const isMergeWaiting = session.branch_merge_status === 'waiting_for_parent'
+  const reviewActivity = useStore($reviewActivityBySessionId)[session.id] ?? null
   const branchTaskStatus = session.branch_task_status
   const branchElapsed = session.branch_started_at
     ? formatDuration((session.branch_completed_at ?? Date.now() / 1000) - session.branch_started_at, r)
@@ -304,7 +308,12 @@ function SidebarSessionRowImpl({
         style={style}
         {...rest}
       >
-        {showsRunningArc(dotState) && <span aria-hidden="true" className="arc-border arc-row" />}
+        {showsRunningArc(dotState) &&
+          (reviewActivity ? (
+            <ReviewActivityUnderline className="text-teal-500/90" />
+          ) : (
+            <span aria-hidden="true" className="arc-border arc-row" />
+          ))}
         <SidebarRowBody
           // Every trailing figure lives in the actions slot, which the row
           // measures — so the title needs a gap from it and nothing else. Hover
