@@ -53,6 +53,8 @@ export interface SessionView {
   $provider: ReadableAtom<string>
   $fast: ReadableAtom<boolean>
   $reasoningEffort: ReadableAtom<string>
+  $experienceReview: ReadableAtom<ExperienceReviewInfo>
+  $reviewActivity: ReadableAtom<ClientSessionState['reviewActivity']>
 }
 
 /** The active session's own slice, or `undefined` while it's a draft. */
