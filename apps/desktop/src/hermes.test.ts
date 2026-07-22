@@ -73,6 +73,20 @@ describe('Hermes REST helpers', () => {
     )
   })
 
+  it('can retain named empty sessions while filtering abandoned drafts', async () => {
+    await listAllProfileSessions(50, 1, 'exclude', 'recent', 'all', {
+      includeNamedEmpty: true
+    })
+
+    expect(api).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path:
+          '/api/profiles/sessions?limit=50&offset=0&min_messages=1&archived=exclude&order=recent' +
+          '&profile=all&include_named_empty=1'
+      })
+    )
+  })
+
   it('batches the sidebar slices into a single request with per-slice limits + excludes', async () => {
     api.mockResolvedValue({ recents: { sessions: [] }, cron: { sessions: [] }, messaging: { sessions: [] } })
 
@@ -165,6 +179,7 @@ describe('Hermes REST helpers', () => {
     expect(paths).toContainEqual(expect.stringContaining('profile=work'))
     expect(paths).toContainEqual(expect.stringContaining('source=cron'))
     expect(paths).toContainEqual(expect.stringContaining('exclude_sources=cron%2Ctool'))
+    expect(paths).toContainEqual(expect.stringContaining('include_named_empty=1'))
   })
 
   it('remembers endpoint-missing and skips re-probing the batched route on later refreshes', async () => {

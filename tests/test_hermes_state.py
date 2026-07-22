@@ -1654,6 +1654,35 @@ class TestTitleSqlWildcards:
 class TestListSessionsRich:
     """Tests for enhanced session listing with preview and last_active."""
 
+    def test_min_messages_can_keep_named_empty_sessions(self, db):
+        db.create_session("with-message", "desktop")
+        db.append_message("with-message", "user", "hello")
+        db.create_session("named-empty", "desktop")
+        db.set_session_title("named-empty", "Visible draft")
+        db.create_session("untitled-empty", "desktop")
+
+        default_ids = {
+            row["id"] for row in db.list_sessions_rich(min_message_count=1)
+        }
+        visible_ids = {
+            row["id"]
+            for row in db.list_sessions_rich(
+                min_message_count=1,
+                include_named_empty=True,
+            )
+        }
+
+        assert default_ids == {"with-message"}
+        assert visible_ids == {"with-message", "named-empty"}
+        assert (
+            db.session_count(
+                min_message_count=1,
+                include_named_empty=True,
+                exclude_children=True,
+            )
+            == 2
+        )
+
     def test_preview_from_first_user_message(self, db):
         db.create_session("s1", "cli")
         db.append_message("s1", "system", "You are a helpful assistant.")
