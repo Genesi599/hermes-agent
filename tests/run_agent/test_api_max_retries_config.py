@@ -9,12 +9,14 @@ from unittest.mock import patch
 from run_agent import AIAgent
 
 
-def _make_agent(api_max_retries=None):
+def _make_agent(api_max_retries=None, retry_transient_forever=None):
     """Build an AIAgent with a mocked config.load_config that returns a
     config tree containing the given agent.api_max_retries (or default)."""
     cfg = {"agent": {}}
     if api_max_retries is not None:
         cfg["agent"]["api_max_retries"] = api_max_retries
+    if retry_transient_forever is not None:
+        cfg["agent"]["retry_transient_forever"] = retry_transient_forever
 
     with patch("run_agent.OpenAI"), \
          patch("hermes_cli.config.load_config", return_value=cfg):
@@ -63,3 +65,10 @@ def test_api_max_retries_falls_back_on_invalid_value():
     # None with dict.get default fires → default(3), then int(None) raises
     # TypeError → except branch sets to 3.
     assert agent2._api_max_retries == 3
+
+
+def test_transient_retry_forever_is_enabled_by_default_and_can_be_disabled():
+    assert _make_agent()._retry_transient_forever is True
+    assert _make_agent(retry_transient_forever=True)._retry_transient_forever is True
+    assert _make_agent(retry_transient_forever="yes")._retry_transient_forever is True
+    assert _make_agent(retry_transient_forever=False)._retry_transient_forever is False
