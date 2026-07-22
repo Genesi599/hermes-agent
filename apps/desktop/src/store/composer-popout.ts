@@ -5,6 +5,10 @@ import { persistBoolean, persistString, storedBoolean, storedString } from '@/li
 const POPOUT_ENABLED_STORAGE_KEY = 'hermes.desktop.composerPopout.enabled'
 const POPOUT_POSITION_STORAGE_KEY = 'hermes.desktop.composerPopout.position'
 
+// Personal build: keep the composer docked. This gates every gesture/toggle
+// path while preserving the implementation for straightforward upstream merges.
+export const COMPOSER_POPOUT_ENABLED = false
+
 /** Where the floating composer's bottom-right corner sits, measured as an inset
  *  from the viewport's bottom/right edges. Anchoring to the bottom-right keeps
  *  the box visually pinned to its default corner as the window resizes and as
@@ -110,12 +114,13 @@ function clampPosition({ bottom, right }: PopoutPosition, size?: PopoutSize, are
   }
 }
 
-export const $composerPoppedOut = atom(storedBoolean(POPOUT_ENABLED_STORAGE_KEY, false))
+export const $composerPoppedOut = atom(COMPOSER_POPOUT_ENABLED && storedBoolean(POPOUT_ENABLED_STORAGE_KEY, false))
 export const $composerPopoutPosition = atom<PopoutPosition>(readPosition())
 
 export function setComposerPoppedOut(value: boolean) {
-  $composerPoppedOut.set(value)
-  persistBoolean(POPOUT_ENABLED_STORAGE_KEY, value)
+  const next = COMPOSER_POPOUT_ENABLED && value
+  $composerPoppedOut.set(next)
+  persistBoolean(POPOUT_ENABLED_STORAGE_KEY, next)
 }
 
 /** Move the box (state only by default). Used per-frame during a drag — no IO

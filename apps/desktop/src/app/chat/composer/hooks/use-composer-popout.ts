@@ -5,6 +5,7 @@ import { triggerHaptic } from '@/lib/haptics'
 import {
   $composerPopoutPosition,
   $composerPoppedOut,
+  COMPOSER_POPOUT_ENABLED,
   readPopoutBounds,
   setComposerPopoutPosition,
   setComposerPoppedOut
@@ -30,7 +31,7 @@ export function useComposerPopout({ composerRef }: UseComposerPopoutOptions) {
   // The floating composer is a window-level singleton: only the main scope
   // (not tiles) in a primary window may pop out.
   const scope = useComposerScope()
-  const popoutAllowed = !isSecondaryWindow() && scope.popoutAllowed
+  const popoutAllowed = COMPOSER_POPOUT_ENABLED && !isSecondaryWindow() && scope.popoutAllowed
   const poppedOut = useStore($composerPoppedOut) && popoutAllowed
   const popoutPosition = useStore($composerPopoutPosition)
 
