@@ -4109,6 +4109,7 @@ class SessionDB:
         id_query: str = None,
         search_query: str = None,
         compact_rows: bool = False,
+        include_named_empty: bool = False,
     ) -> List[Dict[str, Any]]:
         """List sessions with preview (first user message) and last active timestamp.
 
@@ -4182,7 +4183,12 @@ class SessionDB:
             where_clauses.append(clause)
             params.extend(clause_params)
         if min_message_count > 0:
-            where_clauses.append("s.message_count >= ?")
+            if include_named_empty:
+                where_clauses.append(
+                    "(s.message_count >= ? OR TRIM(COALESCE(s.title, '')) != '')"
+                )
+            else:
+                where_clauses.append("s.message_count >= ?")
             params.append(min_message_count)
         if archived_only:
             where_clauses.append("s.archived = 1")
@@ -6274,6 +6280,7 @@ class SessionDB:
         archived_only: bool = False,
         exclude_children: bool = False,
         exclude_sources: List[str] = None,
+        include_named_empty: bool = False,
     ) -> int:
         """Count sessions, optionally filtered by source.
 
@@ -6310,7 +6317,12 @@ class SessionDB:
             where_clauses.append(clause)
             params.extend(clause_params)
         if min_message_count > 0:
-            where_clauses.append("s.message_count >= ?")
+            if include_named_empty:
+                where_clauses.append(
+                    "(s.message_count >= ? OR TRIM(COALESCE(s.title, '')) != '')"
+                )
+            else:
+                where_clauses.append("s.message_count >= ?")
             params.append(min_message_count)
         if archived_only:
             where_clauses.append("s.archived = 1")

@@ -4225,6 +4225,7 @@ def get_sessions(
     cwd_prefix: str = None,
     full: bool = False,
     profile: Optional[str] = None,
+    include_named_empty: bool = False,
 ):
     """List sessions.
 
@@ -4279,6 +4280,7 @@ def get_sessions(
                 # rows, skip the system_prompt blob inside SQLite too (pairs
                 # with the API-level _strip_session_list_rows below).
                 compact_rows=not full,
+                include_named_empty=include_named_empty,
             )
             total = db.session_count(
                 source=source or None,
@@ -4288,6 +4290,7 @@ def get_sessions(
                 include_archived=include_archived,
                 archived_only=archived_only,
                 exclude_children=True,
+                include_named_empty=include_named_empty,
             )
             now = time.time()
             from hermes_state import session_live_status_is_working
@@ -4331,6 +4334,7 @@ def get_profiles_sessions(
     source: str = None,
     exclude_sources: str = None,
     full: bool = False,
+    include_named_empty: bool = False,
 ):
     """Unified, read-only session list aggregated across ALL profiles.
 
@@ -4407,6 +4411,7 @@ def get_profiles_sessions(
                 order_by_last_active=order == "recent",
                 # Same SQL-level blob skip as /api/sessions (see above).
                 compact_rows=not full,
+                include_named_empty=include_named_empty,
             )
             profile_total = db.session_count(
                 source=source_filter,
@@ -4415,6 +4420,7 @@ def get_profiles_sessions(
                 include_archived=include_archived,
                 archived_only=archived_only,
                 exclude_children=True,
+                include_named_empty=include_named_empty,
             )
             total += profile_total
             profile_totals[name] = profile_total
@@ -4473,8 +4479,8 @@ def get_profiles_sessions_sidebar(
     The caller passes the source taxonomy (``recents_exclude`` /
     ``messaging_exclude`` CSV, ``source=cron`` is implicit) so this stays
     taxonomy-agnostic like the per-slice endpoint. All three slices use
-    ``min_messages=1`` / ``archived=exclude`` / recency order, matching the
-    desktop's per-slice calls.
+    ``min_messages=1`` / ``archived=exclude`` / recency order. Recents also
+    retain named empty sessions so a hidden draft cannot reserve a title.
     """
     from hermes_state import SessionDB
     from hermes_cli import profiles as profiles_mod
@@ -4517,7 +4523,7 @@ def get_profiles_sessions_sidebar(
             s["archived"] = bool(s.get("archived"))
         return rows
 
-    def _slice(db, *, source=None, exclude=None, cap):
+    def _slice(db, *, source=None, exclude=None, cap, include_named_empty=False):
         return db.list_sessions_rich(
             source=source,
             exclude_sources=exclude or None,
@@ -4528,6 +4534,7 @@ def get_profiles_sessions_sidebar(
             archived_only=False,
             order_by_last_active=True,
             compact_rows=True,
+            include_named_empty=include_named_empty,
         )
 
     for name, home in targets:
@@ -4542,7 +4549,15 @@ def get_profiles_sessions_sidebar(
         try:
             if recents_scope == "all" or name == recents_scope:
                 recents_rows.extend(
-                    _tag(_slice(db, exclude=recents_exclude_list, cap=recents_cap), name)
+                    _tag(
+                        _slice(
+                            db,
+                            exclude=recents_exclude_list,
+                            cap=recents_cap,
+                            include_named_empty=True,
+                        ),
+                        name,
+                    )
                 )
                 rtotal = db.session_count(
                     exclude_sources=recents_exclude_list or None,
@@ -4550,6 +4565,7 @@ def get_profiles_sessions_sidebar(
                     include_archived=False,
                     archived_only=False,
                     exclude_children=True,
+                    include_named_empty=True,
                 )
                 recents_total += rtotal
                 recents_profile_totals[name] = rtotal

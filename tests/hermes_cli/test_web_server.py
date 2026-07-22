@@ -1839,6 +1839,9 @@ class TestWebServerEndpoints:
             ):
                 db.create_session(session_id=sid, source=src)
                 db.append_message(session_id=sid, role="user", content="hi")
+            db.create_session(session_id="sb-named-empty", source="desktop")
+            db.set_session_title("sb-named-empty", "Named empty draft")
+            db.create_session(session_id="sb-untitled-empty", source="desktop")
         finally:
             db.close()
 
@@ -1857,6 +1860,8 @@ class TestWebServerEndpoints:
 
         # Each session lands only in its own slice.
         assert "sb-desktop" in recents_ids
+        assert "sb-named-empty" in recents_ids
+        assert "sb-untitled-empty" not in recents_ids
         assert "sb-desktop" not in cron_ids and "sb-desktop" not in messaging_ids
         assert "sb-cron" in cron_ids
         assert "sb-cron" not in recents_ids and "sb-cron" not in messaging_ids
