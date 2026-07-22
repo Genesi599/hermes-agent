@@ -18,10 +18,7 @@ import type { SessionInfo } from '@/types/hermes'
 import {
   appendLiveSessionProjection,
   applyRuntimeInfo,
-<<<<<<< HEAD
   applyStoredSessionPreviewRuntimeInfo,
-=======
->>>>>>> cdb49aeba9 (fix: 隔离运行中父会话的分支上下文)
   branchMessagesAtStableBoundary,
   branchMessagesThroughPoint,
   chatMessageArraysEquivalent,

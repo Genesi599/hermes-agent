@@ -12426,6 +12426,18 @@ def test_branch_seed_count_falls_back_to_matching_selected_parent_message():
     assert server._branch_seed_count({}, child, parent) == 1
 
 
+def test_branch_boundary_message_is_transient_and_mentions_seed_count():
+    boundary = server._branch_boundary_message(
+        {"parent_session_id": "parent", "branch_seed_message_count": 3}
+    )
+
+    assert boundary is not None
+    assert "inherited context from a parent session" in boundary
+    assert "Do not resume or continue that request automatically" in boundary
+    assert "3 inherited messages" in boundary
+    assert server._branch_boundary_message({"parent_session_id": None}) is None
+
+
 def test_session_merge_branch_real_db_moves_summary_and_removes_child(monkeypatch, tmp_path):
     from hermes_state import SessionDB
 
