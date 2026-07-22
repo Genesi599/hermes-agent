@@ -1786,6 +1786,9 @@ export const ja = defineLocale({
 
       sessionActions: 'セッションアクション',
       sessionRunning: 'セッション実行中',
+      branchMergeWaiting: '親セッション待ち',
+      branchMergeWaitingDescription: 'レビューは完了しました。親セッションの終了後にマージします。',
+      unreadCompletion: '完了、未読',
       needsInput: '入力が必要です',
       waitingForAnswer: '回答を待っています',
       finishedUnread: '完了 — 未読',

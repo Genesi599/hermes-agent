@@ -1728,6 +1728,9 @@ export const zhHant = defineLocale({
 
       sessionActions: '工作階段動作',
       sessionRunning: '工作階段執行中',
+      branchMergeWaiting: '等待父對話',
+      branchMergeWaitingDescription: '複盤已完成，正在等待父對話結束後合併。',
+      unreadCompletion: '已完成，未讀',
       needsInput: '需要您的輸入',
       waitingForAnswer: '等待您的回答',
       finishedUnread: '已完成 — 未讀',

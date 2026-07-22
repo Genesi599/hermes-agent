@@ -1414,6 +1414,14 @@ export function useSessionActions({
         $pinnedSessionIds.set(
           $pinnedSessionIds.get().filter(id => id !== storedSessionId && id !== sessionPinId(child))
         )
+      } else if (result.queued) {
+        setSessions(prev =>
+          prev.map(session =>
+            sessionMatchesStoredId(session, storedSessionId)
+              ? { ...session, branch_merge_status: 'waiting_for_parent' }
+              : session
+          )
+        )
       }
       clearQueuedPrompts(storedSessionId)
       broadcastSessionsChanged()
@@ -1459,8 +1467,7 @@ export function useSessionActions({
         if (!runtimeSessionId) {
           navigate(sessionRoute(storedSessionId))
           await resumeSession(storedSessionId, true)
-          runtimeSessionId =
-            selectedStoredSessionIdRef.current === storedSessionId ? activeSessionIdRef.current : null
+          runtimeSessionId = selectedStoredSessionIdRef.current === storedSessionId ? activeSessionIdRef.current : null
         } else {
           await ensureGatewayProfile(removed?.profile)
         }
