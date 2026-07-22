@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createContext, useContext, useMemo, useState } from 'react'
 
 import { useSessionView } from '@/app/chat/session-view'
+import type { ModelApplyScope } from '@/components/model-picker'
 import { Codicon } from '@/components/ui/codicon'
 import {
   DropdownMenuGroup,
@@ -15,6 +16,7 @@ import {
   DropdownMenuSub,
   DropdownMenuSubTrigger
 } from '@/components/ui/dropdown-menu'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { HermesGateway } from '@/hermes'
 import { useI18n } from '@/i18n'
@@ -51,6 +53,7 @@ export const ModelMenuCloseContext = createContext<() => void>(() => {})
 export interface ModelSelection {
   model: string
   provider: string
+  scope?: 'all' | 'current'
   /** Runtime id of the surface that opened the menu. When set, the switch
    *  targets that session (a tile) instead of the primary `$activeSessionId`. */
   sessionId?: null | string
@@ -70,8 +73,10 @@ interface ProviderGroup {
 export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: ModelMenuPanelProps) {
   const { t } = useI18n()
   const copy = t.shell.modelMenu
+  const pickerCopy = t.modelPicker
   const closeMenu = useContext(ModelMenuCloseContext)
   const [search, setSearch] = useState('')
+  const [applyScope, setApplyScope] = useState<ModelApplyScope>('current')
   const [refreshing, setRefreshing] = useState(false)
   const queryClient = useQueryClient()
   // Bind to THIS surface's SessionView (primary or tile) so each pane's menu
@@ -134,7 +139,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
   // Always stamp sessionId from this surface so a tile switch never hits the
   // primary (busy) session by accident.
   const switchTo = (model: string, provider: string) =>
-    onSelectModel({ model, provider, sessionId: activeSessionId || null })
+    onSelectModel({ model, provider, scope: applyScope, sessionId: activeSessionId || null })
 
   // Explicit "Refresh Models": re-fetch the catalog with refresh:true so the
   // backend busts its 1h provider-model disk cache and re-pulls each provider's
@@ -217,6 +222,21 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
   return (
     <>
       <DropdownMenuSearch aria-label={copy.search} onValueChange={setSearch} placeholder={copy.search} value={search} />
+
+      <div className="space-y-1.5 px-2 py-2">
+        <SegmentedControl
+          className="w-full"
+          onChange={setApplyScope}
+          options={[
+            { id: 'current', label: pickerCopy.applyCurrent },
+            { id: 'all', label: pickerCopy.applyAll }
+          ]}
+          value={applyScope}
+        />
+        <p className="text-[0.65rem] leading-relaxed text-(--ui-text-tertiary)">
+          {applyScope === 'all' ? pickerCopy.applyAllDescription : pickerCopy.applyCurrentDescription}
+        </p>
+      </div>
 
       <DropdownMenuSeparator className="mx-0" />
 

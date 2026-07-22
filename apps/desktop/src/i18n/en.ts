@@ -2101,7 +2101,11 @@ export const en: Translations = {
     proNeedsSubscription: 'Pro models need a paid Nous subscription.',
     free: 'Free',
     freeTier: 'Free tier',
-    priceTitle: 'Input / Output price per million tokens'
+    priceTitle: 'Input / Output price per million tokens',
+    applyCurrent: 'Current conversation',
+    applyCurrentDescription: 'Switch only the conversation you are viewing.',
+    applyAll: 'All conversations',
+    applyAllDescription: 'Switch every conversation in this profile and use this model for new conversations.'
   },
 
   modelVisibility: {
@@ -2616,6 +2620,8 @@ export const en: Translations = {
     cwdStagedTitle: 'Working directory staged',
     cwdStagedMessage: 'Restart the desktop backend to apply cwd changes to this active session.',
     modelSwitchFailed: 'Model switch failed',
+    modelSwitchAllResult: (switched, queued, failed) =>
+      `All conversations updated: ${switched} switched, ${queued} queued, ${failed} failed.`,
     sessionExported: 'Session exported',
     sessionExportFailed: 'Could not export session',
     imageSaved: 'Image saved',

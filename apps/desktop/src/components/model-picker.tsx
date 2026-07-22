@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { useI18n } from '@/i18n'
 import { requestModelOptions } from '@/lib/model-options'
@@ -15,7 +15,16 @@ import { InlineNotice } from './notifications'
 import { Button } from './ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
+import { SegmentedControl } from './ui/segmented-control'
 import { Skeleton } from './ui/skeleton'
+
+export type ModelApplyScope = 'current' | 'all'
+
+export interface ModelPickerSelection {
+  provider: string
+  model: string
+  scope: ModelApplyScope
+}
 
 interface ModelPickerDialogProps {
   open: boolean
@@ -24,7 +33,8 @@ interface ModelPickerDialogProps {
   sessionId?: string | null
   currentModel: string
   currentProvider: string
-  onSelect: (selection: { provider: string; model: string }) => void
+  onSelect: (selection: ModelPickerSelection) => void
+  allowApplyAll?: boolean
   /**
    * Optional class to apply to DialogContent. Use to override z-index when
    * stacking the picker on top of another fixed overlay (e.g. the desktop
@@ -42,6 +52,7 @@ export function ModelPickerDialog({
   currentModel,
   currentProvider,
   onSelect,
+  allowApplyAll = false,
   contentClassName
 }: ModelPickerDialogProps) {
   const { t } = useI18n()
@@ -52,6 +63,14 @@ export function ModelPickerDialog({
   // it and do a plain substring filter that preserves array order — matching
   // the `hermes model` CLI picker, which shows the curated list verbatim.
   const [search, setSearch] = useState('')
+  const [applyScope, setApplyScope] = useState<ModelApplyScope>('current')
+
+  useEffect(() => {
+    if (!open) {
+      setApplyScope('current')
+      setSearch('')
+    }
+  }, [open])
 
   const modelOptions = useQuery({
     queryKey: ['model-options', sessionId || 'global'],
@@ -76,7 +95,7 @@ export function ModelPickerDialog({
     : null
 
   const selectModel = (provider: ModelOptionProvider, model: string) => {
-    onSelect({ provider: provider.slug, model })
+    onSelect({ provider: provider.slug, model, scope: applyScope })
     onOpenChange(false)
   }
 
@@ -98,6 +117,22 @@ export function ModelPickerDialog({
             {copy.current} {optionsModel || currentModel || copy.unknown}
             {optionsProvider || currentProvider ? ` · ${optionsProvider || currentProvider}` : ''}
           </DialogDescription>
+          {allowApplyAll && (
+            <div className="space-y-1.5 pt-1">
+              <SegmentedControl
+                className="w-full"
+                onChange={setApplyScope}
+                options={[
+                  { id: 'current', label: copy.applyCurrent },
+                  { id: 'all', label: copy.applyAll }
+                ]}
+                value={applyScope}
+              />
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {applyScope === 'all' ? copy.applyAllDescription : copy.applyCurrentDescription}
+              </p>
+            </div>
+          )}
         </DialogHeader>
 
         <Command className="rounded-none bg-card" shouldFilter={false}>

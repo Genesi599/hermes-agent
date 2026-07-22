@@ -2270,7 +2270,11 @@ export const zh: Translations = {
     proNeedsSubscription: 'Pro 模型需要付费 Nous 订阅。',
     free: '免费',
     freeTier: '免费层',
-    priceTitle: '每百万 token 的输入/输出价格'
+    priceTitle: '每百万 token 的输入/输出价格',
+    applyCurrent: '当前对话',
+    applyCurrentDescription: '只切换当前正在查看的对话。',
+    applyAll: '全部对话',
+    applyAllDescription: '切换当前配置文件中的全部对话，并设为新对话的默认模型。'
   },
 
   modelVisibility: {
@@ -2765,6 +2769,8 @@ export const zh: Translations = {
     cwdStagedTitle: '工作目录已暂存',
     cwdStagedMessage: '重启桌面后端后，工作目录更改才会应用到当前活跃会话。',
     modelSwitchFailed: '模型切换失败',
+    modelSwitchAllResult: (switched, queued, failed) =>
+      `全部对话已更新：${switched} 个已切换，${queued} 个已排队，${failed} 个失败。`,
     sessionExported: '会话已导出',
     sessionExportFailed: '无法导出会话',
     imageSaved: '图片已保存',

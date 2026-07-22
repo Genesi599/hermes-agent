@@ -2026,7 +2026,11 @@ export const ja = defineLocale({
     proNeedsSubscription: 'Pro モデルには有料の Nous サブスクリプションが必要です。',
     free: '無料',
     freeTier: '無料プラン',
-    priceTitle: '100 万トークンあたりの入力/出力価格'
+    priceTitle: '100 万トークンあたりの入力/出力価格',
+    applyCurrent: '現在の会話',
+    applyCurrentDescription: '表示中の会話だけを切り替えます。',
+    applyAll: 'すべての会話',
+    applyAllDescription: 'このプロファイルの全会話を切り替え、新しい会話の既定モデルにも設定します。'
   },
 
   modelVisibility: {
@@ -2553,6 +2557,8 @@ export const ja = defineLocale({
     cwdStagedMessage:
       'このアクティブなセッションへの cwd の変更を適用するにはデスクトップバックエンドを再起動してください。',
     modelSwitchFailed: 'モデルの切り替えに失敗しました',
+    modelSwitchAllResult: (switched, queued, failed) =>
+      `すべての会話を更新しました: ${switched} 件切り替え、${queued} 件待機、${failed} 件失敗。`,
     sessionExported: 'セッションをエクスポートしました',
     sessionExportFailed: 'セッションをエクスポートできませんでした',
     imageSaved: '画像を保存しました',

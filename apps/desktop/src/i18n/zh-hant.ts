@@ -1959,7 +1959,11 @@ export const zhHant = defineLocale({
     proNeedsSubscription: 'Pro 模型需要付費 Nous 訂閱。',
     free: '免費',
     freeTier: '免費層',
-    priceTitle: '每百萬 Token 的輸入/輸出價格'
+    priceTitle: '每百萬 Token 的輸入/輸出價格',
+    applyCurrent: '目前對話',
+    applyCurrentDescription: '只切換目前正在查看的對話。',
+    applyAll: '全部對話',
+    applyAllDescription: '切換目前設定檔中的全部對話，並設為新對話的預設模型。'
   },
 
   modelVisibility: {
@@ -2453,6 +2457,8 @@ export const zhHant = defineLocale({
     cwdStagedTitle: '工作目錄已暫存',
     cwdStagedMessage: '重新啟動桌面後端後，工作目錄變更才會套用至此作用中工作階段。',
     modelSwitchFailed: '模型切換失敗',
+    modelSwitchAllResult: (switched, queued, failed) =>
+      `全部對話已更新：${switched} 個已切換，${queued} 個已排隊，${failed} 個失敗。`,
     sessionExported: '工作階段已匯出',
     sessionExportFailed: '無法匯出工作階段',
     imageSaved: '圖片已儲存',
