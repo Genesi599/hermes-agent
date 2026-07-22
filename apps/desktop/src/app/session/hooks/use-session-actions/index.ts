@@ -198,8 +198,9 @@ function normalizeNewChatWorkspaceTarget(target: NewChatWorkspaceTarget): NewCha
 }
 
 interface MergeBranchResponse {
-  deleted: string
+  deleted?: string
   parent_session_id: string
+  queued?: boolean
   summary: string
 }
 
@@ -1391,12 +1392,22 @@ export function useSessionActions({
           session_id: storedSessionId
         })
 
-        setSessions(prev => prev.filter(session => !sessionMatchesStoredId(session, storedSessionId)))
-        tombstoneSessions([storedSessionId, child.id, child._lineage_root_id])
-        setSessionsTotal(prev => Math.max(0, prev - 1))
-        $pinnedSessionIds.set(
-          $pinnedSessionIds.get().filter(id => id !== storedSessionId && id !== sessionPinId(child))
-        )
+        if (result.deleted) {
+          setSessions(prev => prev.filter(session => !sessionMatchesStoredId(session, storedSessionId)))
+          tombstoneSessions([storedSessionId, child.id, child._lineage_root_id])
+          setSessionsTotal(prev => Math.max(0, prev - 1))
+          $pinnedSessionIds.set(
+            $pinnedSessionIds.get().filter(id => id !== storedSessionId && id !== sessionPinId(child))
+          )
+        } else if (result.queued) {
+          setSessions(prev =>
+            prev.map(session =>
+              sessionMatchesStoredId(session, storedSessionId)
+                ? { ...session, branch_merge_status: 'waiting_for_parent' }
+                : session
+            )
+          )
+        }
         clearQueuedPrompts(storedSessionId)
         broadcastSessionsChanged()
 

@@ -180,8 +180,10 @@ function SidebarSessionRowImpl({
   // whenever any session's status changes, but a row only repaints on its own.
   const dotState = useStoreSelector($sessionDotStateById, states => states[session.id] ?? 'idle')
   const liveTurn = hasLiveTurn(dotState)
+  // True when a clarify prompt in this session is waiting on the user.
+  const needsInput = useStore($attentionSessionIds).includes(session.id)
   const isUnread = useStore($unreadSessionIds).includes(session.id)
-  const isMergeWaiting = session.branch_merge_status === 'waiting_for_parent' 
+  const isMergeWaiting = session.branch_merge_status === 'waiting_for_parent'
 
   // An archived session has no live status to paint, so the archive glyph takes
   // the lead slot the dot would occupy instead of adding a column of its own.
@@ -370,6 +372,16 @@ function SidebarSessionRowImpl({
             {title}
           </SidebarRowLabel>
           {showProfile && <ProfileTag profile={session.profile} />}
+          {isMergeWaiting ? (
+            <span
+              className="flex shrink-0 items-center gap-1 text-[0.625rem] font-medium leading-5 text-amber-400"
+              data-branch-merge-status="waiting_for_parent"
+              title={r.branchMergeWaitingDescription}
+            >
+              <Codicon aria-hidden="true" name="clock" size="0.6875rem" />
+              <span>{r.branchMergeWaiting}</span>
+            </span>
+          ) : null}
         </SidebarRowBody>
       </SidebarRowShell>
     </SessionContextMenu>

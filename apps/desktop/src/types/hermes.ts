@@ -501,6 +501,8 @@ export interface SessionInfo {
    *  elsewhere. Undefined against a backend predating the flag; treat that as
    *  "no opinion" and leave the local pin set alone. */
   pinned?: boolean
+  /** A reviewed branch summary is durably queued until its parent becomes idle. */
+  branch_merge_status?: 'waiting_for_parent'
   preview: null | string
   source: null | string
   /** Cross-client transient turn state, refreshed by the gateway. */
