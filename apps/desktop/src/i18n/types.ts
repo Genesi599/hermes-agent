@@ -1632,6 +1632,9 @@ export interface Translations {
       copyIdFailed: string
       sessionActions: string
       sessionRunning: string
+      branchMergeWaiting: string
+      branchMergeWaitingDescription: string
+      unreadCompletion: string
       needsInput: string
       waitingForAnswer: string
       finishedUnread: string
