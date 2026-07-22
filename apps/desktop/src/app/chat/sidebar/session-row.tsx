@@ -333,7 +333,12 @@ function SidebarSessionRowImpl({
           }}
         >
           {reorderable ? (
-            <SidebarRowGrab ariaLabel={handleLabel} dragging={dragging} dragHandleProps={dragHandleProps}>
+            <SidebarRowGrab
+              ariaLabel={handleLabel}
+              dragging={dragging}
+              dragHandleProps={dragHandleProps}
+              leadClassName={needsInput || branchStem ? 'overflow-visible' : undefined}
+            >
               {lead ?? (
                 <SessionStatusDot
                   branchStem={branchStem}
