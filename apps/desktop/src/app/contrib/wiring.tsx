@@ -26,6 +26,7 @@ import { RemoteDisplayBanner } from '@/components/remote-display-banner'
 import { emitGatewayEvent } from '@/contrib/events'
 import { getLatestSessionMessages, triggerCronJob } from '@/hermes'
 import { type ChatMessage, chatMessageText, preserveLocalAssistantErrors, toChatMessages } from '@/lib/chat-messages'
+import { createClientSessionState } from '@/lib/chat-runtime'
 import { sessionMessagesSignature } from '@/lib/session-signatures'
 import { latestSessionTodos } from '@/lib/todos'
 import { activateWakeIndicator } from '@/lib/wake-indicator'
@@ -63,6 +64,7 @@ import {
   setBusy,
   setMessages
 } from '@/store/session'
+import { $sessionStates, dropSessionState, publishSessionState } from '@/store/session-states'
 import { clearSessionTodos, setSessionTodos, todosForHydration } from '@/store/todos'
 import { armWakeWord, stopClientCapture } from '@/store/wake-word'
 import { isAuxiliaryWindow, isHudWindow } from '@/store/windows'
@@ -109,6 +111,7 @@ import { useSessionListActions } from '../session/hooks/use-session-list-actions
 import { useSessionStateCache } from '../session/hooks/use-session-state-cache'
 import { startWorkspaceSession } from '../session/workspace-session-target'
 import { useOverlayRouting } from '../shell/hooks/use-overlay-routing'
+import { useTaskbarUnreadBadge } from '../shell/hooks/use-taskbar-unread-badge'
 import { useWindowControlsOverlayWidth } from '../shell/hooks/use-window-controls-overlay-width'
 import {
   titlebarControlsPosition,
@@ -150,6 +153,8 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   const location = useLocation()
   const navigate = useNavigate()
 
+  useTaskbarUnreadBadge()
+
   const busyRef = useRef(false)
   const creatingSessionRef = useRef(false)
   // Billing recovery routes to Settings → Billing from surfaces without router
@@ -187,6 +192,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   const activeGatewayProfile = useStore($activeGatewayProfile)
   const profileScope = useStore($profileScope)
   const boot = useStore($desktopBoot)
+  const storedSessions = useStore($sessions)
 
   const routedSessionId = routeSessionId(location.pathname)
   const routedSessionIdRef = useRef(routedSessionId)
@@ -253,6 +259,84 @@ export function ContribWiring({ children }: { children: ReactNode }) {
 
   const { loadMoreMessagingForPlatform, loadMoreSessions, refreshCronJobs, refreshMessagingSessions, refreshSessions } =
     useSessionListActions({ profileScope })
+  const durableStatusRef = useRef(new Map<string, 'idle' | 'working'>())
+  const durableOwnerRef = useRef(new Map<string, string>())
+
+  useEffect(() => {
+    const seen = new Set<string>()
+
+    for (const session of storedSessions) {
+      const nextStatus = session.status
+      if (nextStatus !== 'idle' && nextStatus !== 'working') continue
+
+      const key = `${session.profile ?? 'default'}\0${session.id}`
+      seen.add(key)
+      const storedSessionId = [session.id, session._lineage_root_id].find(
+        id => id && runtimeIdByStoredSessionIdRef.current.has(id)
+      ) ?? session.id
+      const localRuntimeId = runtimeIdByStoredSessionIdRef.current.get(storedSessionId)
+      const syntheticRuntimeId = `durable:${key}`
+      const ownerRuntimeId = localRuntimeId ?? syntheticRuntimeId
+      const previousOwner = durableOwnerRef.current.get(key)
+      const previousStatus = durableStatusRef.current.get(key)
+      const ownerChanged = previousOwner !== ownerRuntimeId
+
+      if (previousOwner && ownerChanged) dropSessionState(previousOwner)
+      durableStatusRef.current.set(key, nextStatus)
+
+      if (nextStatus === 'working' && (previousStatus !== 'working' || ownerChanged)) {
+        const updatedAt = Number(session.live_status_updated_at)
+        const startedAt = Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt * 1000 : Date.now()
+
+        if (localRuntimeId) {
+          updateSessionState(
+            localRuntimeId,
+            state => ({ ...state, awaitingResponse: true, busy: true, turnStartedAt: state.turnStartedAt ?? startedAt }),
+            storedSessionId
+          )
+        } else {
+          const current = $sessionStates.get()[syntheticRuntimeId] ?? createClientSessionState(storedSessionId)
+          publishSessionState(syntheticRuntimeId, {
+            ...current,
+            awaitingResponse: true,
+            busy: true,
+            storedSessionId,
+            turnStartedAt: current.turnStartedAt ?? startedAt
+          })
+        }
+        durableOwnerRef.current.set(key, ownerRuntimeId)
+      } else if (nextStatus === 'idle' && previousStatus === 'working') {
+        if (localRuntimeId) {
+          updateSessionState(
+            localRuntimeId,
+            state => ({ ...state, awaitingResponse: false, busy: false, turnStartedAt: null }),
+            storedSessionId
+          )
+        } else {
+          dropSessionState(syntheticRuntimeId)
+        }
+        durableOwnerRef.current.delete(key)
+      }
+    }
+
+    for (const [key, ownerRuntimeId] of durableOwnerRef.current) {
+      if (!seen.has(key)) {
+        dropSessionState(ownerRuntimeId)
+        durableOwnerRef.current.delete(key)
+        durableStatusRef.current.delete(key)
+      }
+    }
+  }, [runtimeIdByStoredSessionIdRef, storedSessions, updateSessionState])
+
+  const {
+    loadMoreMessagingForPlatform,
+    loadMoreSessions,
+    loadMoreSessionsForProfile,
+    refreshCronJobs,
+    refreshMessagingSessions,
+    refreshSessions
+  } = useSessionListActions({ profileScope })
+>>>>>>> 9cedbcf6d3 (feat: 校准任务栏未读角标)
 
   const updateActiveSessionRuntimeInfo = useCallback(
     (info: { branch?: string; cwd?: string }) => {

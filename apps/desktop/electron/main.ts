@@ -183,6 +183,7 @@ import {
   SESSION_WINDOW_MIN_WIDTH
 } from './session-windows'
 import { ensureSpawnHelperExecutable } from './spawn-helper-perms'
+import { setWindowsTaskbarBadge } from './taskbar-badge'
 import { createBootstrapCoordinator, sshConfigFingerprint } from './ssh-bootstrap-coordinator'
 import { collectSshConfigHosts, parseSshGOutput } from './ssh-config'
 import {
@@ -10798,6 +10799,14 @@ const claimedAmbientCue = createEventDeduper()
 // A window asks "do I own this ambient cue (turn-end sound / spoken reply)?".
 // The first caller within the window gets true; peers get false and stay quiet.
 ipcMain.handle('hermes:ambient:claim', (_event, key) => !claimedAmbientCue(String(key ?? '')))
+
+ipcMain.on('hermes:taskbar-badge', (event, count) => {
+  if (!IS_WINDOWS || !mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+    return
+  }
+
+  setWindowsTaskbarBadge(mainWindow, nativeImage, count)
+})
 
 ipcMain.handle('hermes:notify', (_event, payload) => {
   if (!Notification.isSupported()) {

@@ -8,10 +8,8 @@ import type { ChatMessage } from '@/lib/chat-messages'
 import {
   persistBoolean,
   persistString,
-  persistStringArray,
   storedBoolean,
-  storedString,
-  storedStringArray
+  storedString
 } from '@/lib/storage'
 import type { ExperienceReviewInfo, SessionInfo, UsageStats } from '@/types/hermes'
 
@@ -670,6 +668,7 @@ export const markAllSessionsRead = () => {
   }
 }
 
+
 export function markSessionUnread(sessionId: string | null | undefined) {
   const id = sessionId?.trim()
 
@@ -703,11 +702,7 @@ export function clearUnreadSessionIds(sessionIds: Array<string | null | undefine
 export const setSelectedStoredSessionId = (next: Updater<string | null>) => {
   updateAtom($selectedStoredSessionId, next)
   // Opening a session clears its unread state — the user is now looking at it.
-  const id = $selectedStoredSessionId.get()
-
-  if (id && $unreadFinishedSessionIds.get().includes(id)) {
-    $unreadFinishedSessionIds.set($unreadFinishedSessionIds.get().filter(x => x !== id))
-  }
+  clearSessionUnread($selectedStoredSessionId.get())
 }
 
 export const setMessages = (next: Updater<ChatMessage[]>) => updateAtom($messages, next)
