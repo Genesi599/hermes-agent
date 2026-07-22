@@ -155,7 +155,6 @@ function ChatHeader({
             <TitleMenuTrigger>{title}</TitleMenuTrigger>
           </SessionActionsMenu>
         </div>
-        <ExperienceReviewStatus />
       </div>
     </header>
   )
@@ -434,6 +433,12 @@ export function ChatView({
           selectedSessionId={selectedSessionId}
         />
       )}
+      <div
+        className="flex h-8 shrink-0 items-center justify-end border-b border-(--ui-stroke-tertiary) bg-(--ui-chat-surface-background) px-3"
+        data-testid="experience-review-bar"
+      >
+        <ExperienceReviewStatus />
+      </div>
 
       {/* Mounted for the primary AND every tile, each scoped to its own session
           so a tiled/background session's blocking prompt surfaces instead of

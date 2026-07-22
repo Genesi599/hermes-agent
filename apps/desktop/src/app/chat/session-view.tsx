@@ -11,11 +11,16 @@ import {
   $currentModel,
   $currentProvider,
   $currentReasoningEffort,
+  $experienceReview,
   $lastVisibleMessageIsUser,
   $messages,
   $messagesEmpty,
+  $reviewActivity,
   $selectedStoredSessionId
 } from '@/store/session'
+import type { ExperienceReviewInfo } from '@/types/hermes'
+
+import type { ClientSessionState } from '../types'
 
 /**
  * SESSION VIEW — the store surface a ChatView renders from. The PRIMARY view
@@ -42,6 +47,8 @@ export interface SessionView {
   $provider: ReadableAtom<string>
   $fast: ReadableAtom<boolean>
   $reasoningEffort: ReadableAtom<string>
+  $experienceReview: ReadableAtom<ExperienceReviewInfo>
+  $reviewActivity: ReadableAtom<ClientSessionState['reviewActivity']>
 }
 
 export const PRIMARY_SESSION_VIEW: SessionView = {
@@ -49,6 +56,7 @@ export const PRIMARY_SESSION_VIEW: SessionView = {
   $awaitingResponse,
   $busy,
   $cwd: $currentCwd,
+  $experienceReview,
   $fast: $currentFastMode,
   $lastVisibleIsUser: $lastVisibleMessageIsUser,
   $messages,
@@ -56,6 +64,7 @@ export const PRIMARY_SESSION_VIEW: SessionView = {
   $model: $currentModel,
   $provider: $currentProvider,
   $reasoningEffort: $currentReasoningEffort,
+  $reviewActivity,
   $runtimeId: $activeSessionId,
   $storedId: $selectedStoredSessionId
 }

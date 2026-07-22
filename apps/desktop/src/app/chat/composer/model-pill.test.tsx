@@ -90,6 +90,7 @@ describe('ModelPill per-surface model label', () => {
       $awaitingResponse: atom(false),
       $busy: atom(false),
       $cwd: atom(''),
+      $experienceReview: atom({ batch: 0, pending: false, phase: 'counting' as const, threshold: 20, user_count: 0 }),
       $fast: atom(false),
       $lastVisibleIsUser: atom(false),
       $messages: atom([]),
@@ -97,6 +98,7 @@ describe('ModelPill per-surface model label', () => {
       $model: atom('tile/claude-sonnet'),
       $provider: atom('anthropic'),
       $reasoningEffort: atom('high'),
+      $reviewActivity: atom(null),
       $runtimeId: atom('tile-runtime'),
       $storedId: atom('stored-tile')
     }
