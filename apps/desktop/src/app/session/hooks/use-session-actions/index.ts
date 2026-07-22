@@ -1495,8 +1495,7 @@ export function useSessionActions({
         if (!runtimeSessionId) {
           navigate(sessionRoute(storedSessionId))
           await resumeSession(storedSessionId, true)
-          runtimeSessionId =
-            selectedStoredSessionIdRef.current === storedSessionId ? activeSessionIdRef.current : null
+          runtimeSessionId = selectedStoredSessionIdRef.current === storedSessionId ? activeSessionIdRef.current : null
         } else {
           await ensureGatewayProfile(removed?.profile)
         }
