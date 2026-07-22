@@ -2,11 +2,18 @@ import type { ConnectionState } from '@hermes/shared'
 import { atom, computed } from 'nanostores'
 
 import { lastVisibleMessageIsUser } from '@/app/chat/thread-loading'
-import type { ContextSuggestion } from '@/app/types'
+import type { ClientSessionState, ContextSuggestion } from '@/app/types'
 import type { HermesConnection } from '@/global'
 import type { ChatMessage } from '@/lib/chat-messages'
-import { persistBoolean, persistString, storedBoolean, storedString } from '@/lib/storage'
-import type { SessionInfo, UsageStats } from '@/types/hermes'
+import {
+  persistBoolean,
+  persistString,
+  persistStringArray,
+  storedBoolean,
+  storedString,
+  storedStringArray
+} from '@/lib/storage'
+import type { ExperienceReviewInfo, SessionInfo, UsageStats } from '@/types/hermes'
 
 type Updater<T> = T | ((current: T) => T)
 export type ComposerModelSource = '' | 'default' | 'manual'
@@ -535,6 +542,14 @@ export interface ActiveSessionStoredIdRotation {
 // foreground route.
 export const $activeSessionStoredIdRotation = atom<ActiveSessionStoredIdRotation | null>(null)
 export const $messages = atom<ChatMessage[]>([])
+export const $experienceReview = atom<ExperienceReviewInfo>({
+  batch: 0,
+  pending: false,
+  phase: 'counting',
+  threshold: 20,
+  user_count: 0
+})
+export const $reviewActivity = atom<ClientSessionState['reviewActivity']>(null)
 
 // Streaming-stable derivations of $messages. During a token stream the array
 // is replaced ~30×/s; components that only care about coarse facts (is the
@@ -689,6 +704,9 @@ export const setSelectedStoredSessionId = (next: Updater<string | null>) => {
 }
 
 export const setMessages = (next: Updater<ChatMessage[]>) => updateAtom($messages, next)
+export const setExperienceReview = (next: Updater<ExperienceReviewInfo>) => updateAtom($experienceReview, next)
+export const setReviewActivity = (next: Updater<ClientSessionState['reviewActivity']>) =>
+  updateAtom($reviewActivity, next)
 export const setFreshDraftReady = (next: Updater<boolean>) => updateAtom($freshDraftReady, next)
 export const setResumeFailedSessionId = (next: Updater<string | null>) => updateAtom($resumeFailedSessionId, next)
 export const setResumeExhaustedSessionId = (next: Updater<string | null>) => updateAtom($resumeExhaustedSessionId, next)

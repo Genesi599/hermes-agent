@@ -57,6 +57,7 @@ import { requestComposerInsert } from './composer/focus'
 import { droppedFileInlineRefs } from './composer/inline-refs'
 import { useComposerScope } from './composer/scope'
 import type { ChatBarState } from './composer/types'
+import { ExperienceReviewStatus } from './experience-review-status'
 import { type DroppedFile, partitionDroppedFiles } from './hooks/use-composer-actions'
 import { type DragKind, useFileDropZone } from './hooks/use-file-drop-zone'
 import { ProfileTag } from './profile-tag'
@@ -143,24 +144,27 @@ function ChatHeader({
   return (
     <header className={cn(titlebarHeaderBaseClass, isRoutedSessionView && titlebarHeaderShadowClass)}>
       <div
-        className={cn(titlebarHeaderTitleClass, showProfileTag && 'flex items-center')}
+        className={cn(titlebarHeaderTitleClass, 'flex items-center gap-2')}
         style={{
           maxWidth:
             'calc(100vw - var(--titlebar-content-inset,0px) - var(--titlebar-tools-right) - var(--titlebar-tools-width) - 1.5rem)'
         }}
       >
         {showProfileTag && <ProfileTag className="pointer-events-auto mr-1.5" profile={activeStoredSession?.profile} />}
-        <SessionActionsMenu
-          align="start"
-          onDelete={selectedSessionId ? onDeleteSelectedSession : undefined}
-          onPin={selectedSessionId ? onToggleSelectedPin : undefined}
-          pinned={selectedIsPinned}
-          sessionId={selectedSessionId || activeSessionId || ''}
-          sideOffset={8}
-          title={title}
-        >
-          <TitleMenuTrigger>{title}</TitleMenuTrigger>
-        </SessionActionsMenu>
+        <div className="min-w-0">
+          <SessionActionsMenu
+            align="start"
+            onDelete={selectedSessionId ? onDeleteSelectedSession : undefined}
+            onPin={selectedSessionId ? onToggleSelectedPin : undefined}
+            pinned={selectedIsPinned}
+            sessionId={selectedSessionId || activeSessionId || ''}
+            sideOffset={8}
+            title={title}
+          >
+            <TitleMenuTrigger>{title}</TitleMenuTrigger>
+          </SessionActionsMenu>
+        </div>
+        <ExperienceReviewStatus />
       </div>
     </header>
   )
