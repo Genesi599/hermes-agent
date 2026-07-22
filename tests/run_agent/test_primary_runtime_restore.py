@@ -409,6 +409,19 @@ class TestTryRecoverPrimaryTransport:
 
         assert result is True
 
+    def test_recovers_on_builtin_timeout_error(self):
+        """The Codex no-byte watchdog raises Python's TimeoutError."""
+        agent = _make_agent(provider="custom")
+        error = TimeoutError("Codex stream produced no bytes within 120s")
+
+        with patch("run_agent.OpenAI", return_value=MagicMock()), \
+             patch("time.sleep"):
+            result = agent._try_recover_primary_transport(
+                error, retry_count=3, max_retries=3,
+            )
+
+        assert result is True
+
     def test_skipped_when_already_on_fallback(self):
         agent = _make_agent(provider="custom")
         agent._fallback_activated = True
