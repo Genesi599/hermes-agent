@@ -120,6 +120,22 @@ export function ModelPickerDialog({
             {copy.current} {optionsModel || currentModel || copy.unknown}
             {optionsProvider || currentProvider ? ` · ${optionsProvider || currentProvider}` : ''}
           </DialogDescription>
+          {allowApplyAll && (
+            <div className="space-y-1.5 pt-1">
+              <SegmentedControl
+                className="w-full"
+                onChange={setApplyScope}
+                options={[
+                  { id: 'current', label: copy.applyCurrent },
+                  { id: 'all', label: copy.applyAll }
+                ]}
+                value={applyScope}
+              />
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {applyScope === 'all' ? copy.applyAllDescription : copy.applyCurrentDescription}
+              </p>
+            </div>
+          )}
         </DialogHeader>
 
         {allowApplyAll ? (

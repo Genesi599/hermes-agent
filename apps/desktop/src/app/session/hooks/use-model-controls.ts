@@ -23,6 +23,15 @@ import {
 import { $sessionStates, sessionTileDelegate } from '@/store/session-states'
 import type { ModelOptionsResponse } from '@/types/hermes'
 
+interface AllSessionsModelResult {
+  total: number
+  switched: number
+  queued: number
+  failed: number
+  active_affected: boolean
+  active_queued: boolean
+  active_failed: boolean
+}
 interface ModelControlsOptions {
   queryClient: QueryClient
   requestGateway: <T = unknown>(method: string, params?: Record<string, unknown>) => Promise<T>
@@ -169,7 +178,8 @@ export function useModelControls({ queryClient, requestGateway }: ModelControlsO
   // session it's just stored (and shipped on the next session.create); with one
   // it's scoped to that session via config.set. It NEVER writes the profile
   // default — that lives in Settings → Model — so picking a model here can't
-  // silently mutate global config.
+  // silently mutate global config. The explicit "all conversations" scope is
+  // the only picker action that also updates that profile default.
   //
   // `selection.sessionId` targets a specific surface (tile). When omitted, the
   // primary `$activeSessionId` is used (overlay / legacy callers). A tile
@@ -223,6 +233,7 @@ export function useModelControls({ queryClient, requestGateway }: ModelControlsO
       const liveGatewayProfile = $activeGatewayProfile.get()
 
       if (touchesPrimary) {
+        // The primary globals are updated below only for the primary surface.
         setCurrentModel(selection.model)
         setCurrentProvider(selection.provider)
         markComposerSelectionManual()
