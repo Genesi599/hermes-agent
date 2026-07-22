@@ -32,6 +32,7 @@ import {
   $newChatWorkspaceTarget,
   $sessions,
   $yoloActive,
+  clearUnreadSessionIds,
   type NewChatWorkspaceTarget,
   resolveComposerSessionKey,
   sessionPinId,
@@ -1345,6 +1346,7 @@ export function useSessionActions({
         if (result.deleted) {
           setSessions(prev => prev.filter(session => !sessionMatchesStoredId(session, storedSessionId)))
           tombstoneSessions([storedSessionId, child.id, child._lineage_root_id])
+          clearUnreadSessionIds([storedSessionId, child.id, child._lineage_root_id])
           $pinnedSessionIds.set(
             $pinnedSessionIds.get().filter(id => id !== storedSessionId && id !== sessionPinId(child))
           )
@@ -1422,6 +1424,7 @@ export function useSessionActions({
         }
 
         await deleteSession(storedSessionId, removed?.profile)
+        clearUnreadSessionIds(removedIds)
         clearQueuedPrompts(storedSessionId)
 
         if (closingRuntimeId) {
@@ -1512,6 +1515,7 @@ export function useSessionActions({
 
       try {
         await setSessionArchived(storedSessionId, true, archived?.profile)
+        clearUnreadSessionIds(archivedIds)
         // An archived session is hidden from the sidebar; its tile must go too.
         const tiledRuntimeId = runtimeIdByStoredSessionIdRef.current.get(storedSessionId)
         closeSessionTile(storedSessionId)
