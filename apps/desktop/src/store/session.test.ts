@@ -11,6 +11,7 @@ import {
   $selectedStoredSessionId,
   $unreadFinishedSessionIds,
   applyConfiguredDefaultProjectDir,
+  clearUnreadSessionIds,
   mergeSessionPage,
   sessionPinId,
   setCurrentCwd,
@@ -70,6 +71,16 @@ describe('computed $attentionSessionIds', () => {
   it('ignores sessions without a storedSessionId', () => {
     publishSessionState('rt1', { ...createClientSessionState(null), needsInput: true })
     expect($attentionSessionIds.get()).toEqual([])
+  })
+})
+
+describe('session unread cleanup', () => {
+  it('clears every durable alias for a removed session', () => {
+    $unreadFinishedSessionIds.set(['tip', 'root', 'keep'])
+
+    clearUnreadSessionIds(['missing', 'tip', 'root'])
+
+    expect($unreadFinishedSessionIds.get()).toEqual(['keep'])
   })
 })
 

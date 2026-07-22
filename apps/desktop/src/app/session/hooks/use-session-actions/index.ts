@@ -24,6 +24,7 @@ import {
   $newChatWorkspaceTarget,
   $sessions,
   $yoloActive,
+  clearUnreadSessionIds,
   type NewChatWorkspaceTarget,
   sessionPinId,
   setActiveSessionId,
@@ -47,6 +48,7 @@ import {
   setTurnStartedAt,
   setYoloActive
 } from '@/store/session'
+import { isSessionFamilyPinned, pinSessionFamily } from '@/store/session-pins'
 import {
   closeSessionTile,
   dropSessionState,
@@ -55,7 +57,6 @@ import {
   publishSessionState,
   type TileDock
 } from '@/store/session-states'
-import { isSessionFamilyPinned, pinSessionFamily } from '@/store/session-pins'
 import { broadcastSessionsChanged } from '@/store/session-sync'
 import { isWatchWindow } from '@/store/windows'
 import type { SessionCreateResponse, SessionResumeResponse, UsageStats } from '@/types/hermes'
@@ -1201,6 +1202,7 @@ export function useSessionActions({
       if (result.deleted) {
         setSessions(prev => prev.filter(session => !sessionMatchesStoredId(session, storedSessionId)))
         tombstoneSessions([storedSessionId, child.id, child._lineage_root_id])
+        clearUnreadSessionIds([storedSessionId, child.id, child._lineage_root_id])
         setSessionsTotal(prev => Math.max(0, prev - 1))
         $pinnedSessionIds.set(
           $pinnedSessionIds.get().filter(id => id !== storedSessionId && id !== sessionPinId(child))
@@ -1265,6 +1267,7 @@ export function useSessionActions({
 
         setSessions(prev => prev.filter(session => !sessionMatchesStoredId(session, storedSessionId)))
         tombstoneSessions([storedSessionId, removed?.id, removed?._lineage_root_id])
+        clearUnreadSessionIds([storedSessionId, removed?.id, removed?._lineage_root_id])
         setSessionsTotal(prev => Math.max(0, prev - 1))
         $pinnedSessionIds.set(previousPinned.filter(id => id !== storedSessionId && id !== removedPinId))
         clearQueuedPrompts(storedSessionId)
@@ -1329,6 +1332,7 @@ export function useSessionActions({
         // that race after the mutation succeeds so right-click → Archive does
         // not appear to do nothing until the next full refresh.
         setSessions(prev => prev.filter(session => !sessionMatchesStoredId(session, storedSessionId)))
+        clearUnreadSessionIds([storedSessionId, archived?.id, archived?._lineage_root_id])
         $pinnedSessionIds.set($pinnedSessionIds.get().filter(id => id !== storedSessionId && id !== archivedPinId))
         // An archived session is hidden from the sidebar; its tile must go too.
         const tiledRuntimeId = runtimeIdByStoredSessionIdRef.current.get(storedSessionId)

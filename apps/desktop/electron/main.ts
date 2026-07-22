@@ -114,6 +114,7 @@ import {
   SESSION_WINDOW_MIN_WIDTH
 } from './session-windows'
 import { ensureSpawnHelperExecutable } from './spawn-helper-perms'
+import { setWindowsTaskbarBadge } from './taskbar-badge'
 import { nativeOverlayWidth as computeNativeOverlayWidth, macTitleBarOverlayHeight } from './titlebar-overlay-width'
 import { resolveBehindCount, shouldCountCommits } from './update-count'
 import { readLiveUpdateMarker, writeUpdateMarker } from './update-marker'
@@ -7809,6 +7810,13 @@ ipcMain.handle('hermes:window:openNewSession', async () => {
   createNewSessionWindow()
 
   return { ok: true }
+})
+ipcMain.on('hermes:taskbar-badge', (event, count) => {
+  if (!IS_WINDOWS || !mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+    return
+  }
+
+  setWindowsTaskbarBadge(mainWindow, nativeImage, count)
 })
 
 // --- Text size (zoom) -------------------------------------------------------
