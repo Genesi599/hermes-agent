@@ -4,6 +4,7 @@ import type * as React from 'react'
 import { ProfileTag } from '@/app/chat/profile-tag'
 import { startSessionDrag } from '@/app/chat/session-drag'
 import { PlatformAvatar } from '@/app/messaging/platform-icon'
+import { reviewActivityLabel, ReviewActivityPulse, ReviewActivityUnderline } from '@/components/chat/review-activity'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { Tip } from '@/components/ui/tooltip'
@@ -18,7 +19,10 @@ import { $backgroundRunningSessionIds } from '@/store/composer-status'
 import { $unreadFinishedSessionIds } from '@/store/session'
 import { $sessionColorById } from '@/store/session-color'
 import { $attentionSessionIds, $stalledSessionIds, openSessionTile } from '@/store/session-states'
+import { $reviewActivityBySessionId } from '@/store/session'
 import { canOpenSessionWindow, openSessionInNewWindow } from '@/store/windows'
+
+import type { ClientSessionState } from '../../types'
 
 import { SidebarRowBody, SidebarRowGrab, SidebarRowLabel, SidebarRowLead, SidebarRowShell } from './chrome'
 import { SessionActionsMenu, SessionContextMenu } from './session-actions-menu'
@@ -107,6 +111,8 @@ export function SidebarSessionRow({
   // to collapse them at the leaf is backwards.
   const dotState = sessionDotState({ hasBackground, isStalled, isUnread, isWorking, needsInput })
   const isMergeWaiting = session.branch_merge_status === 'waiting_for_parent'
+  const reviewActivity = useStore($reviewActivityBySessionId)[session.id] ?? null
+  
 
   return (
     <SessionContextMenu
@@ -185,6 +191,9 @@ export function SidebarSessionRow({
         {...rest}
       >
         {sessionShowsRunningArc({ isWorking, needsInput }) && <span aria-hidden="true" className="arc-border arc-bottom" />}
+        {isWorking &&
+          !needsInput &&
+          (reviewActivity ? <ReviewActivityUnderline className="text-teal-500/90" /> : <span aria-hidden="true" className="arc-border arc-bottom" />)}
         <SidebarRowBody
           className={cn('z-0 group-hover:pr-12', branchStem && 'pl-3.5')}
           // Middle-click = open in a new tab (browser muscle memory). Swallow
@@ -246,6 +255,7 @@ export function SidebarSessionRow({
                 className="transition-opacity group-hover/handle:opacity-0 group-focus-within/handle:opacity-0"
                 dotState={dotState}
                 projectColor={projectColor}
+                reviewActivity={reviewActivity}
               />
             </SidebarRowGrab>
           ) : (
@@ -289,10 +299,12 @@ function SessionRowLeadDot({
   branchStem,
   dotState = 'idle',
   className,
-  projectColor
+  projectColor,
+  reviewActivity
 }: {
   branchStem?: string
   dotState?: SessionDotState
+  reviewActivity?: NonNullable<ClientSessionState['reviewActivity']> | null
   className?: string
   projectColor?: null | string
 }) {
@@ -303,7 +315,7 @@ function SessionRowLeadDot({
           {branchStem}
         </span>
       ) : null}
-      <SidebarRowDot dotState={dotState} projectColor={projectColor} />
+      <SidebarRowDot dotState={dotState} projectColor={projectColor} reviewActivity={reviewActivity} />
     </span>
   )
 }
@@ -375,9 +387,11 @@ const DOT_VARIANTS: Record<SessionDotState, DotVariant> = {
 function SidebarRowDot({
   dotState,
   className,
-  projectColor
+  projectColor,
+  reviewActivity
 }: {
   dotState: SessionDotState
+  reviewActivity?: NonNullable<ClientSessionState['reviewActivity']> | null
   className?: string
   projectColor?: null | string
 }) {
@@ -399,6 +413,13 @@ function SidebarRowDot({
   }
 
   const variant = DOT_VARIANTS[dotState]
+  if (dotState === 'working' && reviewActivity) {
+    return (
+      <span aria-label={reviewActivityLabel(reviewActivity)} role="status" title={reviewActivityLabel(reviewActivity)}>
+        <ReviewActivityPulse className="text-teal-500/90" compact />
+      </span>
+    )
+  }
 
   return (
     <span

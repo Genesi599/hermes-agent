@@ -22,6 +22,22 @@ export function reviewActivityForStatusEvent(
   return current === kind ? null : current
 }
 
+export function reviewActivityForInternalKind(internalKind: unknown): ClientSessionState['reviewActivity'] {
+  if (internalKind === 'experience_review') {
+    return 'experience'
+  }
+
+  if (internalKind === 'branch_merge_review') {
+    return 'branch-merge'
+  }
+
+  if (internalKind === 'delete_review') {
+    return 'delete'
+  }
+
+  return null
+}
+
 type SessionRuntimeStatePatch = Partial<
   Pick<
     ClientSessionState,

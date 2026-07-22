@@ -6905,6 +6905,9 @@ def test_prompt_submit_queues_same_session_review_after_twentieth_human_turn(mon
         status_events = [args for args in emits if args[0] == "experience_review.status"]
         assert len(status_events) == 1
         assert "20/20" in status_events[0][2]["text"]
+        message_starts = [args for args in emits if args[0] == "message.start"]
+        assert message_starts[0][2]["internal_kind"] is None
+        assert message_starts[1][2]["internal_kind"] == "experience_review"
         review_phases = [
             args[2]["experience_review"]["phase"]
             for args in emits

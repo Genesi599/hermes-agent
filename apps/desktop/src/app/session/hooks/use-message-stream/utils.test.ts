@@ -6,6 +6,7 @@ import {
   completionErrorText,
   delegateTaskPayloads,
   hasSessionInfoStatePatch,
+  reviewActivityForInternalKind,
   reviewActivityForStatusEvent,
   sessionInfoStatePatch,
   toTodoPayload
@@ -19,6 +20,15 @@ describe('reviewActivityForStatusEvent', () => {
     expect(reviewActivityForStatusEvent('branch_merge.status', 'queued', 'branch-merge')).toBeNull()
     expect(reviewActivityForStatusEvent('delete_review.status', 'complete', 'delete')).toBeNull()
     expect(reviewActivityForStatusEvent('branch_merge.status', 'complete', 'experience')).toBe('experience')
+  })
+})
+
+describe('reviewActivityForInternalKind', () => {
+  it('restores the review mode from message.start when a status event was missed', () => {
+    expect(reviewActivityForInternalKind('experience_review')).toBe('experience')
+    expect(reviewActivityForInternalKind('branch_merge_review')).toBe('branch-merge')
+    expect(reviewActivityForInternalKind('delete_review')).toBe('delete')
+    expect(reviewActivityForInternalKind('goal_continuation')).toBeNull()
   })
 })
 

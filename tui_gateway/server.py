@@ -11105,7 +11105,7 @@ def _run_prompt_submit(
             agent.clear_interrupt()
         except Exception:
             pass
-    _emit("message.start", sid)
+    _emit("message.start", sid, {"internal_kind": internal_kind})
 
     def run():
         approval_token = None

@@ -16,8 +16,7 @@ import {
   setCurrentServiceTier,
   setExperienceReview,
   setReviewActivity,
-  setSessionAttention,
-  setSessionWorking,
+  setSessionReviewActivity,
   setTurnStartedAt,
   setYoloActive
 } from '@/store/session'
@@ -276,6 +275,10 @@ export function useSessionStateCache({
       // (watchdog, settle grace, unread marker, compression id rotation) inside
       // publishSessionState — no manual transition call needed.
       publishSessionState(sessionId, next)
+      if (previous.storedSessionId !== next.storedSessionId) {
+        setSessionReviewActivity(previous.storedSessionId, null)
+      }
+      setSessionReviewActivity(next.storedSessionId, next.reviewActivity)
       syncSessionStateToView(sessionId, next)
 
       return next

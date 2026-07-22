@@ -4,6 +4,7 @@ import { type FC, type ReactNode, useEffect, useState } from 'react'
 
 import { useElapsedSeconds } from '@/components/chat/activity-timer'
 import { ActivityTimerText } from '@/components/chat/activity-timer-text'
+import { type ReviewActivity, reviewActivityLabel, ReviewActivityPulse } from '@/components/chat/review-activity'
 import { Codicon } from '@/components/ui/codicon'
 import { Loader } from '@/components/ui/loader'
 import { useI18n } from '@/i18n'
@@ -12,20 +13,6 @@ import { $backgroundResume } from '@/store/background-delegation'
 import { $compactionActive } from '@/store/compaction'
 import { $activeSessionAwaitingInput } from '@/store/prompts'
 import { $activeSessionId, $reviewActivity, $turnStartedAt } from '@/store/session'
-
-type ReviewActivity = 'branch-merge' | 'delete' | 'experience'
-
-export function reviewActivityLabel(activity: ReviewActivity): string {
-  if (activity === 'branch-merge') {
-    return '分支合并复盘'
-  }
-
-  if (activity === 'delete') {
-    return '删除前复盘'
-  }
-
-  return '批次经验复盘'
-}
 
 const StatusRow: FC<{ children: ReactNode; label: string } & React.ComponentPropsWithoutRef<'div'>> = ({
   children,
@@ -60,14 +47,7 @@ function useActiveTurnTimerKey(): string | undefined {
 
 const ReviewActivityIndicator: FC<{ activity: ReviewActivity; elapsed: number }> = ({ activity, elapsed }) => (
   <>
-    <Loader
-      aria-hidden="true"
-      className="size-5 shrink-0 text-teal-500/85"
-      pathSteps={96}
-      role="presentation"
-      strokeScale={0.58}
-      type="fourier-flow"
-    />
+    <ReviewActivityPulse className="text-teal-500/90" />
     <span className="min-w-0 truncate font-medium text-teal-600/80 dark:text-teal-300/75">
       {reviewActivityLabel(activity)}
     </span>
@@ -206,11 +186,7 @@ export const StreamStallIndicator: FC = () => {
 
   if (reviewActivity) {
     return (
-      <StatusRow
-        className="mt-1.5"
-        data-slot="aui_review-stall"
-        label={reviewActivityLabel(reviewActivity)}
-      >
+      <StatusRow className="mt-1.5" data-slot="aui_review-stall" label={reviewActivityLabel(reviewActivity)}>
         <ReviewActivityIndicator activity={reviewActivity} elapsed={elapsed} />
       </StatusRow>
     )

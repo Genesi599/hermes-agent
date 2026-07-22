@@ -9,13 +9,12 @@ import { type ComponentProps, type FC, type ReactNode, useEffect, useRef, useSta
 
 import { ClarifyTool } from '@/components/assistant-ui/clarify-tool'
 import { MarkdownText, MarkdownTextContent } from '@/components/assistant-ui/markdown-text'
-import { reviewActivityLabel } from '@/components/assistant-ui/thread/status'
 import { ToolFallback, ToolGroupSlot } from '@/components/assistant-ui/tool/fallback'
 import { useElapsedSeconds } from '@/components/chat/activity-timer'
 import { ActivityTimerText } from '@/components/chat/activity-timer-text'
 import { DisclosureRow } from '@/components/chat/disclosure-row'
 import { GeneratedImage } from '@/components/chat/generated-image-result'
-import { Loader } from '@/components/ui/loader'
+import { reviewActivityLabel, ReviewActivityPulse } from '@/components/chat/review-activity'
 import { useI18n } from '@/i18n'
 import { useEnterAnimation } from '@/lib/use-enter-animation'
 import { cn } from '@/lib/utils'
@@ -108,16 +107,7 @@ const ThinkingDisclosure: FC<{
     >
       <DisclosureRow onToggle={() => setUserOpen(!open)} open={open}>
         <span className="flex min-w-0 items-baseline gap-1.5">
-          {messageReview && (
-            <Loader
-              aria-hidden="true"
-              className="size-4 shrink-0 self-center text-teal-500/85"
-              pathSteps={72}
-              role="presentation"
-              strokeScale={0.52}
-              type="fourier-flow"
-            />
-          )}
+          {messageReview && <ReviewActivityPulse className="self-center text-teal-500/90" />}
           <span
             className={cn(
               'text-[length:var(--conversation-tool-font-size)] font-medium leading-(--conversation-line-height) text-(--ui-text-secondary)',
