@@ -5,6 +5,7 @@ import type * as React from 'react'
 import { ProfileTag } from '@/app/chat/profile-tag'
 import { startSessionDrag } from '@/app/chat/session-drag'
 import { PlatformAvatar } from '@/app/messaging/platform-icon'
+import { ReviewActivityUnderline } from '@/components/chat/review-activity'
 import { openSession } from '@/app/open-session'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
@@ -18,6 +19,7 @@ import { handoffOriginSource, sessionSourceLabel } from '@/lib/session-source'
 import { coarseElapsed } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { $attentionSessionIds } from '@/store/session-states'
+import { $reviewActivityBySessionId } from '@/store/session'
 
 import { SessionStatusDot } from '../session-status-dot'
 
@@ -98,6 +100,7 @@ function SidebarSessionRowImpl({
   // True when a clarify prompt in this session is waiting on the user.
   const needsInput = useStore($attentionSessionIds).includes(session.id)
   const isMergeWaiting = session.branch_merge_status === 'waiting_for_parent'
+  const reviewActivity = useStore($reviewActivityBySessionId)[session.id] ?? null
   const branchTaskStatus = session.branch_task_status
   const branchElapsed = session.branch_started_at
     ? formatDuration((session.branch_completed_at ?? Date.now() / 1000) - session.branch_started_at, r)
@@ -182,9 +185,12 @@ function SidebarSessionRowImpl({
         style={style}
         {...rest}
       >
-        {sessionShowsRunningArc({ isWorking, needsInput }) && (
-          <span aria-hidden="true" className="arc-border arc-row" />
-        )}
+        {sessionShowsRunningArc({ isWorking, needsInput }) &&
+          (reviewActivity ? (
+            <ReviewActivityUnderline className="text-teal-500/90" />
+          ) : (
+            <span aria-hidden="true" className="arc-border arc-row" />
+          ))}
         <SidebarRowBody
           className={cn('z-0 group-hover:pr-12', branchStem && 'pl-3.5')}
           // Middle-click = open in a new tab (browser muscle memory).
