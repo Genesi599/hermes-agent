@@ -1548,9 +1548,11 @@ function MergeHarness({
   requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
 }) {
   const ref = <T,>(value: T): MutableRefObject<T> => ({ current: value })
+  const activeSessionIdRef = ref<string | null>('runtime-child')
+  const selectedStoredSessionIdRef = ref<string | null>('child')
   const actions = useSessionActions({
-    activeSessionId: null,
-    activeSessionIdRef: ref<string | null>(null),
+    activeSessionId: 'runtime-child',
+    activeSessionIdRef,
     busyRef: ref(false),
     creatingSessionRef: ref(false),
     ensureSessionState: () => ({}) as ClientSessionState,
@@ -1558,8 +1560,8 @@ function MergeHarness({
     navigate: vi.fn() as never,
     requestGateway,
     runtimeIdByStoredSessionIdRef: ref(new Map<string, string>()),
-    selectedStoredSessionId: null,
-    selectedStoredSessionIdRef: ref<string | null>(null),
+    selectedStoredSessionId: 'child',
+    selectedStoredSessionIdRef,
     sessionStateByRuntimeIdRef: ref(new Map<string, ClientSessionState>()),
     syncSessionStateToView: vi.fn(),
     updateSessionState: () => ({}) as ClientSessionState
@@ -1598,8 +1600,39 @@ describe('mergeBranchIntoParent', () => {
     await waitFor(() => expect(merge).not.toBeNull())
     await expect(merge!('child')).resolves.toBeUndefined()
 
-    expect(requestGateway).toHaveBeenCalledWith('session.merge_branch', { session_id: 'child' })
+    expect(requestGateway).toHaveBeenCalledWith(
+      'session.merge_branch',
+      { runtime_session_id: 'runtime-child', session_id: 'child' },
+      1_800_000
+    )
     expect($sessions.get().map(session => session.id)).toEqual(['parent'])
+  })
+
+  it('keeps a reviewed child visible while parent injection is queued', async () => {
+    const requestGateway = vi.fn(async (method: string) => {
+      if (method === 'session.merge_branch') {
+        return {
+          deleted: null,
+          queued: true,
+          parent_session_id: 'parent',
+          summary: 'reviewed result'
+        } as never
+      }
+
+      return {} as never
+    })
+
+    setSessions([
+      storedSession({ id: 'parent', message_count: 2 }),
+      storedSession({ id: 'child', message_count: 4, parent_session_id: 'parent' })
+    ])
+
+    let merge: ((storedSessionId: string) => Promise<void>) | null = null
+    render(<MergeHarness onReady={action => (merge = action)} requestGateway={requestGateway} />)
+    await waitFor(() => expect(merge).not.toBeNull())
+    await expect(merge!('child')).resolves.toBeUndefined()
+
+    expect($sessions.get().map(session => session.id)).toEqual(['parent', 'child'])
   })
 })
 
@@ -1609,6 +1642,76 @@ describe('mergeBranchIntoParent', () => {
 // id can resolve to a live-but-DIFFERENT session's cache entry. The fast-path
 // must verify the cached state still BELONGS to the resumed session before it
 // paints, or it shows a totally different thread under the current route.
+
+function DeleteHarness({
+  onReady,
+  requestGateway
+}: {
+  onReady: (remove: (storedSessionId: string) => Promise<void>) => void
+  requestGateway: <T>(method: string, params?: Record<string, unknown>, timeoutMs?: number) => Promise<T>
+}) {
+  const ref = <T,>(value: T): MutableRefObject<T> => ({ current: value })
+  const activeSessionIdRef = ref<string | null>('runtime-delete')
+  const selectedStoredSessionIdRef = ref<string | null>('stored-delete')
+  const actions = useSessionActions({
+    activeSessionId: 'runtime-delete',
+    activeSessionIdRef,
+    busyRef: ref(false),
+    creatingSessionRef: ref(false),
+    ensureSessionState: () => ({}) as ClientSessionState,
+    getRouteToken: () => 'token',
+    navigate: vi.fn() as never,
+    requestGateway,
+    runtimeIdByStoredSessionIdRef: ref(new Map<string, string>()),
+    selectedStoredSessionId: 'stored-delete',
+    selectedStoredSessionIdRef,
+    sessionStateByRuntimeIdRef: ref(new Map<string, ClientSessionState>()),
+    syncSessionStateToView: vi.fn(),
+    updateSessionState: () => ({}) as ClientSessionState
+  })
+
+  useEffect(() => {
+    onReady(actions.removeSession)
+  }, [actions.removeSession, onReady])
+
+  return null
+}
+
+describe('removeSession delete review', () => {
+  afterEach(() => {
+    cleanup()
+    setSessions([])
+    vi.restoreAllMocks()
+  })
+
+  it('reviews the active stored session before removing it from the sidebar', async () => {
+    const requestGateway = vi.fn(async (method: string) => {
+      if (method === 'session.review_delete') {
+        return { deleted: 'stored-delete', summary: 'review complete' } as never
+      }
+
+      return {} as never
+    })
+    setSessions([storedSession({ id: 'stored-delete', message_count: 3 })])
+
+    let remove: ((storedSessionId: string) => Promise<void>) | null = null
+    render(<DeleteHarness onReady={action => (remove = action)} requestGateway={requestGateway} />)
+    await waitFor(() => expect(remove).not.toBeNull())
+    await expect(remove!('stored-delete')).resolves.toBeUndefined()
+
+    expect(requestGateway).toHaveBeenCalledWith(
+      'session.review_delete',
+      { runtime_session_id: 'runtime-delete', session_id: 'stored-delete' },
+      1_800_000
+    )
+    expect(deleteSession).not.toHaveBeenCalled()
+    expect($sessions.get()).toEqual([])
+  })
+})
+
+// ── Cached-runtime isolation (the "open chat A, chat B loads" bug) ────────────
+// A reaped/respawned pooled backend can recycle runtime ids. Desktop therefore
+// discards every cached binding and obtains a fresh runtime via session.resume.
 const clientState = (storedSessionId: string | null): ClientSessionState => createClientSessionState(storedSessionId)
 
 describe('resumeSession warm-cache mapping integrity', () => {

@@ -12324,19 +12324,15 @@ def test_session_merge_branch_injects_only_delta_then_deletes(monkeypatch):
             "id": "child",
             "title": "branch #1",
             "parent_session_id": "parent",
-            "model_config": json.dumps({"_branch_seed_message_count": 2}),
+            "model_config": json.dumps({"_branch_seed_message_count": 1}),
         },
     }
     messages = {
-        "parent": [
-            {"role": "user", "content": "seed question"},
-            {"role": "assistant", "content": "seed answer"},
-        ],
+        "parent": [{"role": "user", "content": "shared seed"}],
         "child": [
-            {"role": "user", "content": "seed question"},
-            {"role": "assistant", "content": "seed answer"},
-            {"role": "user", "content": "new branch fact"},
-            {"role": "assistant", "content": "verified result"},
+            {"role": "user", "content": "shared seed"},
+            {"role": "assistant", "content": "new verified detail"},
+            {"role": "tool", "tool_name": "pytest", "content": "12 tests passed"},
         ],
     }
     captured = {}
@@ -12353,31 +12349,242 @@ def test_session_merge_branch_injects_only_delta_then_deletes(monkeypatch):
             messages[kwargs["session_id"]].append(kwargs)
             return 1
 
+        def queue_branch_merge(self, sid, summary):
+            rows[sid]["branch_merge_summary"] = summary
+            rows[sid]["branch_merge_requested_at"] = time.time()
+            return True
+
+        def list_pending_branch_merges(self, parent_id):
+            return [
+                row
+                for row in rows.values()
+                if row.get("parent_session_id") == parent_id
+                and row.get("branch_merge_summary")
+            ]
+
         def delete_session(self, sid, sessions_dir=None):
             captured["deleted"] = sid
             rows.pop(sid, None)
             return True
 
-    def _summarize(**kwargs):
-        captured["input"] = kwargs["user_input"]
-        return "new fact and verified result"
+    live_session = {
+        "agent": object(),
+        "history": list(messages["child"]),
+        "history_lock": threading.RLock(),
+        "running": False,
+        "session_key": "child",
+    }
+
+    def _visible_review(
+        rid,
+        sid,
+        session,
+        text,
+        *,
+        internal_kind=None,
+        completion_callback=None,
+    ):
+        captured["review_sid"] = sid
+        captured["review_prompt"] = text
+        captured["internal_kind"] = internal_kind
+        session["running"] = False
+        completion_callback("complete", "durable lesson and faster workflow")
 
     monkeypatch.setattr(server, "_get_db", lambda: _DB())
-    monkeypatch.setattr("agent.oneshot.run_oneshot", _summarize)
-
-    resp = server.handle_request(
-        {"id": "1", "method": "session.merge_branch", "params": {"session_id": "child"}}
-    )
+    monkeypatch.setattr(server, "_run_prompt_submit", _visible_review)
+    monkeypatch.setattr(server, "_close_session_by_id", lambda *args, **kwargs: True)
+    monkeypatch.setattr(server, "_emit", lambda *args, **kwargs: None)
+    server._sessions["runtime-child"] = live_session
+    try:
+        resp = server.handle_request(
+            {
+                "id": "1",
+                "method": "session.merge_branch",
+                "params": {"session_id": "child", "runtime_session_id": "runtime-child"},
+            }
+        )
+    finally:
+        server._sessions.pop("runtime-child", None)
 
     assert "result" in resp, resp
-    assert "seed question" not in captured["input"]
-    assert "new branch fact" in captured["input"]
+    assert captured["review_sid"] == "runtime-child"
+    assert captured["internal_kind"] == "branch_merge_review"
+    assert "promote-agent-experience/SKILL.md" in captured["review_prompt"]
+    assert "new verified detail" in captured["review_prompt"]
+    assert "TOOL pytest" in captured["review_prompt"]
+    assert "12 tests passed" in captured["review_prompt"]
+    assert "shared seed" not in captured["review_prompt"]
     assert captured["append"]["session_id"] == "parent"
-    assert captured["append"]["platform_message_id"] == "branch-merge:child"
+    assert "durable lesson and faster workflow" in captured["append"]["content"]
     assert captured["deleted"] == "child"
 
 
-def test_session_merge_branch_preserves_child_when_summary_fails(monkeypatch):
+def test_session_merge_branch_reviews_while_parent_runs_then_queues_injection(monkeypatch):
+    rows = {
+        "parent": {"id": "parent", "title": "parent", "parent_session_id": None},
+        "child": {
+            "id": "child",
+            "title": "branch #1",
+            "parent_session_id": "parent",
+            "model_config": json.dumps({"_branch_seed_message_count": 1}),
+        },
+    }
+    messages = {
+        "parent": [{"role": "user", "content": "shared seed"}],
+        "child": [
+            {"role": "user", "content": "shared seed"},
+            {"role": "assistant", "content": "new branch result"},
+        ],
+    }
+    deleted = []
+    parent_live = {
+        "agent": object(),
+        "history": list(messages["parent"]),
+        "history_lock": threading.RLock(),
+        "running": True,
+        "session_key": "parent",
+    }
+    child_live = {
+        "agent": object(),
+        "history": list(messages["child"]),
+        "history_lock": threading.RLock(),
+        "running": False,
+        "session_key": "child",
+    }
+
+    class _DB:
+        def get_session(self, sid):
+            return rows.get(sid)
+
+        def get_messages(self, sid):
+            return list(messages.get(sid, []))
+
+        def queue_branch_merge(self, sid, summary):
+            rows[sid]["branch_merge_summary"] = summary
+            rows[sid]["branch_merge_requested_at"] = time.time()
+            return True
+
+        def list_pending_branch_merges(self, parent_id):
+            return [
+                row
+                for row in rows.values()
+                if row.get("parent_session_id") == parent_id
+                and row.get("branch_merge_summary")
+            ]
+
+        def try_claim_session_live_status(self, sid, owner):
+            return sid != "parent" or not parent_live["running"]
+
+        def release_session_live_status(self, sid, owner):
+            return True
+
+        def append_message(self, **kwargs):
+            messages[kwargs["session_id"]].append(kwargs)
+            return 1
+
+        def delete_session(self, sid, sessions_dir=None):
+            deleted.append(sid)
+            rows.pop(sid, None)
+            return True
+
+    def _visible_review(*args, completion_callback=None, **kwargs):
+        child_live["running"] = False
+        completion_callback("complete", "reviewed while parent kept running")
+
+    monkeypatch.setattr(server, "_get_db", lambda: _DB())
+    monkeypatch.setattr(server, "_run_prompt_submit", _visible_review)
+    monkeypatch.setattr(server, "_close_session_by_id", lambda *args, **kwargs: True)
+    monkeypatch.setattr(server, "_emit", lambda *args, **kwargs: None)
+    server._sessions["runtime-parent"] = parent_live
+    server._sessions["runtime-child"] = child_live
+    try:
+        resp = server.handle_request(
+            {
+                "id": "1",
+                "method": "session.merge_branch",
+                "params": {
+                    "session_id": "child",
+                    "runtime_session_id": "runtime-child",
+                },
+            }
+        )
+
+        assert resp["result"]["queued"] is True
+        assert resp["result"]["deleted"] is None
+        assert deleted == []
+        assert len(messages["parent"]) == 1
+
+        parent_live["running"] = False
+        applied = server._apply_pending_branch_merges(
+            "parent",
+            claim_already_held=True,
+            safe_live_sid="runtime-parent",
+        )
+    finally:
+        server._sessions.pop("runtime-parent", None)
+        server._sessions.pop("runtime-child", None)
+
+    assert applied == ["child"]
+    assert deleted == ["child"]
+    assert len(messages["parent"]) == 2
+    assert "reviewed while parent kept running" in messages["parent"][1]["content"]
+    assert parent_live["history"][-1]["platform_message_id"] == "branch-merge:child"
+
+
+def test_session_merge_branch_preserves_child_when_visible_review_fails(monkeypatch):
+    deleted = []
+
+    class _DB:
+        def get_session(self, sid):
+            return {
+                "id": sid,
+                "parent_session_id": "parent" if sid == "child" else None,
+                "model_config": json.dumps({"_branch_seed_message_count": 0}),
+            }
+
+        def get_messages(self, sid):
+            return [] if sid == "parent" else [{"role": "user", "content": "new fact"}]
+
+        def append_message(self, **kwargs):
+            raise AssertionError("failed review must not be injected")
+
+        def delete_session(self, sid, sessions_dir=None):
+            deleted.append(sid)
+            return True
+
+    live_session = {
+        "agent": object(),
+        "history": [],
+        "history_lock": threading.RLock(),
+        "running": False,
+        "session_key": "child",
+    }
+
+    def _failed_review(*args, completion_callback=None, **kwargs):
+        live_session["running"] = False
+        completion_callback("error", "provider unavailable")
+
+    monkeypatch.setattr(server, "_get_db", lambda: _DB())
+    monkeypatch.setattr(server, "_run_prompt_submit", _failed_review)
+    monkeypatch.setattr(server, "_emit", lambda *args, **kwargs: None)
+    server._sessions["runtime-child"] = live_session
+    try:
+        resp = server.handle_request(
+            {
+                "id": "1",
+                "method": "session.merge_branch",
+                "params": {"session_id": "child", "runtime_session_id": "runtime-child"},
+            }
+        )
+    finally:
+        server._sessions.pop("runtime-child", None)
+
+    assert resp["error"]["code"] == 5037
+    assert "provider unavailable" in resp["error"]["message"]
+    assert deleted == []
+
+
+def test_session_merge_branch_requires_resumed_child_runtime(monkeypatch):
     deleted = []
 
     class _DB:
@@ -12399,16 +12606,13 @@ def test_session_merge_branch_preserves_child_when_summary_fails(monkeypatch):
             return True
 
     monkeypatch.setattr(server, "_get_db", lambda: _DB())
-    monkeypatch.setattr(
-        "agent.oneshot.run_oneshot",
-        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("provider unavailable")),
-    )
 
     resp = server.handle_request(
         {"id": "1", "method": "session.merge_branch", "params": {"session_id": "child"}}
     )
 
-    assert resp["error"]["code"] == 5037
+    assert resp["error"]["code"] == 4040
+    assert "resume the branch" in resp["error"]["message"]
     assert deleted == []
 
 
@@ -12455,11 +12659,33 @@ def test_session_merge_branch_real_db_moves_summary_and_removes_child(monkeypatc
         db.append_message("child", "assistant", "new verified detail")
 
         monkeypatch.setattr(server, "_get_db", lambda: db)
-        monkeypatch.setattr("agent.oneshot.run_oneshot", lambda **kwargs: "new verified detail")
-
-        resp = server.handle_request(
-            {"id": "1", "method": "session.merge_branch", "params": {"session_id": "child"}}
+        monkeypatch.setattr(
+            server,
+            "_run_prompt_submit",
+            lambda *args, completion_callback=None, **kwargs: completion_callback(
+                "complete", "new verified detail"
+            ),
         )
+        monkeypatch.setattr(server, "_close_session_by_id", lambda *args, **kwargs: True)
+        monkeypatch.setattr(server, "_emit", lambda *args, **kwargs: None)
+        server._sessions["runtime-child"] = {
+            "agent": object(),
+            "history": db.get_messages("child"),
+            "history_lock": threading.RLock(),
+            "running": False,
+            "session_key": "child",
+        }
+
+        try:
+            resp = server.handle_request(
+                {
+                    "id": "1",
+                    "method": "session.merge_branch",
+                    "params": {"session_id": "child", "runtime_session_id": "runtime-child"},
+                }
+            )
+        finally:
+            server._sessions.pop("runtime-child", None)
 
         assert "result" in resp, resp
         assert db.get_session("child") is None

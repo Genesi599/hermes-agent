@@ -1251,6 +1251,35 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
             ]
           }))
         }
+      } else if (
+        event.type === 'experience_review.status' ||
+        event.type === 'branch_merge.status' ||
+        event.type === 'delete_review.status'
+      ) {
+        const text = coerceGatewayText(payload?.text).trim()
+
+        if (sessionId) {
+          updateSessionState(sessionId, state => ({
+            ...state,
+            reviewActivity: reviewActivityForStatusEvent(event.type, payload?.phase, state.reviewActivity)
+          }))
+        }
+
+        if (text && sessionId) {
+          flushQueuedDeltas(sessionId)
+          updateSessionState(sessionId, state => ({
+            ...state,
+            messages: [
+              ...state.messages,
+              {
+                id: `${event.type.replace('.', '-')}-${Date.now()}`,
+                role: 'system',
+                parts: [textPart(text)],
+                timestamp: Math.floor(Date.now() / 1000)
+              }
+            ]
+          }))
+        }
       } else if (event.type === 'review.summary') {
         // Self-improvement background review saved something to memory/skills
         // and emitted a persistent summary (Python formats it as
