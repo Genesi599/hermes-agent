@@ -78,6 +78,8 @@ import {
   applyRuntimeInfo,
   applyStoredSessionPreviewRuntimeInfo,
   type BranchMessage,
+  branchMessagesAtStableBoundary,
+  branchMessagesThroughPoint,
   chatMessageArraysEquivalent,
   isSessionGoneError,
   patchSessionWorkspace,
@@ -87,7 +89,6 @@ import {
   resolveStoredSession,
   sessionMatchesStoredId,
   sessionShouldHaveTranscript,
-  toBranchMessages,
   upsertOptimisticSession
 } from './utils'
 
@@ -1246,13 +1247,7 @@ export function useSessionActions({
 
       const messages = $messages.get()
 
-      const at = messageId
-        ? messages.findIndex(message => message.id === messageId)
-        : messages.findLastIndex(message => message.role === 'assistant' || message.role === 'user')
-
-      const start = 0
-      const end = at >= 0 ? at + 1 : messages.length
-      const branchMessages = toBranchMessages(messages.slice(start, end))
+      const branchMessages = branchMessagesThroughPoint(messages, messageId)
 
       if (!branchMessages.length) {
         notify({ kind: 'warning', title: copy.nothingToBranch, message: copy.branchNoText })
@@ -1297,7 +1292,7 @@ export function useSessionActions({
       try {
         await ensureGatewayProfile(profile)
         const { messages } = await getSessionMessages(storedSessionId, profile)
-        const branchMessages = toBranchMessages(toChatMessages(messages))
+        const branchMessages = branchMessagesAtStableBoundary(toChatMessages(messages), stored?.status === 'working')
 
         if (!branchMessages.length) {
           notify({ kind: 'warning', title: copy.nothingToBranch, message: copy.branchNoText })
