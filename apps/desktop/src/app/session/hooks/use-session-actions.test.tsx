@@ -1125,6 +1125,7 @@ function BranchHarness({
 describe('branchStoredSession desktop source tagging', () => {
   afterEach(() => {
     cleanup()
+    $pinnedSessionIds.set([])
     setSessions([])
     $sessionTiles.set([])
     setSelectedStoredSessionId(null)
