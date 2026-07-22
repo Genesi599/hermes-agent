@@ -335,54 +335,100 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   }, [runtimeIdByStoredSessionIdRef, storedSessions, updateSessionState])
   const { connectionRef, gatewayRef, requestGateway } = useGatewayRequest()
   const durableStatusRef = useRef(new Map<string, 'idle' | 'working'>())
+  const durableOwnerRef = useRef(new Map<string, string>())
 
   // A turn started by another gateway process reaches this renderer through
-  // the durable session list rather than its local websocket. Only a real
-  // working-to-idle transition may clear local busy state so an initial idle
+  // the durable session list rather than its local websocket. Mirror every
+  // loaded row, including background sessions that have no local runtime yet.
+  // Only a real working-to-idle transition may clear state so an initial idle
   // snapshot cannot race a local submit.
   useEffect(() => {
-    const storedSessionId = selectedStoredSessionIdRef.current
-    const runtimeSessionId = activeSessionIdRef.current
-    if (!storedSessionId || !runtimeSessionId) {
-      return
+    const seen = new Set<string>()
+
+    for (const session of storedSessions) {
+      const nextStatus = session.status
+
+      if (nextStatus !== 'idle' && nextStatus !== 'working') {
+        continue
+      }
+
+      const key = `${session.profile ?? 'default'}\0${session.id}`
+      seen.add(key)
+
+      const storedSessionId = [session.id, session._lineage_root_id].find(
+        id => id && runtimeIdByStoredSessionIdRef.current.has(id)
+      ) ?? session.id
+      const localRuntimeId = runtimeIdByStoredSessionIdRef.current.get(storedSessionId)
+      const syntheticRuntimeId = `durable:${key}`
+      const ownerRuntimeId = localRuntimeId ?? syntheticRuntimeId
+      const previousOwner = durableOwnerRef.current.get(key)
+      const previousStatus = durableStatusRef.current.get(key)
+      const ownerChanged = previousOwner !== ownerRuntimeId
+
+      if (previousOwner && ownerChanged) {
+        dropSessionState(previousOwner)
+      }
+
+      durableStatusRef.current.set(key, nextStatus)
+
+      if (nextStatus === 'working' && (previousStatus !== 'working' || ownerChanged)) {
+        const updatedAt = Number(session.live_status_updated_at)
+        const startedAt = Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt * 1000 : Date.now()
+
+        if (localRuntimeId) {
+          updateSessionState(
+            localRuntimeId,
+            state => ({
+              ...state,
+              awaitingResponse: true,
+              busy: true,
+              turnStartedAt: state.turnStartedAt ?? startedAt
+            }),
+            storedSessionId
+          )
+        } else {
+          const current = $sessionStates.get()[syntheticRuntimeId] ?? createClientSessionState(storedSessionId)
+          publishSessionState(syntheticRuntimeId, {
+            ...current,
+            awaitingResponse: true,
+            busy: true,
+            storedSessionId,
+            turnStartedAt: current.turnStartedAt ?? startedAt
+          })
+        }
+
+        durableOwnerRef.current.set(key, ownerRuntimeId)
+      } else if (nextStatus === 'idle' && previousStatus === 'working') {
+        if (localRuntimeId) {
+          updateSessionState(
+            localRuntimeId,
+            state => ({ ...state, awaitingResponse: false, busy: false, turnStartedAt: null }),
+            storedSessionId
+          )
+        } else {
+          const current = $sessionStates.get()[syntheticRuntimeId] ?? createClientSessionState(storedSessionId)
+          publishSessionState(syntheticRuntimeId, {
+            ...current,
+            awaitingResponse: false,
+            busy: false,
+            storedSessionId,
+            turnStartedAt: null
+          })
+          dropSessionState(syntheticRuntimeId)
+        }
+
+        durableOwnerRef.current.delete(key)
+      }
     }
 
-    const session = storedSessions.find(item => sessionMatchesStoredId(item, storedSessionId))
-    const nextStatus = session?.status
-    if (!nextStatus) {
-      return
+    for (const [key, ownerRuntimeId] of durableOwnerRef.current) {
+      if (!seen.has(key)) {
+        dropSessionState(ownerRuntimeId)
+        durableOwnerRef.current.delete(key)
+        durableStatusRef.current.delete(key)
+      }
     }
-
-    const previousStatus = durableStatusRef.current.get(storedSessionId)
-    if (previousStatus === nextStatus) {
-      return
-    }
-    durableStatusRef.current.set(storedSessionId, nextStatus)
-
-    if (nextStatus === 'working') {
-      updateSessionState(
-        runtimeSessionId,
-        state => ({
-          ...state,
-          awaitingResponse: true,
-          busy: true,
-          turnStartedAt: state.turnStartedAt ?? Date.now()
-        }),
-        storedSessionId
-      )
-    } else if (previousStatus === 'working') {
-      updateSessionState(
-        runtimeSessionId,
-        state => ({
-          ...state,
-          awaitingResponse: false,
-          busy: false,
-          turnStartedAt: null
-        }),
-        storedSessionId
-      )
-    }
-  }, [activeSessionIdRef, selectedStoredSessionIdRef, storedSessions, updateSessionState])
+  }, [runtimeIdByStoredSessionIdRef, storedSessions, updateSessionState])
 
   const {
     loadMoreMessagingForPlatform,
