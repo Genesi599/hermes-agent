@@ -48,6 +48,7 @@ export function ModelPickerOverlay({ gateway, onSelect, profile }: ModelPickerOv
 
   return (
     <ModelPickerDialog
+      allowApplyAll
       currentModel={currentModel}
       currentProvider={currentProvider}
       gw={gateway}

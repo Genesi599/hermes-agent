@@ -5,6 +5,8 @@ import { useState } from 'react'
 import { useSessionView } from '@/app/chat/session-view'
 import { Codicon } from '@/components/ui/codicon'
 import { DropdownMenuItem, dropdownMenuRow } from '@/components/ui/dropdown-menu'
+import { SegmentedControl } from '@/components/ui/segmented-control'
+import type { ModelApplyScope } from '@/components/model-picker'
 import type { HermesGateway } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { modelOptionsQueryKey, requestModelOptions } from '@/lib/model-options'
@@ -30,6 +32,7 @@ export { ModelMenuCloseContext } from './model-catalog-menu'
 export interface ModelSelection {
   model: string
   provider: string
+  scope?: ModelApplyScope
   /** Runtime id of the surface that opened the menu. When set, the switch
    *  targets that session (a tile) instead of the primary `$activeSessionId`. */
   sessionId?: null | string
@@ -51,6 +54,8 @@ interface ModelMenuPanelProps {
 export function ModelMenuPanel({ gateway, onSelectModel, profile = 'default', requestGateway }: ModelMenuPanelProps) {
   const { t } = useI18n()
   const copy = t.shell.modelMenu
+  const pickerCopy = t.modelPicker
+  const [applyScope, setApplyScope] = useState<ModelApplyScope>('current')
   const [refreshing, setRefreshing] = useState(false)
   const queryClient = useQueryClient()
   // Bind to THIS surface's SessionView (primary or tile) so each pane's menu
@@ -194,7 +199,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, profile = 'default', re
     // scopes the switch to that session; with none it's UI state shipped on the
     // next session.create. Always stamp sessionId from this surface so a tile
     // switch never hits the primary (busy) session by accident.
-    select: (model, provider) => onSelectModel({ model, provider, sessionId: activeSessionId || null }),
+    select: (model, provider) => onSelectModel({ model, provider, scope: applyScope, sessionId: activeSessionId || null }),
 
     setOptions: (patch, row) => {
       // Editing always records the model's global preset (keyed by
@@ -223,17 +228,33 @@ export function ModelMenuPanel({ gateway, onSelectModel, profile = 'default', re
     <ModelCatalogMenu
       controller={controller}
       footer={
-        <DropdownMenuItem
-          className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)')}
-          disabled={refreshing}
-          onSelect={event => {
-            event.preventDefault()
-            void refreshModels()
-          }}
-        >
-          <Codicon className={cn(refreshing && 'animate-spin')} name="sync" size="0.75rem" />
-          {copy.refreshModels}
-        </DropdownMenuItem>
+        <>
+          <div className="space-y-1.5 px-2 py-2">
+            <SegmentedControl
+              className="w-full"
+              onChange={setApplyScope}
+              options={[
+                { id: 'current', label: pickerCopy.applyCurrent },
+                { id: 'all', label: pickerCopy.applyAll }
+              ]}
+              value={applyScope}
+            />
+            <p className="text-[0.65rem] leading-relaxed text-(--ui-text-tertiary)">
+              {applyScope === 'all' ? pickerCopy.applyAllDescription : pickerCopy.applyCurrentDescription}
+            </p>
+          </div>
+          <DropdownMenuItem
+            className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)')}
+            disabled={refreshing}
+            onSelect={event => {
+              event.preventDefault()
+              void refreshModels()
+            }}
+          >
+            <Codicon className={cn(refreshing && 'animate-spin')} name="sync" size="0.75rem" />
+            {copy.refreshModels}
+          </DropdownMenuItem>
+        </>
       }
       gateway={gateway}
       includeMoa

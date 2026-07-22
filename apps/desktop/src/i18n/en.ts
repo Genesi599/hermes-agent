@@ -2415,7 +2415,11 @@ export const en: Translations = {
     free: 'Free',
     freeTier: 'Free tier',
     priceTitle: 'Input / Output price per million tokens',
-    wasPrice: 'was'
+    wasPrice: 'was',
+    applyCurrent: 'Current conversation',
+    applyCurrentDescription: 'Switch only the conversation you are viewing.',
+    applyAll: 'All conversations',
+    applyAllDescription: 'Switch every conversation in this profile and set the default for new conversations.'
   },
 
   modelVisibility: {
@@ -2951,6 +2955,8 @@ export const en: Translations = {
     cwdStagedTitle: 'Working directory staged',
     cwdStagedMessage: 'Restart the desktop backend to apply cwd changes to this active session.',
     modelSwitchFailed: 'Model switch failed',
+    modelSwitchAllResult: (switched, queued, failed) =>
+      `All conversations updated: ${switched} switched, ${queued} queued, ${failed} failed.`,
     sessionExported: 'Session exported',
     sessionExportFailed: 'Could not export session',
     imageSaved: 'Image saved',
