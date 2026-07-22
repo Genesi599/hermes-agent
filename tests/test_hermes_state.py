@@ -132,6 +132,7 @@ class TestSessionLifecycle:
             "child",
             source="desktop",
             parent_session_id="parent",
+            model_config={"_branched_from": "parent"},
         )
         assert db.set_session_title("child", "branch #1") is True
 
@@ -149,6 +150,10 @@ class TestSessionLifecycle:
             "branch_merge_summary": "reviewed summary",
             "branch_merge_requested_at": pending[0]["branch_merge_requested_at"],
         }
+        listed = {row["id"]: row for row in db.list_sessions_rich(compact_rows=True)}
+        assert listed["child"]["branch_merge_status"] == "waiting_for_parent"
+        assert "branch_merge_status" not in listed["parent"]
+        assert "branch_merge_summary" not in listed["child"]
 
         second = SessionDB(db_path=db.db_path)
         try:

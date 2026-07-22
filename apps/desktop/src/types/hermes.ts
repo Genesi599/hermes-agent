@@ -391,6 +391,8 @@ export interface SessionInfo {
   output_tokens: number
   /** Parent conversation when this row is a /branch fork. */
   parent_session_id?: null | string
+  /** A reviewed branch summary is durably queued until its parent becomes idle. */
+  branch_merge_status?: 'waiting_for_parent'
   preview: null | string
   source: null | string
   /** Cross-client transient turn state, refreshed by the gateway. */

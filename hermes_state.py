@@ -4383,6 +4383,23 @@ class SessionDB:
                 projected.append(merged)
             sessions = projected
 
+        # A reviewed branch can remain visible while its summary waits for the
+        # parent conversation's next quiet write slot. Surface only that durable
+        # lifecycle state (never the summary itself) so list clients can
+        # distinguish a healthy queued merge from an idle or failed branch.
+        try:
+            with self._lock:
+                queued_rows = self._conn.execute(
+                    "SELECT child_session_id FROM branch_merge_queue"
+                ).fetchall()
+        except sqlite3.OperationalError:
+            # Read-only legacy profile DBs may predate the queue table.
+            queued_rows = []
+        queued_child_ids = {str(row["child_session_id"]) for row in queued_rows}
+        for session in sessions:
+            if str(session.get("id") or "") in queued_child_ids:
+                session["branch_merge_status"] = "waiting_for_parent"
+
         return sessions
 
     def list_cron_job_runs(
