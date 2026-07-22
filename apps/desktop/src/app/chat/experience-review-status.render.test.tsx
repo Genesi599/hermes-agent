@@ -45,6 +45,7 @@ describe('ExperienceReviewStatus review animation', () => {
 
   it('reads the counter from the session view instead of the global active session', () => {
     setExperienceReview({ batch: 0, pending: false, phase: 'counting', threshold: 20, user_count: 3 })
+
     const tileView = {
       ...PRIMARY_SESSION_VIEW,
       $experienceReview: atom({ batch: 1, pending: false, phase: 'counting' as const, threshold: 20, user_count: 12 }),
