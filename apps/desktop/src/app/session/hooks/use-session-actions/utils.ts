@@ -775,6 +775,26 @@ export const toBranchMessages = (messages: ChatMessage[]): BranchMessage[] =>
     .map(message => ({ content: chatMessageText(message), role: message.role, source: message }))
     .filter(({ content, role }) => content.trim() && (role === 'assistant' || role === 'user'))
 
+/** Return the transcript prefix selected by a message-level branch action. */
+export function branchMessagesThroughPoint(messages: ChatMessage[], messageId?: string): BranchMessage[] {
+  const at = messageId ? messages.findIndex(message => message.id === messageId) : -1
+  const end = at >= 0 ? at + 1 : messages.length
+
+  return toBranchMessages(messages.slice(0, end))
+}
+
+/** Keep only complete turns when branching from a parent that is still working. */
+export function branchMessagesAtStableBoundary(messages: ChatMessage[], parentWorking: boolean): BranchMessage[] {
+  const branchMessages = toBranchMessages(messages)
+  if (!parentWorking) {
+    return branchMessages
+  }
+
+  const lastAssistant = branchMessages.findLastIndex(message => message.role === 'assistant')
+
+  return lastAssistant >= 0 ? branchMessages.slice(0, lastAssistant + 1) : []
+}
+
 export function upsertOptimisticSession(
   created: SessionCreateResponse,
   id: string,
