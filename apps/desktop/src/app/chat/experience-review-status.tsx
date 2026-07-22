@@ -25,6 +25,7 @@ export function ExperienceReviewStatus() {
   const reviewActivity = useStore(view.$reviewActivity)
   const reviewing = state.phase === 'reviewing'
   const activeReview = reviewActivity ?? (reviewing ? 'experience' : null)
+
   const label = activeReview
     ? `${reviewActivityLabel(activeReview)}${activeReview === 'experience' ? ` · ${state.user_count}/${state.threshold}` : ''}`
     : experienceReviewLabel(state)
