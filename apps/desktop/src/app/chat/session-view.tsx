@@ -12,10 +12,13 @@ import {
   $currentModel,
   $currentProvider,
   $currentReasoningEffort,
+  $experienceReview,
   $messages,
+  $reviewActivity,
   $selectedStoredSessionId
 } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
+import type { ExperienceReviewInfo } from '@/types/hermes'
 
 import { lastVisibleMessageIsUser } from './thread-loading'
 
@@ -53,6 +56,8 @@ export interface SessionView {
   $provider: ReadableAtom<string>
   $fast: ReadableAtom<boolean>
   $reasoningEffort: ReadableAtom<string>
+  $experienceReview: ReadableAtom<ExperienceReviewInfo>
+  $reviewActivity: ReadableAtom<ClientSessionState['reviewActivity']>
 }
 
 /** The active session's own slice, or `undefined` while it's a draft. */
@@ -81,6 +86,7 @@ export const PRIMARY_SESSION_VIEW: SessionView = {
   $awaitingResponse: primaryField<boolean>(state => state.awaitingResponse, $awaitingResponse),
   $busy: primaryField<boolean>(state => state.busy, $busy),
   $cwd: primaryField<string>(state => state.cwd, $currentCwd),
+  $experienceReview: primaryField<ExperienceReviewInfo>(state => state.experienceReview, $experienceReview),
   $fast: primaryField<boolean>(state => state.fast, $currentFastMode),
   $lastVisibleIsUser: computed($primaryMessages, lastVisibleMessageIsUser),
   $messages: $primaryMessages,
@@ -88,6 +94,7 @@ export const PRIMARY_SESSION_VIEW: SessionView = {
   $model: primaryField<string>(state => state.model, $currentModel),
   $provider: primaryField<string>(state => state.provider, $currentProvider),
   $reasoningEffort: primaryField<string>(state => state.reasoningEffort, $currentReasoningEffort),
+  $reviewActivity: primaryField<ClientSessionState['reviewActivity']>(state => state.reviewActivity, $reviewActivity),
   $runtimeId: $activeSessionId,
   $storedId: $selectedStoredSessionId
 }
