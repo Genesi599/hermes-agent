@@ -12289,6 +12289,36 @@ def test_pending_title_finalizer_uses_session_profile_db(monkeypatch, tmp_path):
     assert session["pending_title"] is None
 
 
+def test_pending_branch_merge_application_is_serialized_per_parent(monkeypatch):
+    active = 0
+    maximum = 0
+    state_lock = threading.Lock()
+    entered = threading.Event()
+
+    def fake_apply(parent_id, *, claim_already_held=False, safe_live_sid=""):
+        nonlocal active, maximum
+        with state_lock:
+            active += 1
+            maximum = max(maximum, active)
+            entered.set()
+        time.sleep(0.03)
+        with state_lock:
+            active -= 1
+        return [parent_id]
+
+    monkeypatch.setattr(server, "_apply_pending_branch_merges_unlocked", fake_apply)
+    server._branch_merge_apply_locks.pop("parent", None)
+    first = threading.Thread(target=server._apply_pending_branch_merges, args=("parent",))
+    second = threading.Thread(target=server._apply_pending_branch_merges, args=("parent",))
+    first.start()
+    assert entered.wait(1)
+    second.start()
+    first.join(1)
+    second.join(1)
+
+    assert maximum == 1
+
+
 # --------------------------------------------------------------------------
 # model.options — curated-list parity with `hermes model` and classic /model
 # --------------------------------------------------------------------------
