@@ -1452,12 +1452,23 @@ export function useSessionActions({
           sessionStateByRuntimeIdRef.current
         )
 
+      const resumedRuntimeForBranch = () => {
+        const runtimeId = runtimeIdByStoredSessionIdRef.current.get(storedSessionId)
+        const state = runtimeId ? sessionStateByRuntimeIdRef.current.get(runtimeId) : undefined
+
+        return runtimeId && state?.storedSessionId === storedSessionId ? runtimeId : null
+      }
+
       let runtimeSessionId = currentRuntimeForBranch()
 
       if (!runtimeSessionId) {
         navigate(sessionRoute(storedSessionId))
         await resumeSession(storedSessionId, true)
-        runtimeSessionId = currentRuntimeForBranch()
+        // resumeSession writes the durable-id -> runtime-id mapping before
+        // React has necessarily committed activeSessionIdRef. Read the
+        // validated cache mapping as a fallback; requiring the active ref here
+        // made batch recall report every child as failed after a cold resume.
+        runtimeSessionId = currentRuntimeForBranch() ?? resumedRuntimeForBranch()
       } else {
         await ensureGatewayProfile(sessionProfile ?? child.profile)
       }
@@ -1542,7 +1553,7 @@ export function useSessionActions({
       }
 
       const blockedAncestors = new Set<string>()
-      const failedTitles: string[] = []
+      const failures: string[] = []
       const parentById = new Map(orderedChildren.map(child => [child.id, child.parent_session_id?.trim() ?? '']))
 
       const blockAncestors = (child: SessionInfo) => {
@@ -1566,14 +1577,16 @@ export function useSessionActions({
             blockAncestors(child)
           }
         } catch (err) {
-          failedTitles.push(child.title?.trim() || child.preview?.trim() || child.id)
+          const title = child.title?.trim() || child.preview?.trim() || child.id
+          const detail = err instanceof Error ? err.message : String(err)
+          failures.push(`${title}: ${detail}`)
           blockAncestors(child)
         }
       }
 
-      if (failedTitles.length) {
+      if (failures.length) {
         notifyError(
-          new Error(`${t.sidebar.row.mergeChildrenFailed}: ${failedTitles.join(', ')}`),
+          new Error(`${t.sidebar.row.mergeChildrenFailed}: ${failures.join('; ')}`),
           t.sidebar.row.mergeChildrenFailed
         )
       } else if (blockedAncestors.size) {
