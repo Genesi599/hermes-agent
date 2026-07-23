@@ -140,6 +140,8 @@ _cfg_cache: dict | None = None
 _cfg_mtime: float | None = None
 _cfg_path = None
 _session_resume_lock = threading.Lock()
+_branch_merge_apply_locks_guard = threading.Lock()
+_branch_merge_apply_locks: dict[str, threading.Lock] = {}
 try:
     from gateway.status import get_process_start_time
 
@@ -7543,7 +7545,7 @@ def _delete_review_prompt(title: str) -> str:
 最终只输出一份简短中文删除前复盘，包含：本对话完成事项、沉淀的经验或教训、以后可采用的提效方法、未完成工作，以及实际新增或更新的 memory/skill/hook（没有则明确写无需沉淀）。不要自行删除对话；Hermes 只会在复盘成功后执行删除。"""
 
 
-def _apply_pending_branch_merges(
+def _apply_pending_branch_merges_unlocked(
     parent_id: str,
     *,
     claim_already_held: bool = False,
@@ -7683,6 +7685,24 @@ def _apply_pending_branch_merges(
                         exc_info=True,
                     )
     return deleted_ids
+
+
+def _apply_pending_branch_merges(
+    parent_id: str,
+    *,
+    claim_already_held: bool = False,
+    safe_live_sid: str = "",
+) -> list[str]:
+    """Serialize summary injection and child deletion for one parent."""
+    with _branch_merge_apply_locks_guard:
+        apply_lock = _branch_merge_apply_locks.setdefault(parent_id, threading.Lock())
+
+    with apply_lock:
+        return _apply_pending_branch_merges_unlocked(
+            parent_id,
+            claim_already_held=claim_already_held,
+            safe_live_sid=safe_live_sid,
+        )
 
 
 @method("session.review_delete")
@@ -7988,6 +8008,13 @@ def _(rid, params: dict) -> dict:
 
     deleted_ids = _apply_pending_branch_merges(parent_id)
     deleted = target in deleted_ids
+    if not deleted and db.get_session(target) is None:
+        # A sibling merge may have drained this target in the same serialized
+        # parent-queue pass while this review RPC was still finishing. Report
+        # the already-applied result instead of relabeling the deleted branch
+        # as waiting for its parent.
+        deleted_ids.append(target)
+        deleted = True
     if already_injected is not None and not deleted:
         for sid, session in related:
             if session.get("session_key") == target:
@@ -8021,6 +8048,7 @@ def _(rid, params: dict) -> dict:
         rid,
         {
             "deleted": target if deleted else None,
+            "deleted_ids": deleted_ids,
             "queued": not deleted,
             "parent_session_id": parent_id,
             "seed_message_count": seed_count,
