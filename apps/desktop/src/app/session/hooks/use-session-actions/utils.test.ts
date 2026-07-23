@@ -260,11 +260,29 @@ describe('branch boundaries', () => {
 
   it('copies the full prefix through a selected message', () => {
     expect(branchMessagesThroughPoint(transcript, 'a1').map(message => message.source.id)).toEqual(['u1', 'a1'])
+    expect(branchMessagesThroughPoint(transcript, 'u2').map(message => message.source.id)).toEqual(['u1', 'a1', 'u2'])
   })
 
-  it('drops a trailing user request when the parent is still working', () => {
+  it('drops a trailing unanswered request even when cached parent status is idle', () => {
     expect(branchMessagesAtStableBoundary(transcript, true).map(message => message.source.id)).toEqual(['u1', 'a1'])
-    expect(branchMessagesAtStableBoundary(transcript, false).map(message => message.source.id)).toEqual(['u1', 'a1', 'u2'])
+    expect(branchMessagesAtStableBoundary(transcript, false).map(message => message.source.id)).toEqual(['u1', 'a1'])
+  })
+
+  it('keeps a completed final turn when the parent is idle', () => {
+    const completed = [...transcript, msg('a2', 'assistant', 'second answer')]
+
+    expect(branchMessagesAtStableBoundary(completed, false).map(message => message.source.id)).toEqual([
+      'u1',
+      'a1',
+      'u2',
+      'a2'
+    ])
+  })
+
+  it('drops the entire active turn including partial assistant text', () => {
+    const streaming = [...transcript, msg('a2-partial', 'assistant', 'partial answer')]
+
+    expect(branchMessagesAtStableBoundary(streaming, true).map(message => message.source.id)).toEqual(['u1', 'a1'])
   })
 })
 

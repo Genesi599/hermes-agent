@@ -783,11 +783,21 @@ export function branchMessagesThroughPoint(messages: ChatMessage[], messageId?: 
   return toBranchMessages(messages.slice(0, end))
 }
 
-/** Keep only complete turns when branching from a parent that is still working. */
+/**
+ * Return only completed parent turns for a generic sidebar branch.
+ *
+ * A working transcript can already contain partial assistant text for its
+ * active user request, so cut before that request. Otherwise the last
+ * assistant message is the durable boundary; this also drops an unanswered
+ * trailing user request when the cached working status is stale.
+ */
 export function branchMessagesAtStableBoundary(messages: ChatMessage[], parentWorking: boolean): BranchMessage[] {
   const branchMessages = toBranchMessages(messages)
-  if (!parentWorking) {
-    return branchMessages
+
+  if (parentWorking) {
+    const activeUser = branchMessages.findLastIndex(message => message.role === 'user')
+
+    return activeUser >= 0 ? branchMessages.slice(0, activeUser) : []
   }
 
   const lastAssistant = branchMessages.findLastIndex(message => message.role === 'assistant')
