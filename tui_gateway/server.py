@@ -155,6 +155,8 @@ _cfg_cache: dict | None = None
 _cfg_mtime: float | None = None
 _cfg_path = None
 _session_resume_lock = threading.Lock()
+_branch_merge_apply_locks_guard = threading.Lock()
+_branch_merge_apply_locks: dict[str, threading.Lock] = {}
 try:
     from gateway.status import get_process_start_time
 
