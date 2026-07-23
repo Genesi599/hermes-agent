@@ -1251,6 +1251,7 @@ describe('branchStoredSession desktop source tagging', () => {
     await expect(branchStoredSession!('stored-parent')).resolves.toBe(true)
 
     expect(createParams).toMatchObject({
+      messages: [],
       parent_session_id: 'stored-parent',
       source: 'desktop',
       title: 'draft: branch #1'
