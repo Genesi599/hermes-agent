@@ -42,7 +42,7 @@ import { $sessionTiles } from '@/store/session-states'
 import { sessionRoute } from '../../routes'
 import type { ClientSessionState } from '../../types'
 
-import { useSessionActions } from './use-session-actions'
+import { descendantBranchMergeOrder, useSessionActions } from './use-session-actions'
 
 vi.mock('@/hermes', async importOriginal => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -1477,7 +1477,7 @@ function MergeHarness({
   onReady,
   requestGateway
 }: {
-  onReady: (merge: (storedSessionId: string, sessionProfile?: string | null) => Promise<void>) => void
+  onReady: (merge: (storedSessionId: string, sessionProfile?: string | null) => Promise<unknown>) => void
   requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
 }) {
   const activeSessionIdRef = useRef<string | null>('runtime-child')
@@ -1531,10 +1531,10 @@ describe('mergeBranchIntoParent', () => {
       storedSession({ id: 'child', message_count: 4, parent_session_id: 'parent' })
     ])
 
-    let merge: ((storedSessionId: string) => Promise<void>) | null = null
+    let merge: ((storedSessionId: string) => Promise<unknown>) | null = null
     render(<MergeHarness onReady={action => (merge = action)} requestGateway={requestGateway} />)
     await waitFor(() => expect(merge).not.toBeNull())
-    await expect(merge!('child')).resolves.toBeUndefined()
+    await expect(merge!('child')).resolves.toMatchObject({ deleted: 'child', parent_session_id: 'parent' })
 
     expect(requestGateway).toHaveBeenCalledWith(
       'session.merge_branch',
@@ -1563,12 +1563,35 @@ describe('mergeBranchIntoParent', () => {
       storedSession({ id: 'child', message_count: 4, parent_session_id: 'parent' })
     ])
 
-    let merge: ((storedSessionId: string) => Promise<void>) | null = null
+    let merge: ((storedSessionId: string) => Promise<unknown>) | null = null
     render(<MergeHarness onReady={action => (merge = action)} requestGateway={requestGateway} />)
     await waitFor(() => expect(merge).not.toBeNull())
-    await expect(merge!('child')).resolves.toBeUndefined()
+    await expect(merge!('child')).resolves.toMatchObject({ deleted: null, parent_session_id: 'parent', queued: true })
 
     expect($sessions.get().map(session => session.id)).toEqual(['parent', 'child'])
+  })
+})
+
+describe('descendantBranchMergeOrder', () => {
+  it('orders nested branches deepest-first without including unrelated sessions', () => {
+    const parent = storedSession({ id: 'parent' })
+    const childA = storedSession({ id: 'child-a', parent_session_id: 'parent' })
+    const grandchild = storedSession({ id: 'grandchild', parent_session_id: 'child-a' })
+    const childB = storedSession({ id: 'child-b', parent_session_id: 'parent' })
+    const unrelated = storedSession({ id: 'unrelated' })
+
+    expect(descendantBranchMergeOrder([parent, childA, unrelated, grandchild, childB], 'parent').map(s => s.id)).toEqual([
+      'grandchild',
+      'child-a',
+      'child-b'
+    ])
+  })
+
+  it('stops safely when malformed parent links contain a cycle', () => {
+    const child = storedSession({ id: 'child', parent_session_id: 'parent' })
+    const parentLoop = storedSession({ id: 'parent', parent_session_id: 'child' })
+
+    expect(descendantBranchMergeOrder([child, parentLoop], 'parent').map(s => s.id)).toEqual(['child'])
   })
 })
 

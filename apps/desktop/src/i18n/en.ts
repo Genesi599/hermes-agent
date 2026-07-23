@@ -1957,6 +1957,9 @@ export const en: Translations = {
       export: 'Export',
       branchFrom: 'Branch',
       mergeBranch: 'Merge into parent',
+      mergeChildren: count => `Recall ${count} child ${count === 1 ? 'session' : 'sessions'}`,
+      mergeChildrenDeferred: 'Nested branches are waiting for their immediate parent; run Recall children again later.',
+      mergeChildrenFailed: 'Some child sessions could not be recalled',
       mergeBranchTitle: 'Merge branch into parent?',
       mergeBranchDesc:
         'Hermes will summarize new information into the parent session, then permanently delete this branch.',

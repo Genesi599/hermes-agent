@@ -103,6 +103,7 @@ interface SidebarSessionsSectionProps {
   onDeleteSession: (sessionId: string) => void
   onArchiveSession: (sessionId: string) => void
   onBranchSession?: (sessionId: string, profile?: string) => void
+  onMergeChildrenSession?: (sessionId: string) => Promise<void> | void
   onMergeSession?: (sessionId: string, profile?: string) => Promise<void> | void
   onTogglePin: (sessionId: string) => void
   onNewSessionInWorkspace?: (path: null | string) => void
@@ -176,6 +177,7 @@ export function SidebarSessionsSection({
   onDeleteSession,
   onArchiveSession,
   onBranchSession,
+  onMergeChildrenSession,
   onMergeSession,
   onTogglePin,
   onNewSessionInWorkspace,
@@ -451,6 +453,7 @@ export function SidebarSessionsSection({
         onArchiveSession={onArchiveSession}
         onBranchSession={onBranchSession}
         onDeleteSession={onDeleteSession}
+        onMergeChildrenSession={onMergeChildrenSession}
         onMergeSession={onMergeSession}
         onResumeSession={onResumeSession}
         onTogglePin={onTogglePin}

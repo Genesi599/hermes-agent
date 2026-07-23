@@ -1648,6 +1648,9 @@ export interface Translations {
       export: string
       branchFrom: string
       mergeBranch: string
+      mergeChildren: (count: number) => string
+      mergeChildrenDeferred: string
+      mergeChildrenFailed: string
       mergeBranchTitle: string
       mergeBranchDesc: string
       mergingBranch: string
