@@ -76,6 +76,9 @@ import { navigateToWorkspacePage, NEW_CHAT_ROUTE, sessionRoute, SETTINGS_ROUTE }
 import type { ClientSessionState, SidebarNavItem } from '../../../types'
 import { sessionContextDrift } from '../session-context-drift'
 
+const MERGE_RUNTIME_MAPPING_WAIT_MS = 5_000
+const MERGE_RUNTIME_MAPPING_POLL_MS = 50
+
 import {
   appendLiveSessionProjection,
   applyRuntimeInfo,
@@ -1457,6 +1460,22 @@ export function useSessionActions({
         return runtimeId && state?.storedSessionId === storedSessionId ? runtimeId : null
       }
 
+      const waitForResumedRuntime = async () => {
+        const deadline = Date.now() + MERGE_RUNTIME_MAPPING_WAIT_MS
+
+        while (Date.now() < deadline) {
+          const runtimeId = currentRuntimeForBranch() ?? resumedRuntimeForBranch()
+
+          if (runtimeId) {
+            return runtimeId
+          }
+
+          await new Promise(resolve => window.setTimeout(resolve, MERGE_RUNTIME_MAPPING_POLL_MS))
+        }
+
+        return currentRuntimeForBranch() ?? resumedRuntimeForBranch()
+      }
+
       let runtimeSessionId = currentRuntimeForBranch()
 
       if (!runtimeSessionId) {
@@ -1467,6 +1486,13 @@ export function useSessionActions({
         // validated cache mapping as a fallback; requiring the active ref here
         // made batch recall report every child as failed after a cold resume.
         runtimeSessionId = currentRuntimeForBranch() ?? resumedRuntimeForBranch()
+
+        // Navigating to the child also activates use-route-resume. That second
+        // resume can supersede the first request before its React refs commit;
+        // wait briefly for the replacement resume to publish the validated map.
+        if (!runtimeSessionId) {
+          runtimeSessionId = await waitForResumedRuntime()
+        }
       } else {
         await ensureGatewayProfile(sessionProfile ?? child.profile)
       }
