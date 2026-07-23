@@ -1580,6 +1580,71 @@ function MergeHarness({
   return null
 }
 
+function BatchMergeHarness({
+  onReady,
+  requestGateway
+}: {
+  onReady: (merge: (parentSessionId: string) => Promise<void>) => void
+  requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
+}) {
+  const activeSessionIdRef = useRef<string | null>('runtime-parent')
+  const selectedStoredSessionIdRef = useRef<string | null>('parent')
+  const runtimeIdByStoredSessionIdRef = useRef(new Map([['parent', 'runtime-parent']]))
+  const sessionStateByRuntimeIdRef = useRef(
+    new Map([['runtime-parent', createClientSessionState('parent')]])
+  )
+  const ensureSessionState = (runtimeId: string, storedSessionId?: string | null) => {
+    const current = sessionStateByRuntimeIdRef.current.get(runtimeId)
+
+    if (current) {
+      return current
+    }
+
+    const created = createClientSessionState(storedSessionId ?? null)
+    sessionStateByRuntimeIdRef.current.set(runtimeId, created)
+    if (storedSessionId) {
+      runtimeIdByStoredSessionIdRef.current.set(storedSessionId, runtimeId)
+    }
+
+    return created
+  }
+  const updateSessionState = (
+    runtimeId: string,
+    updater: (state: ClientSessionState) => ClientSessionState,
+    storedSessionId?: string | null
+  ) => {
+    const next = updater(ensureSessionState(runtimeId, storedSessionId))
+    sessionStateByRuntimeIdRef.current.set(runtimeId, next)
+    if (storedSessionId) {
+      runtimeIdByStoredSessionIdRef.current.set(storedSessionId, runtimeId)
+    }
+
+    return next
+  }
+  const actions = useSessionActions({
+    activeSessionId: 'runtime-parent',
+    activeSessionIdRef,
+    busyRef: useRef(false),
+    creatingSessionRef: useRef(false),
+    ensureSessionState,
+    getRouteToken: () => 'token',
+    navigate: vi.fn() as never,
+    requestGateway,
+    runtimeIdByStoredSessionIdRef,
+    selectedStoredSessionId: 'parent',
+    selectedStoredSessionIdRef,
+    sessionStateByRuntimeIdRef,
+    syncSessionStateToView: vi.fn(),
+    updateSessionState
+  })
+
+  useEffect(() => {
+    onReady(actions.mergeAllChildrenIntoParent)
+  }, [actions.mergeAllChildrenIntoParent, onReady])
+
+  return null
+}
+
 describe('mergeBranchIntoParent', () => {
   afterEach(() => {
     cleanup()
@@ -1639,6 +1704,163 @@ describe('mergeBranchIntoParent', () => {
     await expect(merge!('child')).resolves.toMatchObject({ deleted: null, parent_session_id: 'parent', queued: true })
 
     expect($sessions.get().map(session => session.id)).toEqual(['parent', 'child'])
+  })
+})
+
+describe('mergeAllChildrenIntoParent concurrency', () => {
+  afterEach(() => {
+    cleanup()
+    setSessions([])
+    vi.restoreAllMocks()
+  })
+
+  it('starts sibling reviews together and waits for both before returning', async () => {
+    const gates = new Map<string, ReturnType<typeof deferred<{ deleted: string; deleted_ids: string[]; parent_session_id: string; queued: boolean; summary: string }>>>()
+    const started: string[] = []
+    const requestGateway = vi.fn(async <T,>(method: string, params?: Record<string, unknown>) => {
+      if (method === 'session.resume') {
+        return {
+          info: {},
+          message_count: 1,
+          messages: [{ content: `seed-${params?.session_id}`, role: 'user', timestamp: 1 }],
+          resumed: params?.session_id,
+          running: false,
+          session_id: `runtime-${params?.session_id}`,
+          session_key: params?.session_id
+        } as T
+      }
+
+      if (method === 'session.merge_branch') {
+        const childId = String(params?.session_id)
+        started.push(childId)
+        const gate = deferred<{
+          deleted: string
+          deleted_ids: string[]
+          parent_session_id: string
+          queued: boolean
+          summary: string
+        }>()
+        gates.set(childId, gate)
+
+        return gate.promise as Promise<T>
+      }
+
+      return {} as T
+    })
+
+    setSessions([
+      storedSession({ id: 'parent', message_count: 1 }),
+      storedSession({ id: 'child-a', message_count: 2, parent_session_id: 'parent' }),
+      storedSession({ id: 'child-b', message_count: 2, parent_session_id: 'parent' })
+    ])
+
+    let mergeAll: ((parentSessionId: string) => Promise<void>) | null = null
+    render(
+      <BatchMergeHarness
+        onReady={action => (mergeAll = action)}
+        requestGateway={requestGateway as never}
+      />
+    )
+    await waitFor(() => expect(mergeAll).not.toBeNull())
+
+    let pending: Promise<void> | null = null
+    await act(async () => {
+      pending = mergeAll!('parent')
+      await waitFor(() => expect(started).toEqual(['child-a', 'child-b']))
+    })
+
+    expect(started).toEqual(['child-a', 'child-b'])
+    gates.get('child-a')!.resolve({
+      deleted: 'child-a',
+      deleted_ids: ['child-a'],
+      parent_session_id: 'parent',
+      queued: false,
+      summary: 'a'
+    })
+    gates.get('child-b')!.resolve({
+      deleted: 'child-b',
+      deleted_ids: ['child-b'],
+      parent_session_id: 'parent',
+      queued: false,
+      summary: 'b'
+    })
+    await pending!
+    expect($sessions.get().map(session => session.id)).toEqual(['parent'])
+  })
+
+  it('waits for descendants before reviewing their ancestor branch', async () => {
+    const gates = new Map<string, ReturnType<typeof deferred<{
+      deleted: string
+      deleted_ids: string[]
+      parent_session_id: string
+      queued: boolean
+      summary: string
+    }>>>()
+    const started: string[] = []
+    const requestGateway = vi.fn(async <T,>(method: string, params?: Record<string, unknown>) => {
+      if (method === 'session.resume') {
+        return {
+          info: {},
+          message_count: 1,
+          messages: [{ content: `seed-${params?.session_id}`, role: 'user', timestamp: 1 }],
+          resumed: params?.session_id,
+          running: false,
+          session_id: `runtime-${params?.session_id}`,
+          session_key: params?.session_id
+        } as T
+      }
+
+      if (method === 'session.merge_branch') {
+        const childId = String(params?.session_id)
+        started.push(childId)
+        const gate = deferred<{
+          deleted: string
+          deleted_ids: string[]
+          parent_session_id: string
+          queued: boolean
+          summary: string
+        }>()
+        gates.set(childId, gate)
+
+        return gate.promise as Promise<T>
+      }
+
+      return {} as T
+    })
+
+    setSessions([
+      storedSession({ id: 'parent', message_count: 1 }),
+      storedSession({ id: 'child', message_count: 2, parent_session_id: 'parent' }),
+      storedSession({ id: 'grandchild', message_count: 2, parent_session_id: 'child' })
+    ])
+
+    let mergeAll: ((parentSessionId: string) => Promise<void>) | null = null
+    render(
+      <BatchMergeHarness
+        onReady={action => (mergeAll = action)}
+        requestGateway={requestGateway as never}
+      />
+    )
+    await waitFor(() => expect(mergeAll).not.toBeNull())
+
+    const pending = mergeAll!('parent')
+    await waitFor(() => expect(started).toEqual(['grandchild']))
+    gates.get('grandchild')!.resolve({
+      deleted: 'grandchild',
+      deleted_ids: ['grandchild'],
+      parent_session_id: 'child',
+      queued: false,
+      summary: 'grandchild summary'
+    })
+    await waitFor(() => expect(started).toEqual(['grandchild', 'child']))
+    gates.get('child')!.resolve({
+      deleted: 'child',
+      deleted_ids: ['child'],
+      parent_session_id: 'parent',
+      queued: false,
+      summary: 'child summary'
+    })
+    await pending
   })
 })
 

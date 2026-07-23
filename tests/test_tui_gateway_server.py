@@ -12616,6 +12616,68 @@ def test_session_merge_branch_requires_resumed_child_runtime(monkeypatch):
     assert deleted == []
 
 
+def test_session_merge_branch_reports_deleted_when_sibling_drain_won_race(monkeypatch):
+    rows = {
+        "parent": {"id": "parent", "parent_session_id": None},
+        "child": {
+            "id": "child",
+            "parent_session_id": "parent",
+            "model_config": json.dumps({"_branch_seed_message_count": 0}),
+        },
+    }
+
+    class _DB:
+        def get_session(self, sid):
+            return rows.get(sid)
+
+        def get_messages(self, sid):
+            return [] if sid == "parent" else [{"role": "user", "content": "new fact"}]
+
+        def get_pending_branch_merge(self, sid):
+            return None
+
+        def queue_branch_merge(self, sid, summary):
+            rows.pop(sid, None)
+            return True
+
+    live_session = {
+        "agent": object(),
+        "history": [],
+        "history_lock": threading.RLock(),
+        "running": False,
+        "session_key": "child",
+    }
+
+    monkeypatch.setattr(server, "_get_db", lambda: _DB())
+    monkeypatch.setattr(
+        server,
+        "_run_prompt_submit",
+        lambda *args, completion_callback=None, **kwargs: completion_callback(
+            "complete", "reviewed"
+        ),
+    )
+    monkeypatch.setattr(server, "_apply_pending_branch_merges", lambda *args, **kwargs: [])
+    monkeypatch.setattr(server, "_emit", lambda *args, **kwargs: None)
+    server._sessions["runtime-child"] = live_session
+    try:
+        resp = server.handle_request(
+            {
+                "id": "1",
+                "method": "session.merge_branch",
+                "params": {
+                    "session_id": "child",
+                    "runtime_session_id": "runtime-child",
+                },
+            }
+        )
+    finally:
+        server._sessions.pop("runtime-child", None)
+
+    assert resp["result"]["deleted"] == "child"
+    assert resp["result"]["deleted_ids"] == ["child"]
+    assert resp["result"]["queued"] is False
+
+
 def test_branch_seed_count_falls_back_to_matching_selected_parent_message():
     parent = [
         {"role": "user", "content": "first"},
@@ -12695,6 +12757,36 @@ def test_session_merge_branch_real_db_moves_summary_and_removes_child(monkeypatc
         assert merged["platform_message_id"] == "branch-merge:child"
     finally:
         db.close()
+
+
+def test_pending_branch_merge_application_is_serialized_per_parent(monkeypatch):
+    active = 0
+    maximum = 0
+    state_lock = threading.Lock()
+    entered = threading.Event()
+
+    def fake_apply(parent_id, *, claim_already_held=False, safe_live_sid=""):
+        nonlocal active, maximum
+        with state_lock:
+            active += 1
+            maximum = max(maximum, active)
+            entered.set()
+        time.sleep(0.03)
+        with state_lock:
+            active -= 1
+        return [parent_id]
+
+    monkeypatch.setattr(server, "_apply_pending_branch_merges_unlocked", fake_apply)
+    server._branch_merge_apply_locks.pop("parent", None)
+    first = threading.Thread(target=server._apply_pending_branch_merges, args=("parent",))
+    second = threading.Thread(target=server._apply_pending_branch_merges, args=("parent",))
+    first.start()
+    assert entered.wait(1)
+    second.start()
+    first.join(1)
+    second.join(1)
+
+    assert maximum == 1
 
 
 # --------------------------------------------------------------------------
