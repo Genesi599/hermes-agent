@@ -54,6 +54,8 @@ interface SidebarSessionRowProps extends React.ComponentProps<'div'> {
   onArchive: () => void
   onBranch?: () => void
   onDelete: () => void
+  mergeChildrenCount?: number
+  onMergeChildren?: () => Promise<void> | void
   onMerge?: () => Promise<void> | void
   onPin: () => void
   onResume: () => void
@@ -96,6 +98,8 @@ function SidebarSessionRowImpl({
   onArchive,
   onBranch,
   onDelete,
+  mergeChildrenCount,
+  onMergeChildren,
   onMerge,
   onPin,
   onResume,
@@ -216,10 +220,12 @@ function SidebarSessionRowImpl({
 
   return (
     <SessionContextMenu
+      mergeChildrenCount={mergeChildrenCount}
       onArchive={onArchive}
       onBranch={onBranch}
       onDelete={onDelete}
       onMerge={onMerge}
+      onMergeChildren={onMergeChildren}
       onPin={onPin}
       pinned={isPinned}
       profile={session.profile}
@@ -246,10 +252,12 @@ function SidebarSessionRowImpl({
               </span>
             ))}
             <SessionActionsMenu
+              mergeChildrenCount={mergeChildrenCount}
               onArchive={onArchive}
               onBranch={onBranch}
               onDelete={onDelete}
               onMerge={onMerge}
+              onMergeChildren={onMergeChildren}
               onPin={onPin}
               pinned={isPinned}
               profile={session.profile}

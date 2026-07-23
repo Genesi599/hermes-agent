@@ -3,7 +3,7 @@ import { type MutableRefObject, useCallback, useEffect, useRef } from 'react'
 import type { NavigateFunction } from 'react-router'
 
 import { revealTreePane } from '@/components/pane-shell/tree/store'
-import { deleteSession, getAllSessionMessages, getLatestSessionMessages, getSessionMessages, PROMPT_SUBMIT_REQUEST_TIMEOUT_MS, setSessionArchived, type SessionInfo } from '@/hermes' 
+import { deleteSession, getAllSessionMessages, getLatestSessionMessages, getSessionMessages, PROMPT_SUBMIT_REQUEST_TIMEOUT_MS, setSessionArchived, type SessionInfo } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { type ChatMessage, preserveLocalAssistantErrors, toChatMessages } from '@/lib/chat-messages'
 import { isMissingRpcMethod } from '@/lib/gateway-rpc'
@@ -204,6 +204,37 @@ interface MergeBranchResponse {
   parent_session_id: string
   queued?: boolean
   summary: string
+}
+
+export function descendantBranchMergeOrder(sessions: SessionInfo[], parentSessionId: string): SessionInfo[] {
+  const childrenByParent = new Map<string, SessionInfo[]>()
+
+  for (const session of sessions) {
+    const parentId = session.parent_session_id?.trim()
+
+    if (parentId) {
+      childrenByParent.set(parentId, [...(childrenByParent.get(parentId) ?? []), session])
+    }
+  }
+
+  const ordered: SessionInfo[] = []
+  const visited = new Set<string>([parentSessionId])
+
+  const visit = (parentId: string) => {
+    for (const child of childrenByParent.get(parentId) ?? []) {
+      if (visited.has(child.id)) {
+        continue
+      }
+
+      visited.add(child.id)
+      visit(child.id)
+      ordered.push(child)
+    }
+  }
+
+  visit(parentSessionId)
+
+  return ordered
 }
 
 interface ReviewDeleteResponse {
@@ -1402,7 +1433,7 @@ export function useSessionActions({
   )
 
   const mergeBranchIntoParent = useCallback(
-    async (storedSessionId: string, sessionProfile?: string | null): Promise<void> => {
+    async (storedSessionId: string, sessionProfile?: string | null): Promise<MergeBranchResponse> => {
       clearNotifications()
 
       const child = $sessions.get().find(session => sessionMatchesStoredId(session, storedSessionId))
@@ -1488,8 +1519,68 @@ export function useSessionActions({
       selectedStoredSessionIdRef.current = result.parent_session_id
       setMessages([])
       navigate(sessionRoute(result.parent_session_id), { replace: true })
+
+      return result
     },
-    [activeSessionIdRef, navigate, requestGateway, resumeSession, selectedStoredSessionIdRef]
+    [
+      activeSessionIdRef,
+      navigate,
+      requestGateway,
+      resumeSession,
+      runtimeIdByStoredSessionIdRef,
+      selectedStoredSessionIdRef,
+      sessionStateByRuntimeIdRef
+    ]
+  )
+
+  const mergeAllChildrenIntoParent = useCallback(
+    async (parentSessionId: string): Promise<void> => {
+      const orderedChildren = descendantBranchMergeOrder($sessions.get(), parentSessionId)
+
+      if (!orderedChildren.length) {
+        return
+      }
+
+      const blockedAncestors = new Set<string>()
+      const failedTitles: string[] = []
+      const parentById = new Map(orderedChildren.map(child => [child.id, child.parent_session_id?.trim() ?? '']))
+
+      const blockAncestors = (child: SessionInfo) => {
+        let ancestorId = child.parent_session_id?.trim() ?? ''
+
+        while (ancestorId && ancestorId !== parentSessionId) {
+          blockedAncestors.add(ancestorId)
+          ancestorId = parentById.get(ancestorId) ?? ''
+        }
+      }
+
+      for (const child of orderedChildren) {
+        if (blockedAncestors.has(child.id)) {
+          continue
+        }
+
+        try {
+          const result = await mergeBranchIntoParent(child.id, child.profile)
+
+          if (result.queued && result.parent_session_id !== parentSessionId) {
+            blockAncestors(child)
+          }
+        } catch (err) {
+          failedTitles.push(child.title?.trim() || child.preview?.trim() || child.id)
+          blockAncestors(child)
+        }
+      }
+
+      if (failedTitles.length) {
+        notifyError(
+          new Error(`${t.sidebar.row.mergeChildrenFailed}: ${failedTitles.join(', ')}`),
+          t.sidebar.row.mergeChildrenFailed
+        )
+      } else if (blockedAncestors.size) {
+        notify({ kind: 'warning', message: t.sidebar.row.mergeChildrenDeferred })
+      }
+    },
+    [mergeBranchIntoParent, t.sidebar.row.mergeChildrenDeferred, t.sidebar.row.mergeChildrenFailed]
   )
 
   const removeSession = useCallback(
@@ -1658,6 +1749,7 @@ export function useSessionActions({
     closeSettings,
     createBackendSessionForSend,
     openNewSessionTile,
+    mergeAllChildrenIntoParent,
     mergeBranchIntoParent,
     openSettings,
     removeSession,
