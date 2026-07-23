@@ -229,6 +229,7 @@ interface ChatSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onLoadMoreMessaging?: (platform: string) => Promise<void> | void
   onResumeSession: (sessionId: string) => void
   onDeleteSession: (sessionId: string) => void
+  onMergeChildrenSession: (sessionId: string) => Promise<void> | void
   onMergeSession: (sessionId: string, profile?: string) => Promise<void> | void
   onArchiveSession: (sessionId: string) => void
   onBranchSession: (sessionId: string) => void
@@ -247,6 +248,7 @@ export function ChatSidebar({
   onLoadMoreMessaging,
   onResumeSession,
   onDeleteSession,
+  onMergeChildrenSession,
   onMergeSession,
   onArchiveSession,
   onBranchSession,
@@ -1235,6 +1237,7 @@ export function ChatSidebar({
                 onArchiveSession={onArchiveSession}
                 onBranchSession={onBranchSession}
                 onDeleteSession={onDeleteSession}
+                onMergeChildrenSession={onMergeChildrenSession}
                 onMergeSession={onMergeSession}
                 onResumeSession={onResumeSession}
                 onToggle={() => undefined}
@@ -1258,6 +1261,7 @@ export function ChatSidebar({
                 onArchiveSession={onArchiveSession}
                 onBranchSession={onBranchSession}
                 onDeleteSession={onDeleteSession}
+                onMergeChildrenSession={onMergeChildrenSession}
                 onMergeSession={onMergeSession}
                 onReorderSessions={reorderPinned}
                 onResumeSession={onResumeSession}
@@ -1401,6 +1405,7 @@ export function ChatSidebar({
                 onBranchSession={onBranchSession}
                 onDeleteSession={onDeleteSession}
                 onEnterProject={onEnterProject}
+                onMergeChildrenSession={onMergeChildrenSession}
                 onMergeSession={onMergeSession}
                 onNewSessionInWorkspace={showAllProfiles ? undefined : onNewSessionInWorkspace}
                 onReorderProjects={showAllProfiles ? undefined : reorderProjects}

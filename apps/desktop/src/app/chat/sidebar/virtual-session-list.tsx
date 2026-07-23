@@ -18,6 +18,8 @@ interface SessionRowCommonProps {
   onArchive: () => void
   onBranch?: () => void
   onDelete: () => void
+  mergeChildrenCount?: number
+  onMergeChildren?: () => Promise<void> | void
   onMerge?: () => Promise<void> | void
   onPin: () => void
   onResume: () => void
@@ -32,6 +34,7 @@ interface VirtualSessionListProps {
   onArchiveSession: (sessionId: string) => void
   onBranchSession?: (sessionId: string, profile?: string) => void
   onDeleteSession: (sessionId: string) => void
+  onMergeChildrenSession?: (sessionId: string) => Promise<void> | void
   onMergeSession?: (sessionId: string, profile?: string) => Promise<void> | void
   onResumeSession: (sessionId: string) => void
   onTogglePin: (sessionId: string) => void
@@ -51,6 +54,7 @@ export const VirtualSessionList: FC<VirtualSessionListProps> = ({
   onArchiveSession,
   onBranchSession,
   onDeleteSession,
+  onMergeChildrenSession,
   onMergeSession,
   onResumeSession,
   onTogglePin,
@@ -75,6 +79,15 @@ export const VirtualSessionList: FC<VirtualSessionListProps> = ({
   const totalSize = virtualizer.getTotalSize()
   const paddingTop = virtualItems[0]?.start ?? 0
   const paddingBottom = Math.max(0, totalSize - (virtualItems[virtualItems.length - 1]?.end ?? 0))
+  const childCountByParent = new Map<string, number>()
+
+  for (const { session } of entries) {
+    const parentId = session.parent_session_id?.trim()
+
+    if (parentId) {
+      childCountByParent.set(parentId, (childCountByParent.get(parentId) ?? 0) + 1)
+    }
+  }
 
   const rows = virtualItems.map(virtualItem => {
     const entry = entries[virtualItem.index]
@@ -85,6 +98,7 @@ export const VirtualSessionList: FC<VirtualSessionListProps> = ({
 
     const { branchStem, session } = entry
     const reorderable = sortable && !branchStem
+    const childCount = childCountByParent.get(session.id) ?? 0
 
     const commonProps: SessionRowCommonProps = {
       branchStem,
@@ -94,6 +108,9 @@ export const VirtualSessionList: FC<VirtualSessionListProps> = ({
       onArchive: () => onArchiveSession(session.id),
       onBranch: onBranchSession ? () => onBranchSession(session.id, session.profile) : undefined,
       onDelete: () => onDeleteSession(session.id),
+      mergeChildrenCount: childCount,
+      onMergeChildren:
+        childCount > 0 && onMergeChildrenSession ? () => onMergeChildrenSession(session.id) : undefined,
       onMerge:
         session.parent_session_id && onMergeSession ? () => onMergeSession(session.id, session.profile) : undefined,
       onPin: () => onTogglePin(sessionPinId(session)),

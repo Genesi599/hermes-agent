@@ -114,6 +114,8 @@ interface SessionActions {
   profile?: string
   onPin?: () => void
   onBranch?: () => void
+  mergeChildrenCount?: number
+  onMergeChildren?: () => Promise<void> | void
   onMerge?: () => Promise<void> | void
   onArchive?: () => void
   onDelete?: () => void
@@ -195,6 +197,8 @@ function useSessionActions({
   profile,
   onPin,
   onBranch,
+  mergeChildrenCount = 0,
+  onMergeChildren,
   onMerge,
   onArchive,
   onDelete,
@@ -290,6 +294,19 @@ function useSessionActions({
         void exportSession(sessionId, { profile, title })
       }
     }),
+    ...(onMergeChildren
+      ? [
+          spec({
+            disabled: false,
+            icon: 'repo-pull',
+            label: r.mergeChildren(mergeChildrenCount),
+            onSelect: () => {
+              triggerHaptic('warning')
+              void onMergeChildren()
+            }
+          })
+        ]
+      : []),
     ...(onMerge
       ? [
           spec({

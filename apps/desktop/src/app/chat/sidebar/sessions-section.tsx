@@ -90,6 +90,7 @@ interface SidebarSessionsSectionProps {
   onDeleteSession: (sessionId: string) => void
   onArchiveSession: (sessionId: string) => void
   onBranchSession?: (sessionId: string, profile?: string) => void
+  onMergeChildrenSession?: (sessionId: string) => Promise<void> | void
   onMergeSession?: (sessionId: string, profile?: string) => Promise<void> | void
   onTogglePin: (sessionId: string) => void
   onNewSessionInWorkspace?: (path: null | string) => void
@@ -153,6 +154,7 @@ export function SidebarSessionsSection({
   onDeleteSession,
   onArchiveSession,
   onBranchSession,
+  onMergeChildrenSession,
   onMergeSession,
   onTogglePin,
   onNewSessionInWorkspace,
@@ -197,8 +199,22 @@ export function SidebarSessionsSection({
   // grouped/tree views always sort by creation date and never drag.
   const sessionsDraggable = sortable && !!onReorderSessions
   const displayEntries = useMemo(() => flattenSessionsWithBranches(sessions), [sessions])
+  const childCountByParent = useMemo(() => {
+    const counts = new Map<string, number>()
+
+    for (const item of sessions) {
+      const parentId = item.parent_session_id?.trim()
+
+      if (parentId) {
+        counts.set(parentId, (counts.get(parentId) ?? 0) + 1)
+      }
+    }
+
+    return counts
+  }, [sessions])
 
   const renderRow = (session: SessionInfo, draggable: boolean, branchStem?: string) => {
+    const childCount = childCountByParent.get(session.id) ?? 0
     const rowProps = {
       branchStem,
       isPinned: pinned,
@@ -207,6 +223,9 @@ export function SidebarSessionsSection({
       onArchive: () => onArchiveSession(session.id),
       onBranch: onBranchSession ? () => onBranchSession(session.id, session.profile) : undefined,
       onDelete: () => onDeleteSession(session.id),
+      mergeChildrenCount: childCount,
+      onMergeChildren:
+        childCount > 0 && onMergeChildrenSession ? () => onMergeChildrenSession(session.id) : undefined,
       onMerge:
         session.parent_session_id && onMergeSession ? () => onMergeSession(session.id, session.profile) : undefined,
       onPin: () => onTogglePin(sessionPinId(session)),
@@ -318,6 +337,7 @@ export function SidebarSessionsSection({
         onArchiveSession={onArchiveSession}
         onBranchSession={onBranchSession}
         onDeleteSession={onDeleteSession}
+        onMergeChildrenSession={onMergeChildrenSession}
         onMergeSession={onMergeSession}
         onResumeSession={onResumeSession}
         onTogglePin={onTogglePin}
