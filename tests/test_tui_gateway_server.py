@@ -12812,6 +12812,54 @@ def test_session_active_list_reports_live_sessions(monkeypatch):
     assert rows["sid-b"]["preview"] == "writing code"
 
 
+def test_session_active_list_clears_dead_worker_and_durable_turn(monkeypatch):
+    class _DeadThread:
+        @staticmethod
+        def is_alive():
+            return False
+
+    previous_sessions = dict(server._sessions)
+    server._sessions.clear()
+    released = []
+    monkeypatch.setattr(server, "_get_db", lambda: None)
+    monkeypatch.setattr(
+        server,
+        "_release_durable_session_turn",
+        lambda sid, session: released.append((sid, session)),
+    )
+    orphaned = _session(
+        agent=types.SimpleNamespace(model="model-a"),
+        history=[{"role": "assistant", "content": "finished"}],
+        running=True,
+        session_key="key-a",
+    )
+    orphaned["_run_thread"] = _DeadThread()
+    orphaned["inflight_turn"] = {
+        "assistant": "partial",
+        "streaming": True,
+        "user": "request",
+    }
+    server._sessions["sid-a"] = orphaned
+    try:
+        resp = server.handle_request(
+            {
+                "id": "1",
+                "method": "session.active_list",
+                "params": {},
+            }
+        )
+    finally:
+        server._sessions.clear()
+        server._sessions.update(previous_sessions)
+
+    row = resp["result"]["sessions"][0]
+    assert row["status"] == "idle"
+    assert row["preview"] == "finished"
+    assert orphaned["running"] is False
+    assert orphaned["inflight_turn"] is None
+    assert released == [("sid-a", orphaned)]
+
+
 def test_session_active_list_excludes_finalized_sessions(monkeypatch):
     """#38950: a finalized-but-not-yet-popped session must not inflate the count.
 

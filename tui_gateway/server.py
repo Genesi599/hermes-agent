@@ -8262,6 +8262,25 @@ def _session_live_status(sid: str, session: dict) -> str:
     return "idle"
 
 
+def _reconcile_dead_session_worker(sid: str, session: dict) -> bool:
+    """Clear a running turn whose worker exited before its finalizer ran."""
+    release_stale_turn = False
+    with session["history_lock"]:
+        run_thread = session.get("_run_thread")
+        if (
+            session.get("running")
+            and run_thread is not None
+            and not run_thread.is_alive()
+        ):
+            session["running"] = False
+            _clear_inflight_turn(session)
+            release_stale_turn = True
+
+    if release_stale_turn:
+        _release_durable_session_turn(sid, session)
+    return release_stale_turn
+
+
 def _message_preview(history: list) -> str:
     for msg in reversed(history or []):
         text = _content_display_text(msg.get("content", msg.get("text", ""))).strip()
@@ -8282,6 +8301,7 @@ def _session_live_title(session: dict, key: str) -> str:
 
 
 def _session_live_item(sid: str, session: dict, current_sid: str = "") -> dict:
+    _reconcile_dead_session_worker(sid, session)
     key = _session_lookup_key(session, fallback=sid)
     agent = session.get("agent")
     history = list(session.get("history") or [])
@@ -8440,16 +8460,8 @@ def _live_session_payload(
     transport: Transport | None = None,
     omit_messages: bool = False,
 ) -> dict:
-    release_stale_turn = False
+    _reconcile_dead_session_worker(sid, session)
     with session["history_lock"]:
-        run_thread = session.get("_run_thread")
-        if session.get("running") and run_thread is not None and not run_thread.is_alive():
-            # A worker may exit before its finalizer updates the shared session.
-            # Do not report that orphaned turn as live to a renderer reconnecting
-            # after a Desktop restart; it otherwise stays on Thinking forever.
-            session["running"] = False
-            _clear_inflight_turn(session)
-            release_stale_turn = True
         if cols is not None:
             session["cols"] = cols
         if transport is not None:
