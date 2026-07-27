@@ -9415,14 +9415,6 @@ def _live_session_payload(
 ) -> dict:
     _reconcile_dead_session_worker(sid, session)
     with session["history_lock"]:
-        run_thread = session.get("_run_thread")
-        if session.get("running") and run_thread is not None and not run_thread.is_alive():
-            # A worker may exit before its finalizer updates the shared session.
-            # Do not report that orphaned turn as live to a renderer reconnecting
-            # after a Desktop restart; it otherwise stays on Thinking forever.
-            session["running"] = False
-            _clear_inflight_turn(session)
-            release_stale_turn = True
         if cols is not None:
             session["cols"] = cols
         if transport is not None:
