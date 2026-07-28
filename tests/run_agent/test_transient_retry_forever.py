@@ -120,3 +120,42 @@ def test_full_turn_recovers_after_multiple_exhausted_retry_batches():
         and "Continuing automatic retries" in call.args[0]
         for call in emit_status.call_args_list
     )
+
+
+def test_full_turn_keeps_retrying_http_overload_without_transport_rebuild():
+    agent = _make_agent()
+    agent._api_max_retries = 2
+    agent._retry_transient_forever = True
+    calls = 0
+
+    def overloaded_then_recover(_api_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls <= 5:
+            raise Exception(
+                "Our servers are currently overloaded. Please try again later."
+            )
+        return _mock_response("Recovered after overload")
+
+    with (
+        patch.object(
+            agent, "_interruptible_api_call", side_effect=overloaded_then_recover
+        ),
+        patch.object(agent, "_try_recover_primary_transport", return_value=False),
+        patch.object(agent, "_persist_session"),
+        patch.object(agent, "_save_trajectory"),
+        patch.object(agent, "_cleanup_task_resources"),
+        patch.object(agent, "_emit_status") as emit_status,
+        patch("run_agent.OpenAI", return_value=MagicMock()),
+        patch("agent.agent_runtime_helpers.time.sleep"),
+        patch("agent.model_metadata.get_model_context_length", return_value=200000),
+    ):
+        result = agent.run_conversation("hello")
+
+    assert calls == 6
+    assert result["completed"] is True
+    assert result["final_response"] == "Recovered after overload"
+    assert any(
+        "Continuing automatic retries" in call.args[0]
+        for call in emit_status.call_args_list
+    )
