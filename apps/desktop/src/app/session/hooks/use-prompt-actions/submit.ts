@@ -39,6 +39,7 @@ import { resolveSessionProfile } from '../use-session-actions/utils'
 import { finalizeInterruptedMessages } from './rewind'
 import {
   _submitInFlight,
+  delay,
   type GatewayRequest,
   inlineErrorMessage,
   isProviderSetupError,
@@ -49,6 +50,9 @@ import {
   withSessionBusyRetry,
   withSessionNotFoundResume
 } from './utils'
+
+const RUNTIME_BINDING_WAIT_MS = 1_000
+const RUNTIME_BINDING_POLL_MS = 50
 
 interface SubmitPromptDeps {
   activeSessionIdRef: MutableRefObject<string | null>
@@ -290,6 +294,27 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
 
       const targetIsCurrentView = (): boolean => targetStartedInCurrentView && !sessionDriftReason()
 
+      const waitForRoutedRuntimeBinding = async (storedSessionId: string): Promise<null | string> => {
+        const validatedBinding = () => {
+          const runtimeId = getRuntimeIdForStoredSession(storedSessionId)
+
+          return runtimeId && activeSessionIdRef.current === runtimeId ? runtimeId : null
+        }
+        const deadline = Date.now() + RUNTIME_BINDING_WAIT_MS
+
+        while (!sessionContextDrifted() && Date.now() < deadline) {
+          const runtimeId = validatedBinding()
+
+          if (runtimeId) {
+            return runtimeId
+          }
+
+          await delay(RUNTIME_BINDING_POLL_MS)
+        }
+
+        return sessionContextDrifted() ? null : validatedBinding()
+      }
+
       // One submit in flight per session — drop any concurrent re-fire so a
       // stalled turn can't stack the same prompt into multiple real turns. The
       // foreground ChatBar and background drainers can briefly overlap during a
@@ -454,13 +479,54 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
           return abortForSessionSwitch(null)
         }
 
-        const recoveredRuntimeId = activeSessionIdRef.current
-        const validatedRuntimeId = getRuntimeIdForStoredSession(routedStoredSessionId)
+        let recoveredRuntimeId = activeSessionIdRef.current
+        let validatedRuntimeId = getRuntimeIdForStoredSession(routedStoredSessionId)
 
-        // Recovery only succeeded when both sides of the cache agree that the
-        // live runtime belongs to the durable routed session. A failed profile
-        // swap may leave the previous profile's runtime active, while a recycled
-        // runtime id may leave a cross-wired stored-session mapping.
+        // Opening/resuming the same route can start a second use-route-resume.
+        // That replacement intentionally supersedes the first request, so the
+        // awaited call above may return before the replacement publishes its
+        // stored -> runtime cache binding. Wait for the validated pair instead
+        // of treating that hand-off as a user switch and retracting the prompt.
+        if (
+          !sessionContextDrifted() &&
+          (!recoveredRuntimeId || recoveredRuntimeId !== validatedRuntimeId)
+        ) {
+          const reboundRuntimeId = await waitForRoutedRuntimeBinding(routedStoredSessionId)
+
+          recoveredRuntimeId = reboundRuntimeId
+          validatedRuntimeId = reboundRuntimeId
+        }
+
+        // If no replacement resume published a binding, make one final direct
+        // backend resume against the durable id. This is authoritative for the
+        // requested stored conversation and avoids both bad fallbacks: silently
+        // retracting the prompt or creating a contextless new Session.
+        if (!sessionContextDrifted() && !recoveredRuntimeId) {
+          try {
+            const resumed = await requestGateway<{ session_id: string }>('session.resume', {
+              session_id: routedStoredSessionId,
+              source: 'desktop'
+            })
+
+            if (sessionContextDrifted()) {
+              return abortForSessionSwitch(null)
+            }
+
+            recoveredRuntimeId = resumed?.session_id ?? null
+            validatedRuntimeId = recoveredRuntimeId
+
+            if (recoveredRuntimeId && targetIsCurrentView()) {
+              activeSessionIdRef.current = recoveredRuntimeId
+            }
+          } catch {
+            return abortForSessionSwitch(null)
+          }
+        }
+
+        // Recovery only succeeded when the cache pair agreed, or the direct
+        // resume above returned a runtime for this exact durable id. A failed
+        // profile swap may leave the previous profile's runtime active, while a
+        // recycled runtime id may leave a cross-wired stored-session mapping.
         if (
           !recoveredRuntimeId ||
           recoveredRuntimeId !== validatedRuntimeId ||
