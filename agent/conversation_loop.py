@@ -5723,14 +5723,31 @@ def run_conversation(
                         "error": _nonretryable_summary,
                     }
 
-                # Once the normal client rebuild and fallback paths have both
-                # had a chance to recover, keep known-transient outages alive
-                # in visible retry batches. Extending the ceiling before the
-                # terminal guard lets the existing interruptible backoff run
-                # unchanged.
+                # Give the primary transport one rebuild attempt before
+                # extending retries. HTTP overload/server responses are not
+                # transport exceptions, so the rebuild helper may decline;
+                # they must still reach continuous retry below.
+                if retry_count >= max_retries and not _retry.primary_recovery_attempted:
+                    _retry.primary_recovery_attempted = True
+                    if agent._try_recover_primary_transport(
+                        api_error, retry_count=retry_count, max_retries=max_retries,
+                    ):
+                        retry_count = 0
+                        # Primary transport recovery starts a fresh attempt
+                        # cycle. Re-open fallback state so a follow-on 429 can
+                        # still activate fallback_providers after stale
+                        # pre-recovery fallback/credential-pool bookkeeping.
+                        _retry.has_retried_429 = False
+                        agent._fallback_index = 0
+                        agent._fallback_activated = False
+                        continue
+
+                # Once normal recovery and fallback selection have had a
+                # chance, keep known-transient outages alive in visible retry
+                # batches. Extending the ceiling before the terminal guard
+                # lets the existing interruptible backoff run unchanged.
                 if (
                     retry_count >= max_retries
-                    and _retry.primary_recovery_attempted
                     and not agent._has_pending_fallback()
                 ):
                     _extended_retry_budget = _extend_transient_retry_budget(
@@ -5755,23 +5772,6 @@ def run_conversation(
                         )
 
                 if retry_count >= max_retries:
-                    # Before falling back, try rebuilding the primary
-                    # client once for transient transport errors (stale
-                    # connection pool, TCP reset).  Only attempted once
-                    # per API call block.
-                    if not _retry.primary_recovery_attempted and agent._try_recover_primary_transport(
-                        api_error, retry_count=retry_count, max_retries=max_retries,
-                    ):
-                        _retry.primary_recovery_attempted = True
-                        retry_count = 0
-                        # Primary transport recovery starts a fresh attempt
-                        # cycle. Re-open fallback state so a follow-on 429 can
-                        # still activate fallback_providers after stale
-                        # pre-recovery fallback/credential-pool bookkeeping.
-                        _retry.has_retried_429 = False
-                        agent._fallback_index = 0
-                        agent._fallback_activated = False
-                        continue
                     # Try fallback before giving up entirely
                     if agent._has_pending_fallback():
                         agent._buffer_status(f"⚠️ Max retries ({max_retries}) exhausted — trying fallback...")
