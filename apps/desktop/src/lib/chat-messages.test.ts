@@ -13,8 +13,52 @@ import {
   reasoningPart,
   renderMediaTags,
   toChatMessages,
-  upsertToolPart
+  upsertToolPart,
+  withUniqueToolCallIds
 } from './chat-messages'
+
+describe('withUniqueToolCallIds', () => {
+  const toolMessage = (id: string, toolCallId: string): ChatMessage => ({
+    id,
+    role: 'assistant',
+    parts: [{ type: 'tool-call', toolCallId, toolName: 'read_file', args: {} as never, argsText: '{}' }]
+  })
+
+  it('keeps provider ids unique across the entire rendered thread', () => {
+    const messages = withUniqueToolCallIds([
+      toolMessage('assistant-1', 'call-duplicate'),
+      toolMessage('assistant-2', 'call-duplicate')
+    ])
+
+    const ids = messages.flatMap(message =>
+      message.parts.flatMap(part => (part.type === 'tool-call' ? [part.toolCallId] : []))
+    )
+
+    expect(ids).toEqual(['call-duplicate', 'call-duplicate-assistant-2-0'])
+
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('avoids collisions with an existing generated suffix', () => {
+    const messages = withUniqueToolCallIds([
+      toolMessage('assistant-1', 'call-duplicate'),
+      toolMessage('assistant-2', 'call-duplicate-assistant-2-0'),
+      toolMessage('assistant-2', 'call-duplicate')
+    ])
+
+    const ids = messages.flatMap(message =>
+      message.parts.flatMap(part => (part.type === 'tool-call' ? [part.toolCallId] : []))
+    )
+
+    expect(ids).toEqual([
+      'call-duplicate',
+      'call-duplicate-assistant-2-0',
+      'call-duplicate-assistant-2-0-2'
+    ])
+
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+})
 
 describe('toChatMessages', () => {
   it('rebuilds the full command from a gateway tool row carrying args', () => {

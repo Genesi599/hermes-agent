@@ -888,7 +888,7 @@ function storedToolMessagePart(toolMessage: SessionMessage, fallbackIndex: numbe
   }
 }
 
-function withUniqueToolCallIds(messages: ChatMessage[]): ChatMessage[] {
+export function withUniqueToolCallIds(messages: ChatMessage[]): ChatMessage[] {
   const seen = new Set<string>()
 
   return messages.map(message => {
@@ -914,7 +914,15 @@ function withUniqueToolCallIds(messages: ChatMessage[]): ChatMessage[] {
       }
 
       changed = true
-      const uniqueId = `${id}-${message.id}-${index}`
+      const uniqueIdBase = `${id}-${message.id}-${index}`
+      let uniqueId = uniqueIdBase
+      let suffix = 2
+
+      while (seen.has(uniqueId)) {
+        uniqueId = `${uniqueIdBase}-${suffix}`
+        suffix += 1
+      }
+
       seen.add(uniqueId)
 
       return { ...part, toolCallId: uniqueId } as ChatMessagePart
