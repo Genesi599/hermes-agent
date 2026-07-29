@@ -6898,6 +6898,8 @@ def test_prompt_submit_queues_same_session_review_after_twentieth_human_turn(mon
 
         assert agent.prompts[0] == "human turn 20"
         assert server._is_experience_review_prompt(agent.prompts[1])
+        assert "复盘前进度回顾" in agent.prompts[1]
+        assert "当前目标、已经完成的关键步骤、尚未完成或下一步" in agent.prompts[1]
         assert len(agent.prompts) == 2
         assert review_db.recorded == 1
         assert review_db.completed == 1
