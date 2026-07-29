@@ -6891,7 +6891,6 @@ def test_prompt_submit_queues_same_session_review_after_twentieth_human_turn(mon
     monkeypatch.setattr(server, "render_message", lambda *_args: None)
     monkeypatch.setattr(server, "_get_usage", lambda *_args: {})
     monkeypatch.setattr(server, "_drain_queued_prompt", lambda *_args: False)
-    monkeypatch.setattr(server, "_schedule_post_turn_history_hygiene", lambda *_args: None)
 
     try:
         server._run_prompt_submit("r1", "sid", session, "human turn 20")
