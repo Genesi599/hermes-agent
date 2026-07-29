@@ -201,7 +201,9 @@ def _experience_review_prompt(batch: int) -> str:
 
 必须读取并执行 `%USERPROFILE%/Documents/GitHub/AI-Agent-Hub/skills/promote-agent-experience/SKILL.md`,将候选经验判为 skip、memory、skill 或 hook。只沉淀稳定且已验证的信息;优先更新已有资产,避免重复。达到升级判据时直接实现、测试、逐文件提交并推送;hook 只能用于机械可检测的生命周期触发,trust 必须保留人工审核,不得绕过。
 
-完成后给用户显示一份简短中文复盘,包含:本批完成事项、经验或教训、下一批可采用的提效方法。不要复述本提示,不要把复盘伪装成用户问题。"""
+复盘输出必须先用一个“复盘前进度回顾”小节，重复复盘开始前正在做什么：当前目标、已经完成的关键步骤、尚未完成或下一步。只写最近 20 条用户消息对应的真实任务进度，不要凭空补全。
+
+随后再给“本批经验复盘”小节，包含:本批完成事项、经验或教训、下一批可采用的提效方法。不要复述本提示,不要把复盘伪装成用户问题。"""
 
 
 def _is_experience_review_prompt(text: Any) -> bool:
