@@ -714,6 +714,10 @@ def run_conversation(
 
     # Main conversation loop counters (pure locals consumed by the loop below).
     api_call_count = 0
+    # Codex Responses can return a valid but unfinished response that must be
+    # continued. These calls remain visible in usage accounting but do not
+    # consume the tool-iteration budget.
+    codex_incomplete_call_count = 0
     final_response = None
     interrupted = False
     failed = False
@@ -756,7 +760,13 @@ def run_conversation(
             should_review_memory=_should_review_memory,
         )
 
-    while (api_call_count < agent.max_iterations and agent.iteration_budget.remaining > 0) or agent._budget_grace_call:
+    while (
+        (
+            api_call_count - codex_incomplete_call_count < agent.max_iterations
+            and agent.iteration_budget.remaining > 0
+        )
+        or agent._budget_grace_call
+    ):
         # Reset per-turn checkpoint dedup so each iteration can take one snapshot
         agent._checkpoint_mgr.new_turn()
 
@@ -775,6 +785,7 @@ def run_conversation(
         # Grace call: the budget is exhausted but we gave the model one
         # more chance.  Consume the grace flag so the loop exits after
         # this iteration regardless of outcome.
+        iteration_budget_consumed = False
         if agent._budget_grace_call:
             agent._budget_grace_call = False
         elif not agent.iteration_budget.consume():
@@ -782,6 +793,8 @@ def run_conversation(
             if not agent.quiet_mode:
                 agent._safe_print(f"\n⚠️  Iteration budget exhausted ({agent.iteration_budget.used}/{agent.iteration_budget.max_total} iterations used)")
             break
+        else:
+            iteration_budget_consumed = True
 
         # Fire step_callback for gateway hooks (agent:step event)
         if agent.step_callback is not None:
@@ -4649,6 +4662,12 @@ def run_conversation(
             agent._incomplete_scratchpad_retries = 0
 
             if agent.api_mode == "codex_responses" and finish_reason == "incomplete":
+                codex_incomplete_call_count += 1
+                if iteration_budget_consumed:
+                    try:
+                        agent.iteration_budget.refund()
+                    except Exception:
+                        pass
                 agent._codex_incomplete_retries += 1
 
                 interim_msg = agent._build_assistant_message(assistant_message, finish_reason)
@@ -4763,15 +4782,26 @@ def run_conversation(
                     agent._session_messages = messages
                     continue
 
+                if getattr(agent, "_retry_transient_forever", False):
+                    agent._codex_incomplete_retries = 0
+                    agent._emit_status(
+                        "Codex response remained incomplete after 3 continuation attempts. "
+                        "Continuing automatic retries; press Stop to cancel."
+                    )
+                    agent._session_messages = messages
+                    continue
+
                 agent._codex_incomplete_retries = 0
+                incomplete_error = "Codex response remained incomplete after 3 continuation attempts"
+                messages.append({"role": "assistant", "content": incomplete_error})
                 agent._persist_session(messages, conversation_history)
                 return {
-                    "final_response": "Codex response remained incomplete after 3 continuation attempts",
+                    "final_response": incomplete_error,
                     "messages": messages,
                     "api_calls": api_call_count,
                     "completed": False,
                     "partial": True,
-                    "error": "Codex response remained incomplete after 3 continuation attempts",
+                    "error": incomplete_error,
                 }
             elif hasattr(agent, "_codex_incomplete_retries"):
                 agent._codex_incomplete_retries = 0
@@ -5837,7 +5867,7 @@ def run_conversation(
             # rather than retrying until the budget is exhausted.
             if (
                 _is_local_processing_error
-                or api_call_count >= agent.max_iterations - 1
+                or api_call_count - codex_incomplete_call_count >= agent.max_iterations - 1
             ):
                 if _is_local_processing_error:
                     _turn_exit_reason = f"local_processing_error({error_msg[:80]})"

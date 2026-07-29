@@ -1846,6 +1846,59 @@ def test_run_conversation_codex_continues_after_incomplete_interim_message(monke
     assert any(msg.get("role") == "tool" and msg.get("tool_call_id") == "call_1" for msg in result["messages"])
 
 
+def test_run_conversation_codex_retries_incomplete_batches_until_success(monkeypatch):
+    """Continuous retry keeps a transient reasoning-only turn alive."""
+    agent = _build_agent(monkeypatch)
+    agent._retry_transient_forever = True
+    agent.max_iterations = 1
+    responses = [
+        _codex_incomplete_message_response(f"Still working {attempt}")
+        for attempt in range(4)
+    ] + [_codex_message_response("Recovered without another user prompt.")]
+    calls = 0
+    statuses = []
+
+    def _next_response(api_kwargs):
+        nonlocal calls
+        calls += 1
+        return responses.pop(0)
+
+    monkeypatch.setattr(agent, "_interruptible_api_call", _next_response)
+    monkeypatch.setattr(agent, "_emit_status", statuses.append)
+
+    result = agent.run_conversation("analyze repo")
+
+    assert calls == 5
+    assert result["completed"] is True
+    assert result["final_response"] == "Recovered without another user prompt."
+    assert any("Continuing automatic retries; press Stop to cancel" in status for status in statuses)
+    assert agent.iteration_budget.used == 1
+
+
+def test_run_conversation_codex_persists_incomplete_failure_when_retry_disabled(monkeypatch):
+    """The opt-out path still returns and persists a clear failure."""
+    agent = _build_agent(monkeypatch)
+    agent._retry_transient_forever = False
+    responses = [
+        _codex_incomplete_message_response(f"Still working {attempt}")
+        for attempt in range(3)
+    ]
+    persisted = []
+    monkeypatch.setattr(agent, "_interruptible_api_call", lambda api_kwargs: responses.pop(0))
+    monkeypatch.setattr(
+        agent,
+        "_persist_session",
+        lambda messages, history=None: persisted.append(list(messages)),
+    )
+
+    result = agent.run_conversation("analyze repo")
+
+    expected = "Codex response remained incomplete after 3 continuation attempts"
+    assert result["completed"] is False
+    assert result["error"] == expected
+    assert persisted[-1][-1] == {"role": "assistant", "content": expected}
+
+
 def test_run_conversation_codex_continues_after_max_output_incomplete(monkeypatch):
     """Codex max_output_tokens terminal status is a resumable incomplete turn.
 

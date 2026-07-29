@@ -39,6 +39,9 @@ describe('completionErrorText', () => {
     expect(completionErrorText('API call failed after 3 retries: boom')).toMatch(/^API call failed/)
     expect(completionErrorText('HTTP 500 upstream')).toMatch(/^HTTP 500/)
     expect(completionErrorText('Gateway error: nope')).toMatch(/^Gateway error/)
+    expect(completionErrorText('Codex response remained incomplete after 3 continuation attempts')).toMatch(
+      /^Codex response remained incomplete/
+    )
     expect(completionErrorText('here is your answer')).toBeNull()
     expect(completionErrorText('   ')).toBeNull()
   })
