@@ -126,7 +126,8 @@ export const MAX_STREAM_FLUSH_GAP_MS = 250
 const COMPLETION_ERROR_PATTERNS = [
   /^API call failed after \d+ retries:/i,
   /^HTTP\s+\d{3}\b/i,
-  /^(Provider|Gateway)\s+error:/i
+  /^(Provider|Gateway)\s+error:/i,
+  /^Codex response remained incomplete after \d+ continuation attempts/i
 ]
 
 export function completionErrorText(finalText: string): string | null {
