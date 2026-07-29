@@ -190,6 +190,20 @@ describe('mergeSessionPage', () => {
     expect(mergeSessionPage(previous, incoming, ['b']).map(s => s.id)).toEqual(['b'])
   })
 
+  it('drops a queued branch once the backend snapshot no longer contains it', () => {
+    const previous = [
+      session({ id: 'parent' }),
+      session({ id: 'child', branch_merge_status: 'waiting_for_parent' })
+    ]
+
+    const incoming = [session({ id: 'parent' })]
+
+    // The child can still be in the local working/settled keep-set when the
+    // parent completion drained the durable merge queue. A missing queued row
+    // is terminal, so it must not be resurrected by the keep-set.
+    expect(mergeSessionPage(previous, incoming, ['child']).map(s => s.id)).toEqual(['parent'])
+  })
+
   it('keeps a pinned session that has aged off the recent page', () => {
     // Repro of "loses pins until you refresh": a pinned chat falls off the
     // most-recent page, so the server stops returning it. A hard replace would
