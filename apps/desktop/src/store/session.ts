@@ -438,6 +438,11 @@ export function mergeSessionPage(
     session =>
       !incomingIds.has(session.id) &&
       !incomingLineageKeys.has(session._lineage_root_id ?? session.id) &&
+      // A queued branch is allowed to survive a page boundary while it still
+      // exists in the backend, but once the backend drains the queue it
+      // deletes the child. Do not let the generic working/settled keep-set
+      // resurrect that terminal row when the next snapshot omits it.
+      session.branch_merge_status !== 'waiting_for_parent' &&
       (keep.has(session.id) || (session._lineage_root_id != null && keep.has(session._lineage_root_id)))
   )
 
