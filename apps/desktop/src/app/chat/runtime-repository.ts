@@ -2,7 +2,7 @@ import { fromThreadMessageLike, getAutoStatus } from '@assistant-ui/core/interna
 import type { ExportedMessageRepository, ThreadMessage } from '@assistant-ui/react'
 import { useMemo, useRef } from 'react'
 
-import type { ChatMessage } from '@/lib/chat-messages'
+import { type ChatMessage, withUniqueToolCallIds } from '@/lib/chat-messages'
 import { coalesceToolOnlyAssistants, createToolMergeCache, toRuntimeMessage } from '@/lib/chat-runtime'
 
 // The exact fallback status ExportedMessageRepository.fromBranchableArray uses.
