@@ -2,7 +2,7 @@ import { fromThreadMessageLike, getAutoStatus } from '@assistant-ui/core/interna
 import type { ExportedMessageRepository, ThreadMessage } from '@assistant-ui/react'
 import { useMemo, useRef } from 'react'
 
-import type { ChatMessage } from '@/lib/chat-messages'
+import { type ChatMessage, withUniqueToolCallIds } from '@/lib/chat-messages'
 import { coalesceToolOnlyAssistants, createToolMergeCache, toRuntimeMessage } from '@/lib/chat-runtime'
 
 // The exact fallback status ExportedMessageRepository.fromBranchableArray uses.
@@ -34,7 +34,12 @@ export function useRuntimeMessageRepository(messages: ChatMessage[]): ExportedMe
     let visibleParentId: string | null = null
     let headId: string | null = null
 
-    for (const message of coalesceToolOnlyAssistants(messages, toolMergeCacheRef.current)) {
+    // Stored hydration normalizes tool ids, but live stream updates can append a
+    // repeated provider id afterwards. Re-apply the invariant at the final
+    // assistant-ui boundary before its global resource index sees the thread.
+    const runtimeMessages = withUniqueToolCallIds(messages)
+
+    for (const message of coalesceToolOnlyAssistants(runtimeMessages, toolMergeCacheRef.current)) {
       // A repeated id is a transcript bug upstream, but it must not reach the
       // repository: MessageRepository throws on the second link ("A message
       // with the same id already exists in the parent tree") and takes the
