@@ -26,8 +26,9 @@ import { normalizeProfileKey } from '@/store/profile'
 import { $pullRequestsByBranch, sessionPrKey } from '@/store/pull-requests'
 import { $sessionDotStateById, hasLiveTurn, showsRunningArc } from '@/store/session-dot-state'
 import { sessionCostUsd } from '@/store/sidebar-archive'
-import { $reviewActivityBySessionId } from '@/store/session'
-import { $attentionSessionIds } from '@/store/session-states' 
+import { $reviewActivityBySessionId, $sessions } from '@/store/session'
+import { $attentionSessionIds } from '@/store/session-states'
+import { $sessionColorById } from '@/store/session-color' 
 
 import { SessionStatusDot } from '../session-status-dot'
 
@@ -192,6 +193,7 @@ function SidebarSessionRowImpl({
   // True when a clarify prompt in this session is waiting on the user.
   const needsInput = useStore($attentionSessionIds).includes(session.id)
   const isUnread = useStore($unreadSessionIds).includes(session.id)
+  const sessionColor = useStore($sessionColorById)[session.id]
   const isMergeWaiting = session.branch_merge_status === 'waiting_for_parent'
   const reviewActivity = useStore($reviewActivityBySessionId)[session.id] ?? null
   const branchTaskStatus = session.branch_task_status
@@ -390,7 +392,7 @@ function SidebarSessionRowImpl({
               />
             </Tip>
           ) : null}
-          <SidebarRowLabel className="flex-1 font-normal group-hover:text-foreground group-data-[working=true]:text-foreground/90">
+          <SidebarRowLabel className="flex-1 font-normal" style={{ color: sessionColor }}>
             {title}
           </SidebarRowLabel>
           {showProfile && <ProfileTag profile={session.profile} />}

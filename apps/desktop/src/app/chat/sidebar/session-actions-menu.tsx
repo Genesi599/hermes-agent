@@ -39,7 +39,7 @@ import {
   sessionPinId,
   setSessions
 } from '@/store/session'
-import { $sessionColorOverrides, setSessionColorOverride } from '@/store/session-color'
+import { $sessionColorOverrides, sessionColorFamilyId, setSessionColorOverride } from '@/store/session-color'
 import { $sessionTiles } from '@/store/session-states'
 import { canOpenSessionWindow } from '@/store/windows'
 
@@ -116,13 +116,14 @@ interface SessionActions {
 
 // The color picker inside the session menu's Appearance submenu. Its own
 // component so only an OPEN submenu subscribes to the stores (not every row's
-// menu). Reads/writes the override keyed by the DURABLE id so a color survives
-// compression; clearing falls back to the inherited project color.
+// menu). Reads/writes the override keyed by the branch family so parent and
+// children keep the same color across compression.
 function SessionColorSwatches({ sessionId }: { sessionId: string }) {
   const { t } = useI18n()
   const overrides = useStore($sessionColorOverrides)
   const session = useStore($sessions).find(s => sessionMatchesStoredId(s, sessionId))
-  const durableId = session ? sessionPinId(session) : sessionId
+  const sessions = useStore($sessions)
+  const durableId = session ? sessionColorFamilyId(session, sessions) : sessionId
 
   return (
     <ColorSwatches
