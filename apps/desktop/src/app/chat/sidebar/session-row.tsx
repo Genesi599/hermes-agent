@@ -107,7 +107,7 @@ export function SidebarSessionRow({
   const hasBackground = useStore($backgroundRunningSessionIds).includes(session.id)
   // The session's resolved color (idle dot tint), read from the ONE shared map
   // the pane tabs also read — an O(1) lookup, never re-derived per render.
-  const projectColor = useStore($sessionColorById)[session.id] ?? null
+  const sessionColor = useStore($sessionColorById)[session.id] ?? null
 
   // Resolve the dot's display state once — the four signals are mutually
   // exclusive by priority, so threading them as booleans through wrappers just
@@ -261,8 +261,8 @@ export function SidebarSessionRow({
                 branchStem={branchStem}
                 className="transition-opacity group-hover/handle:opacity-0 group-focus-within/handle:opacity-0"
                 dotState={dotState}
-                projectColor={projectColor}
                 reviewActivity={reviewActivity}
+                sessionColor={sessionColor}
               />
             </SidebarRowGrab>
           ) : (
@@ -270,7 +270,7 @@ export function SidebarSessionRow({
               className={needsInput || branchStem ? 'overflow-visible' : 'overflow-hidden'}
               data-branch-lead={branchStem ? 'true' : undefined}
             >
-              <SessionRowLeadDot branchStem={branchStem} dotState={dotState} projectColor={projectColor} />
+              <SessionRowLeadDot branchStem={branchStem} dotState={dotState} sessionColor={sessionColor} />
             </SidebarRowLead>
           )}
           {handoffSource && handoffLabel ? (
@@ -306,14 +306,14 @@ function SessionRowLeadDot({
   branchStem,
   dotState = 'idle',
   className,
-  projectColor,
+  sessionColor,
   reviewActivity
 }: {
   branchStem?: string
   dotState?: SessionDotState
   reviewActivity?: NonNullable<ClientSessionState['reviewActivity']> | null
   className?: string
-  projectColor?: null | string
+  sessionColor?: null | string
 }) {
   return (
     <span className={cn('flex items-center gap-0.5', className)}>
@@ -322,7 +322,7 @@ function SessionRowLeadDot({
           {branchStem}
         </span>
       ) : null}
-      <SidebarRowDot dotState={dotState} projectColor={projectColor} reviewActivity={reviewActivity} />
+      <SidebarRowDot dotState={dotState} reviewActivity={reviewActivity} sessionColor={sessionColor} />
     </span>
   )
 }
@@ -394,32 +394,32 @@ const DOT_VARIANTS: Record<SessionDotState, DotVariant> = {
 function SidebarRowDot({
   dotState,
   className,
-  projectColor,
+  sessionColor,
   reviewActivity
 }: {
   dotState: SessionDotState
   reviewActivity?: NonNullable<ClientSessionState['reviewActivity']> | null
   className?: string
-  projectColor?: null | string
+  sessionColor?: null | string
 }) {
   const { t } = useI18n()
   const r = t.sidebar.row
 
-  // An idle session inherits its project's color (a quiet marker matching the
-  // project row's own color dot). The active states (working / needs-input /
-  // background / unread) own the dot and keep their semantic color, so the
+  // An idle session uses its conversation family's color. The active states
+  // (working / needs-input / background / unread) own the dot and keep their semantic color, so the
   // inherited tint never competes with an attention cue.
-  if (dotState === 'idle' && projectColor) {
+  if (dotState === 'idle' && sessionColor) {
     return (
       <span
         aria-hidden="true"
         className={cn('size-1 rounded-full', className)}
-        style={{ backgroundColor: projectColor }}
+        style={{ backgroundColor: sessionColor }}
       />
     )
   }
 
   const variant = DOT_VARIANTS[dotState]
+
   if (dotState === 'working' && reviewActivity) {
     return (
       <span aria-label={reviewActivityLabel(reviewActivity)} role="status" title={reviewActivityLabel(reviewActivity)}>
