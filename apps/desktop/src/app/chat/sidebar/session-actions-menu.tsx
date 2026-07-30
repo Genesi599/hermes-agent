@@ -130,9 +130,9 @@ function SessionColorSwatches({ sessionId }: { sessionId: string }) {
     <ColorSwatches
       clearIcon="circle-slash"
       clearLabel={t.sidebar.projects.noColor}
-      onChange={color => setSessionColorOverride(durableId, color)}
+      onChange={color => setSessionColorOverride(familyId, color)}
       swatches={PROFILE_SWATCHES}
-      value={overrides[durableId] ?? null}
+      value={overrides[familyId] ?? null}
     />
   )
 }
