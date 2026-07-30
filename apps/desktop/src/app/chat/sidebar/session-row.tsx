@@ -19,7 +19,8 @@ import { handoffOriginSource, sessionSourceLabel } from '@/lib/session-source'
 import { coarseElapsed } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { $attentionSessionIds } from '@/store/session-states'
-import { $reviewActivityBySessionId } from '@/store/session'
+import { $reviewActivityBySessionId, $sessions } from '@/store/session'
+import { $sessionColorById } from '@/store/session-color'
 
 import { SessionStatusDot } from '../session-status-dot'
 
@@ -99,6 +100,7 @@ function SidebarSessionRowImpl({
   const handoffLabel = handoffSource ? (sessionSourceLabel(handoffSource) ?? handoffSource) : null
   // True when a clarify prompt in this session is waiting on the user.
   const needsInput = useStore($attentionSessionIds).includes(session.id)
+  const sessionColor = useStore($sessionColorById)[session.id]
   const isMergeWaiting = session.branch_merge_status === 'waiting_for_parent'
   const reviewActivity = useStore($reviewActivityBySessionId)[session.id] ?? null
   const branchTaskStatus = session.branch_task_status
@@ -262,7 +264,7 @@ function SidebarSessionRowImpl({
               />
             </Tip>
           ) : null}
-          <SidebarRowLabel className="flex-1 font-normal group-hover:text-foreground group-data-[working=true]:text-foreground/90">
+          <SidebarRowLabel className="flex-1 font-normal" style={{ color: sessionColor }}>
             {title}
           </SidebarRowLabel>
           {showProfile && <ProfileTag profile={session.profile} />}

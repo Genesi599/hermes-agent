@@ -1,23 +1,19 @@
 import { computed } from 'nanostores'
 
-import { sessionProjectColor } from '@/app/chat/sidebar/projects/workspace-groups'
 import { Codecs, persistentAtom } from '@/lib/persisted'
-import { $projects } from '@/store/projects'
 import { $sessions, sessionPinId } from '@/store/session'
-import type { ProjectInfo, SessionInfo } from '@/types/hermes'
+import type { SessionInfo } from '@/types/hermes'
 
-// Per-session color OVERRIDES — a user-picked color that wins over the inherited
-// project color (#66565 layer 2). Desktop-local like pins, keyed by the DURABLE
-// lineage id so a color survives auto-compression's session-id rotation. To take
-// this to the TUI later, promote this one atom to a backend SessionInfo.color
-// field — the resolver below and the picker UI stay exactly as they are.
+// Per-conversation color overrides. They are keyed by the branch family's root
+// so a chosen color applies to the parent and every branch, and survives
+// auto-compression's session-id rotation.
 export const $sessionColorOverrides = persistentAtom<Record<string, string>>(
   'hermes.desktop.sessionColors',
   {},
   Codecs.stringRecord
 )
 
-// Set a session's override (null clears it → falls back to the project color).
+// Set a conversation family's override (null clears it → its automatic color).
 export function setSessionColorOverride(durableId: string, color: null | string): void {
   const prev = $sessionColorOverrides.get()
 
@@ -30,34 +26,104 @@ export function setSessionColorOverride(durableId: string, color: null | string)
   }
 }
 
+function sessionLookup(sessions: SessionInfo[]): Map<string, SessionInfo> {
+  const lookup = new Map<string, SessionInfo>()
+
+  for (const session of sessions) {
+    lookup.set(session.id, session)
+    lookup.set(sessionPinId(session), session)
+  }
+
+  return lookup
+}
+
+/**
+ * Stable identity for a visible conversation tree. Branches inherit their
+ * top-most parent's identity; compression continuations retain their own
+ * lineage root. A missing ancestor still gives all of its direct children the
+ * same deterministic key until the parent appears in a later page.
+ */
+export function sessionColorFamilyId(session: SessionInfo, sessions: SessionInfo[]): string {
+  const lookup = sessionLookup(sessions)
+  const lineage = [sessionPinId(session)]
+  const visited = new Set<string>([session.id, sessionPinId(session)])
+  let current = session
+
+  while (current.parent_session_id) {
+    const parentId = current.parent_session_id.trim()
+
+    if (!parentId) {
+      break
+    }
+
+    const parent = lookup.get(parentId)
+
+    if (!parent) {
+      return parentId
+    }
+
+    const parentKey = sessionPinId(parent)
+    lineage.push(parentKey)
+
+    if (visited.has(parent.id) || visited.has(parentKey)) {
+      return [...lineage].sort()[0]
+    }
+
+    visited.add(parent.id)
+    visited.add(parentKey)
+    current = parent
+  }
+
+  return sessionPinId(current)
+}
+
+function automaticSessionColor(familyId: string): string {
+  let hash = 2_166_136_261
+
+  for (let index = 0; index < familyId.length; index += 1) {
+    hash ^= familyId.charCodeAt(index)
+    hash = Math.imul(hash, 16_777_619)
+  }
+
+  const unsigned = hash >>> 0
+  const hue = unsigned % 360
+  const saturation = 62 + ((unsigned >>> 9) % 3) * 5
+  const lightness = 58 + ((unsigned >>> 17) % 3) * 4
+
+  return `hsl(${hue} ${saturation}% ${lightness}%)`
+}
+
 // The resolved color for every session, keyed by live session id — the ONE
 // source of truth both the sidebar rows and the pane tabs read, so the two
-// surfaces can never drift. Recomputed only when the session list, projects, or
-// overrides change (all cold atoms; the working/streaming pulse lives in
+// surfaces can never drift. Recomputed only when the session list or overrides
+// change (all cold atoms; the working/streaming pulse lives in
 // $sessionStates, so a busy flip never rebuilds this), and every consumer reads
 // it as an O(1) lookup rather than re-deriving membership per render.
 //
-// Precedence in one place: an explicit per-session override wins over the
-// inherited project color. Agent-set color (#66565 layer 3) slots in here too.
-function resolveSessionColor(
-  session: SessionInfo,
-  projects: ProjectInfo[],
-  overrides: Record<string, string>
-): string | undefined {
-  return overrides[sessionPinId(session)] ?? sessionProjectColor(session, projects) ?? undefined
-}
-
+// Every conversation tree receives a stable automatic color. An explicit family
+// override wins; legacy per-session overrides are promoted to that family so
+// old user choices keep their visible meaning without splitting a branch tree.
 export const $sessionColorById = computed(
-  [$sessions, $projects, $sessionColorOverrides],
-  (sessions, projects, overrides) => {
+  [$sessions, $sessionColorOverrides],
+  (sessions, overrides) => {
     const map: Record<string, string> = {}
+    const familyBySessionId = new Map<string, string>()
+    const overrideByFamily = new Map<string, string>()
 
     for (const session of sessions) {
-      const color = resolveSessionColor(session, projects, overrides)
+      const familyId = sessionColorFamilyId(session, sessions)
+      familyBySessionId.set(session.id, familyId)
 
-      if (color) {
-        map[session.id] = color
+      const override = overrides[familyId] ?? overrides[sessionPinId(session)]
+
+      if (override && !overrideByFamily.has(familyId)) {
+        overrideByFamily.set(familyId, override)
       }
+    }
+
+    for (const session of sessions) {
+      const familyId = familyBySessionId.get(session.id) ?? sessionPinId(session)
+      map[session.id] = overrideByFamily.get(familyId) ?? automaticSessionColor(familyId)
     }
 
     return map
@@ -65,16 +131,7 @@ export const $sessionColorById = computed(
 )
 
 // The color for a single session object (the tabs already hold the SessionInfo
-// they render, so they resolve through the same map the sidebar reads). A row
-// that isn't in `$sessions` — e.g. a project-tree session older than the
-// paginated recents page, opened as a tab — misses the map, so fall back to the
-// same resolver the map is built from.
+// they render, so they resolve through the same map the sidebar reads).
 export function sessionColorFor(session: null | SessionInfo | undefined): string | undefined {
-  if (!session) {
-    return undefined
-  }
-
-  return (
-    $sessionColorById.get()[session.id] ?? resolveSessionColor(session, $projects.get(), $sessionColorOverrides.get())
-  )
+  return session ? $sessionColorById.get()[session.id] : undefined
 }
