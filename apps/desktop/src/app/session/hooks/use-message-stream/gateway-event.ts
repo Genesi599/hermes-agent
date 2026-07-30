@@ -29,6 +29,7 @@ import {
   $currentModel,
   $currentProvider,
   clearPendingModelSelectionIfApplied,
+  clearUnreadSessionIds,
   sessionMatchesStoredId,
   setCurrentBranch,
   setCurrentCwd,
@@ -771,6 +772,17 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
         event.type === 'delete_review.status'
       ) {
         const text = coerceGatewayText(payload?.text).trim()
+
+        // Deferred branch merges finish in the parent runtime, after the child
+        // has already disappeared from its own event stream. Clear the child
+        // directly so a stale unread ID cannot keep the taskbar badge alive.
+        if (event.type === 'branch_merge.status' && payload?.phase === 'complete') {
+          const childSessionId = typeof payload.child_session_id === 'string' ? payload.child_session_id.trim() : ''
+
+          if (childSessionId) {
+            clearUnreadSessionIds([childSessionId])
+          }
+        }
 
         if (sessionId) {
           updateSessionState(sessionId, state => ({
