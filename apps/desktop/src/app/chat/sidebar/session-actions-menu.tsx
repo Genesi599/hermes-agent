@@ -36,7 +36,6 @@ import {
   $selectedStoredSessionId,
   $sessions,
   sessionMatchesStoredId,
-  sessionPinId,
   setSessions
 } from '@/store/session'
 import { $sessionColorOverrides, setSessionColorOverride } from '@/store/session-color'
@@ -118,21 +117,22 @@ interface SessionActions {
 
 // The color picker inside the session menu's Appearance submenu. Its own
 // component so only an OPEN submenu subscribes to the stores (not every row's
-// menu). Reads/writes the override keyed by the DURABLE id so a color survives
-// compression; clearing falls back to the inherited project color.
+// menu). Reads/writes the override keyed by the branch family so a color stays
+// aligned across the parent, children, and compression continuations.
 function SessionColorSwatches({ sessionId }: { sessionId: string }) {
   const { t } = useI18n()
   const overrides = useStore($sessionColorOverrides)
-  const session = useStore($sessions).find(s => sessionMatchesStoredId(s, sessionId))
-  const durableId = session ? sessionPinId(session) : sessionId
+  const sessions = useStore($sessions)
+  const session = sessions.find(s => sessionMatchesStoredId(s, sessionId))
+  const familyId = session ? sessionColorFamilyId(session, sessions) : sessionId
 
   return (
     <ColorSwatches
       clearIcon="circle-slash"
       clearLabel={t.sidebar.projects.noColor}
-      onChange={color => setSessionColorOverride(durableId, color)}
+      onChange={color => setSessionColorOverride(familyId, color)}
       swatches={PROFILE_SWATCHES}
-      value={overrides[durableId] ?? null}
+      value={overrides[familyId] ?? null}
     />
   )
 }
