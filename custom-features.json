@@ -56,7 +56,10 @@
     {"source_commit":"bc5369a5a8","patch_id":"dfa3dcfd31e03695519965a8040f8c23a7a3e0c9","feature":"desktop-ui"},
     {"source_commit":"4a5a953a5d","patch_id":"e3f48027ec631a06ab72d85b784016be4796cf10","feature":"experience-review"},
     {"source_commit":"818aae12ae","patch_id":"c70c0d2387ae0727b19a36cb29e06885523f83f6","feature":"experience-review"},
-    {"source_commit":"4bf551cf2e","patch_id":"51928c68c1e9ec66805199a658677db9e13b4223","feature":"transient-retry"}
+    {"source_commit":"4bf551cf2e","patch_id":"51928c68c1e9ec66805199a658677db9e13b4223","feature":"transient-retry"},
+    {"source_commit":"87981e97c2","patch_id":"bfe58fd90731092feb8063f04283557c16ff6ff7","feature":"desktop-ui"},
+    {"source_commit":"1fb51a075a","patch_id":"8fb2287f996effb6e7e8e4ba13cd8f4596a05305","feature":"desktop-ui"},
+    {"source_commit":"35bf88d311","patch_id":"1f01034d8704342a591af1fb013b070fb65962c6","feature":"desktop-ui"}
   ],
   "features": [
     {"id":"cross-device-session","label":"Desktop/mobile Session and message sync","commits":["76fe833b20","8eef345f3c","92b912083b"],"source_paths":["hermes_state.py","tui_gateway/server.py","apps/desktop/src/store/session.ts"],"test_paths":["tests/hermes_state/test_session_live_status.py","tests/test_tui_gateway_server.py"]},
@@ -67,7 +70,7 @@
     {"id":"runtime-status","label":"runtime recovery and status reconciliation","commits":["a2289fa57e","c9e338e3e2","59d9b2fd30","5227f6bc27","7003eae129","c645100d63","354b9476d0"],"source_paths":["tui_gateway/server.py","hermes_state.py"],"test_paths":["tests/hermes_state/test_session_live_status.py"]},
     {"id":"model-switch","label":"queued and all-session model switching","commits":["ec7f5bee64","72b904fae6","2d47e82409"],"source_paths":["tui_gateway/server.py","apps/desktop/src/app/session/hooks/use-session-actions/index.ts"],"test_paths":["tests/test_tui_gateway_server.py"]},
     {"id":"transient-retry","label":"continuous upstream and incomplete-response retry","commits":["2c357c4315","424ca75dc7","4bf551cf2e"],"source_paths":["agent/conversation_loop.py"],"test_paths":["tests/run_agent/test_transient_retry_forever.py","tests/run_agent/test_run_agent_codex_responses.py"]},
-    {"id":"desktop-ui","label":"sidebar, unread badge, pinned family, and composer behavior","commits":["4185ecad9f","321e5837f5","7a504a7a5c","9d54121097","e8c76a4bf7","4dd478c728","9e486c2227","d5b0348f0f","bc5369a5a8"],"source_paths":["apps/desktop/src/app/chat/sidebar/session-row.tsx","apps/desktop/src/app/chat/sidebar/sessions-section.tsx","apps/desktop/src/store/session.ts"],"test_paths":["apps/desktop/src/app/chat/sidebar/session-row-branch-geometry.test.tsx","apps/desktop/src/app/session/hooks/use-message-stream/utils.test.ts"]},
+    {"id":"desktop-ui","label":"sidebar, unread badge, pinned family, and composer behavior","commits":["4185ecad9f","321e5837f5","7a504a7a5c","9d54121097","e8c76a4bf7","4dd478c728","9e486c2227","d5b0348f0f","bc5369a5a8","87981e97c2","1fb51a075a","35bf88d311"],"source_paths":["apps/desktop/src/app/chat/sidebar/session-row.tsx","apps/desktop/src/app/chat/sidebar/sessions-section.tsx","apps/desktop/src/store/session.ts","apps/desktop/src/store/session-color.ts"],"test_paths":["apps/desktop/src/app/chat/sidebar/session-row-branch-geometry.test.tsx","apps/desktop/src/app/session/hooks/use-message-stream/utils.test.ts","apps/desktop/src/store/session-color.test.ts"]},
     {"id":"windows-deploy","label":"Windows deployment and EPIPE protection","commits":["cc2d077cff","c095260f9e"],"source_paths":["apps/desktop/electron"],"test_paths":["apps/desktop/electron"]}
   ],
   "smoke_tests": [
