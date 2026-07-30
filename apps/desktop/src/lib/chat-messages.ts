@@ -38,6 +38,7 @@ export type GatewayEventPayload = {
   rendered?: string
   status?: string
   phase?: string
+  child_session_id?: string
   message?: string
   id?: string
   name?: string
