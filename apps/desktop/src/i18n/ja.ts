@@ -1682,6 +1682,7 @@ export const ja = defineLocale({
     clearSearch: '検索をクリア',
     noMatch: query => `"${query}" に一致するセッションがありません。`,
     results: '結果',
+    running: '実行中',
     pinned: 'ピン留め',
     sessions: 'セッション',
     cronJobs: 'Cronジョブ',
