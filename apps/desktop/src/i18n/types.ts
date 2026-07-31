@@ -1532,6 +1532,7 @@ export interface Translations {
     clearSearch: string
     noMatch: (query: string) => string
     results: string
+    running: string
     pinned: string
     sessions: string
     cronJobs: string

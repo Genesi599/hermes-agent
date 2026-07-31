@@ -129,6 +129,23 @@ export function expandPinnedSessionFamilies(
   return expanded
 }
 
+/** Resolve runtime/unread stored ids to every visible member of each matching
+ * Branch family. The returned ids are live row ids, ready for sidebar filters. */
+export function expandSessionFamilyMemberIds(
+  sessions: readonly SessionInfo[],
+  sessionIds: readonly string[]
+): Set<string> {
+  const familyPinIds = new Set<string>()
+
+  for (const sessionId of sessionIds) {
+    for (const familyPinId of sessionFamilyPinIds(sessions, sessionId)) {
+      familyPinIds.add(familyPinId)
+    }
+  }
+
+  return new Set(sessions.filter(session => familyPinIds.has(sessionPinId(session))).map(session => session.id))
+}
+
 export function isSessionFamilyPinned(
   sessionId: string,
   sessions: readonly SessionInfo[] = $sessions.get(),

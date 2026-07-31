@@ -100,6 +100,7 @@ interface SidebarSessionsSectionProps {
   onTogglePin: (sessionId: string) => void
   onNewSessionInWorkspace?: (path: null | string) => void
   pinned: boolean
+  pinnedSessionIdSet?: ReadonlySet<string>
   rootClassName?: string
   contentClassName?: string
   emptyState: React.ReactNode
@@ -169,6 +170,7 @@ export function SidebarSessionsSection({
   onTogglePin,
   onNewSessionInWorkspace,
   pinned,
+  pinnedSessionIdSet,
   rootClassName,
   contentClassName,
   emptyState,
