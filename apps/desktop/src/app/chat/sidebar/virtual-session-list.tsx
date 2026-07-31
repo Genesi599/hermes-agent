@@ -39,6 +39,7 @@ interface VirtualSessionListProps {
   onResumeSession: (sessionId: string) => void
   onTogglePin: (sessionId: string) => void
   pinned: boolean
+  pinnedSessionIdSet?: ReadonlySet<string>
   showProfileTags?: boolean
   sortable: boolean
   workingSessionIdSet: Set<string>
@@ -59,6 +60,7 @@ export const VirtualSessionList: FC<VirtualSessionListProps> = ({
   onResumeSession,
   onTogglePin,
   pinned,
+  pinnedSessionIdSet,
   showProfileTags = false,
   sortable,
   workingSessionIdSet
@@ -102,7 +104,7 @@ export const VirtualSessionList: FC<VirtualSessionListProps> = ({
 
     const commonProps: SessionRowCommonProps = {
       branchStem,
-      isPinned: pinned,
+      isPinned: pinnedSessionIdSet?.has(session.id) ?? pinned,
       isSelected: session.id === activeSessionId,
       isWorking: workingSessionIdSet.has(session.id),
       onArchive: () => onArchiveSession(session.id),

@@ -92,10 +92,17 @@ import {
   $sessions,
   $sessionsLoading,
   $sessionsTotal,
+  $unreadFinishedSessionIds,
   sessionPinId,
   setCurrentCwd
 } from '@/store/session'
-import { expandPinnedSessionFamilies, pinSessionFamily, unpinSessionFamily } from '@/store/session-pins'
+import {
+  expandPinnedSessionFamilies,
+  expandSessionFamilyMemberIds,
+  pinSessionFamily,
+  toggleSessionFamilyPin,
+  unpinSessionFamily
+} from '@/store/session-pins'
 import { $focusedStoredSessionId, $workingSessionIds, type SplitDir } from '@/store/session-states'
 
 import {
@@ -306,6 +313,7 @@ export function ChatSidebar({
   const sessionsTotal = useStore($sessionsTotal)
   const sessionProfileTotals = useStore($sessionProfileTotals)
   const workingSessionIds = useStore($workingSessionIds)
+  const unreadFinishedSessionIds = useStore($unreadFinishedSessionIds)
   const profiles = useStore($profiles)
   const profileScope = useStore($profileScope)
   // Only surface the profile switcher when more than one profile exists, so
@@ -339,6 +347,7 @@ export function ChatSidebar({
   const [profileLoadMorePending, setProfileLoadMorePending] = useState<Record<string, boolean>>({})
   const [messagingLoadMorePending, setMessagingLoadMorePending] = useState<Record<string, boolean>>({})
   const [recentsLoadMorePending, setRecentsLoadMorePending] = useState(false)
+  const [runningOpen, setRunningOpen] = useState(true)
   const messagingOpenIds = useStore($sidebarMessagingOpenIds)
   // Per-platform count of rows currently revealed (starts at NON_SESSION_INITIAL_ROWS).
   const [messagingVisible, setMessagingVisible] = useState<Record<string, number>>({})
@@ -399,6 +408,21 @@ export function ChatSidebar({
 
   const workingSessionIdSet = useMemo(() => new Set(workingSessionIds), [workingSessionIds])
 
+  const activeFamilySessionIds = useMemo(
+    () => expandSessionFamilyMemberIds(visibleSessions, [...workingSessionIds, ...unreadFinishedSessionIds]),
+    [unreadFinishedSessionIds, visibleSessions, workingSessionIds]
+  )
+
+  const runningSessions = useMemo(
+    () => sortedSessions.filter(session => activeFamilySessionIds.has(session.id)),
+    [activeFamilySessionIds, sortedSessions]
+  )
+
+  const recentsRemovedSessionIds = useMemo(
+    () => new Set([...removedSessionIds, ...activeFamilySessionIds]),
+    [activeFamilySessionIds, removedSessionIds]
+  )
+
   // Index sessions by both their live id and their lineage-root id so a pin
   // stored as the pre-compression root resolves to the live continuation tip.
   const sessionByAnyId = useMemo(() => {
@@ -434,14 +458,26 @@ export function ChatSidebar({
     for (const pinId of expandedPinnedSessionIds) {
       const session = sessionByAnyId.get(pinId)
 
-      if (session && !seen.has(session.id)) {
+      if (session && !activeFamilySessionIds.has(session.id) && !seen.has(session.id)) {
         seen.add(session.id)
         out.push(session)
       }
     }
 
     return out
-  }, [expandedPinnedSessionIds, sessionByAnyId])
+  }, [activeFamilySessionIds, expandedPinnedSessionIds, sessionByAnyId])
+
+  const pinnedSessionPinIdSet = useMemo(() => new Set(expandedPinnedSessionIds), [expandedPinnedSessionIds])
+
+  const runningPinnedSessionIdSet = useMemo(
+    () =>
+      new Set(
+        runningSessions
+          .filter(session => pinnedSessionPinIdSet.has(sessionPinId(session)))
+          .map(session => session.id)
+      ),
+    [pinnedSessionPinIdSet, runningSessions]
+  )
 
   const pinnedRealIdSet = useMemo(() => new Set(pinnedSessions.map(s => s.id)), [pinnedSessions])
 
@@ -507,8 +543,8 @@ export function ChatSidebar({
   }, [trimmedQuery, sortedSessions, serverMatches, sessionByAnyId])
 
   const unpinnedAgentSessions = useMemo(
-    () => sortedSessions.filter(s => !pinnedRealIdSet.has(s.id)),
-    [sortedSessions, pinnedRealIdSet]
+    () => sortedSessions.filter(s => !activeFamilySessionIds.has(s.id) && !pinnedRealIdSet.has(s.id)),
+    [activeFamilySessionIds, pinnedRealIdSet, sortedSessions]
   )
 
   useEffect(() => {
@@ -708,8 +744,8 @@ export function ChatSidebar({
   // backend now seeds each project folder as an (empty) repo, so the overlay
   // always has a lane to place a new in-project session into.
   const enteredProjectContent = useMemo(
-    () => (enteredProject ? overlayLiveLanes(enteredProject, agentSessions, removedSessionIds) : undefined),
-    [enteredProject, agentSessions, removedSessionIds]
+    () => (enteredProject ? overlayLiveLanes(enteredProject, agentSessions, recentsRemovedSessionIds) : undefined),
+    [agentSessions, enteredProject, recentsRemovedSessionIds]
   )
 
   const scopedRepoPaths = useMemo(
@@ -799,8 +835,9 @@ export function ChatSidebar({
   // session shows under its project instantly (and with its working arc),
   // matching the flat Recents list. Keyed by project path for the rows.
   const overviewPreviews = useMemo<Record<string, SessionInfo[]>>(
-    () => overlayLivePreviews(projectOverview ?? [], agentSessions, projects, PROJECT_PREVIEW_COUNT, removedSessionIds),
-    [projectOverview, agentSessions, projects, removedSessionIds]
+    () =>
+      overlayLivePreviews(projectOverview ?? [], agentSessions, projects, PROJECT_PREVIEW_COUNT, recentsRemovedSessionIds),
+    [agentSessions, projectOverview, projects, recentsRemovedSessionIds]
   )
 
   const onEnterProject = useCallback(
@@ -1251,6 +1288,30 @@ export function ChatSidebar({
               />
             )}
 
+            {!trimmedQuery && runningSessions.length > 0 && (
+              <SidebarSessionsSection
+                activeSessionId={activeSidebarSessionId}
+                contentClassName={cn('flex max-h-56 flex-col gap-px rounded-lg pb-2 pt-1', GROUP_BODY)}
+                emptyState={null}
+                label={s.running}
+                onArchiveSession={onArchiveSession}
+                onBranchSession={onBranchSession}
+                onDeleteSession={onDeleteSession}
+                onMergeChildrenSession={onMergeChildrenSession}
+                onMergeSession={onMergeSession}
+                onResumeSession={onResumeSession}
+                onToggle={() => setRunningOpen(!runningOpen)}
+                onTogglePin={toggleSessionFamilyPin}
+                open={runningOpen}
+                pinned={false}
+                pinnedSessionIdSet={runningPinnedSessionIdSet}
+                rootClassName="shrink-0 p-0 pb-1"
+                sessions={runningSessions}
+                showProfileTags={showAllProfiles}
+                workingSessionIdSet={workingSessionIdSet}
+              />
+            )}
+
             {!trimmedQuery && (
               <SidebarSessionsSection
                 activeSessionId={activeSidebarSessionId}
@@ -1423,7 +1484,7 @@ export function ChatSidebar({
                 projectOverviewPreviews={overviewPreviews}
                 projectRepoWorktrees={inProject ? scopedRepoWorktrees : undefined}
                 projectsLoading={worktreeGroupingActive ? projectTreeLoading : false}
-                removedSessionIds={inProject ? removedSessionIds : undefined}
+                removedSessionIds={inProject ? recentsRemovedSessionIds : undefined}
                 rootClassName={cn(
                   'min-h-32 flex-1 overflow-hidden p-0',
                   !recentsVirtualizes && 'compact:min-h-0 compact:flex-none compact:overflow-visible'

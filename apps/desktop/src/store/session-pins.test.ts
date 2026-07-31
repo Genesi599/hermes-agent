@@ -6,6 +6,7 @@ import { $pinnedSessionIds } from './layout'
 import { $sessions } from './session'
 import {
   expandPinnedSessionFamilies,
+  expandSessionFamilyMemberIds,
   isSessionFamilyPinned,
   pinSessionFamily,
   sessionFamilyPinIds,
@@ -46,6 +47,27 @@ describe('session Branch family pins', () => {
 
   it('expands a legacy parent-only pin to children created later', () => {
     expect(expandPinnedSessionFamilies(family, ['parent'])).toEqual(['parent', 'child-a', 'grandchild', 'child-b'])
+  })
+
+  it('promotes a whole family when any parent or nested child is active', () => {
+    expect([...expandSessionFamilyMemberIds([...family, session('other')], ['grandchild'])]).toEqual([
+      'parent',
+      'child-a',
+      'grandchild',
+      'child-b'
+    ])
+    expect([...expandSessionFamilyMemberIds(family, ['parent'])]).toEqual([
+      'parent',
+      'child-a',
+      'grandchild',
+      'child-b'
+    ])
+  })
+
+  it('matches working or unread ids through compression lineage roots', () => {
+    const compressed = [session('parent-tip', null, 'parent-root'), session('child-tip', 'parent-root', 'child-root')]
+
+    expect([...expandSessionFamilyMemberIds(compressed, ['child-root'])]).toEqual(['parent-tip', 'child-tip'])
   })
 
   it('pinning a child pins its parent, siblings, and descendants', () => {
