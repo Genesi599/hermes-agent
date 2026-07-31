@@ -77,20 +77,93 @@ export function sessionColorFamilyId(session: SessionInfo, sessions: SessionInfo
   return sessionPinId(current)
 }
 
-function automaticSessionColor(familyId: string): string {
+const SESSION_COLOR_PALETTE = [
+  '#f87171',
+  '#fb923c',
+  '#fbbf24',
+  '#a3e635',
+  '#4ade80',
+  '#2dd4bf',
+  '#22d3ee',
+  '#38bdf8',
+  '#60a5fa',
+  '#818cf8',
+  '#a78bfa',
+  '#c084fc',
+  '#e879f9',
+  '#f472b6',
+  '#fb7185',
+  '#fdba74',
+  '#fde047',
+  '#bef264',
+  '#86efac',
+  '#5eead4',
+  '#67e8f9',
+  '#7dd3fc',
+  '#93c5fd',
+  '#c4b5fd'
+] as const
+
+function stableColorHash(value: string): number {
   let hash = 2_166_136_261
 
-  for (let index = 0; index < familyId.length; index += 1) {
-    hash ^= familyId.charCodeAt(index)
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
     hash = Math.imul(hash, 16_777_619)
   }
 
-  const unsigned = hash >>> 0
-  const hue = unsigned % 360
-  const saturation = 62 + ((unsigned >>> 9) % 3) * 5
-  const lightness = 58 + ((unsigned >>> 17) % 3) * 4
+  return hash >>> 0
+}
 
-  return `hsl(${hue} ${saturation}% ${lightness}%)`
+function automaticColorsByFamily(
+  familyBySessionId: Map<string, string>,
+  overrides: Record<string, string>,
+  sessions: SessionInfo[]
+): Map<string, string> {
+  const firstStartedAtByFamily = new Map<string, number>()
+
+  for (const session of sessions) {
+    const familyId = familyBySessionId.get(session.id) ?? sessionPinId(session)
+    const firstStartedAt = firstStartedAtByFamily.get(familyId) ?? Number.POSITIVE_INFINITY
+    firstStartedAtByFamily.set(familyId, Math.min(firstStartedAt, session.started_at || session.last_active || 0))
+  }
+
+  const colors = new Map<string, string>()
+  const usedColors = new Set(Object.values(overrides))
+
+  const families = [...firstStartedAtByFamily.entries()].sort(
+    ([aId, aStartedAt], [bId, bStartedAt]) => aStartedAt - bStartedAt || aId.localeCompare(bId)
+  )
+
+  for (const [familyId] of families) {
+    const hash = stableColorHash(familyId)
+    let color: string | undefined
+
+    for (let attempt = 0; attempt < SESSION_COLOR_PALETTE.length; attempt += 1) {
+      const candidate = SESSION_COLOR_PALETTE[(hash + attempt * 7) % SESSION_COLOR_PALETTE.length]
+
+      if (!usedColors.has(candidate)) {
+        color = candidate
+
+        break
+      }
+    }
+
+    for (let attempt = 0; !color; attempt += 1) {
+      const hue = Math.round((hash + attempt * 137.508) % 360)
+      const candidate = `hsl(${hue} 70% ${60 + (attempt % 3) * 5}%)`
+
+      if (!usedColors.has(candidate)) {
+        color = candidate
+      }
+    }
+
+    colors.set(familyId, color)
+
+    usedColors.add(color)
+  }
+
+  return colors
 }
 
 // The resolved color for every session, keyed by live session id — the ONE
@@ -121,9 +194,11 @@ export const $sessionColorById = computed(
       }
     }
 
+    const automaticColors = automaticColorsByFamily(familyBySessionId, Object.fromEntries(overrideByFamily), sessions)
+
     for (const session of sessions) {
       const familyId = familyBySessionId.get(session.id) ?? sessionPinId(session)
-      map[session.id] = overrideByFamily.get(familyId) ?? automaticSessionColor(familyId)
+      map[session.id] = overrideByFamily.get(familyId) ?? automaticColors.get(familyId)!
     }
 
     return map
