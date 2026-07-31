@@ -2,7 +2,8 @@ import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { SessionInfo } from '@/hermes'
-import { $unreadFinishedSessionIds } from '@/store/session'
+import { $sessions, $unreadFinishedSessionIds } from '@/store/session'
+import { $sessionColorById, $sessionColorOverrides } from '@/store/session-color'
 
 import { SidebarSessionRow } from './session-row'
 
@@ -34,6 +35,8 @@ function renderBranchRow({ isWorking = false, reorderable = false } = {}) {
 describe('branch session status geometry', () => {
   afterEach(() => {
     cleanup()
+    $sessions.set([])
+    $sessionColorOverrides.set({})
     $unreadFinishedSessionIds.set([])
   })
 
@@ -59,5 +62,45 @@ describe('branch session status geometry', () => {
     const lead = container.querySelector('[data-reorder-handle]')
 
     expect(lead?.classList.contains('overflow-visible')).toBe(true)
+  })
+
+  it('uses the shared conversation color for parent and branch title text', () => {
+    const parent = { ...session, id: 'parent-session', title: 'Parent session' }
+    const child = { ...session, id: 'child-session', parent_session_id: parent.id, title: 'Child session' }
+    $sessions.set([parent, child])
+
+    const { getByText } = render(
+      <>
+        <SidebarSessionRow
+          isPinned={false}
+          isSelected={false}
+          isWorking={false}
+          onArchive={vi.fn()}
+          onDelete={vi.fn()}
+          onPin={vi.fn()}
+          onResume={vi.fn()}
+          session={parent}
+        />
+        <SidebarSessionRow
+          branchStem="└─ "
+          isPinned={false}
+          isSelected={false}
+          isWorking={false}
+          onArchive={vi.fn()}
+          onDelete={vi.fn()}
+          onPin={vi.fn()}
+          onResume={vi.fn()}
+          session={child}
+        />
+      </>
+    )
+
+    const color = $sessionColorById.get()[parent.id]
+    const expectedCssColor = window.document.createElement('span')
+    expectedCssColor.style.color = color
+
+    expect($sessionColorById.get()[child.id]).toBe(color)
+    expect(getByText(parent.title!).style.color).toBe(expectedCssColor.style.color)
+    expect(getByText(child.title!).style.color).toBe(expectedCssColor.style.color)
   })
 })

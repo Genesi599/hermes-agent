@@ -105,7 +105,7 @@ export function SidebarSessionRow({
   const isStalled = useStore($stalledSessionIds).includes(session.id)
   // True when a terminal(background=true) process is alive in this session.
   const hasBackground = useStore($backgroundRunningSessionIds).includes(session.id)
-  // The session's resolved color (idle dot tint), read from the ONE shared map
+  // The session's resolved color (title tint), read from the ONE shared map
   // the pane tabs also read — an O(1) lookup, never re-derived per render.
   const sessionColor = useStore($sessionColorById)[session.id] ?? null
 
@@ -262,7 +262,6 @@ export function SidebarSessionRow({
                 className="transition-opacity group-hover/handle:opacity-0 group-focus-within/handle:opacity-0"
                 dotState={dotState}
                 reviewActivity={reviewActivity}
-                sessionColor={sessionColor}
               />
             </SidebarRowGrab>
           ) : (
@@ -270,7 +269,7 @@ export function SidebarSessionRow({
               className={needsInput || branchStem ? 'overflow-visible' : 'overflow-hidden'}
               data-branch-lead={branchStem ? 'true' : undefined}
             >
-              <SessionRowLeadDot branchStem={branchStem} dotState={dotState} sessionColor={sessionColor} />
+              <SessionRowLeadDot branchStem={branchStem} dotState={dotState} />
             </SidebarRowLead>
           )}
           {handoffSource && handoffLabel ? (
@@ -282,7 +281,7 @@ export function SidebarSessionRow({
               />
             </Tip>
           ) : null}
-          <SidebarRowLabel className="flex-1 font-normal group-hover:text-foreground group-data-[working=true]:text-foreground/90">
+          <SidebarRowLabel className="flex-1 font-normal" style={{ color: sessionColor }}>
             {title}
           </SidebarRowLabel>
           {showProfile && <ProfileTag profile={session.profile} />}
@@ -306,14 +305,12 @@ function SessionRowLeadDot({
   branchStem,
   dotState = 'idle',
   className,
-  sessionColor,
   reviewActivity
 }: {
   branchStem?: string
   dotState?: SessionDotState
   reviewActivity?: NonNullable<ClientSessionState['reviewActivity']> | null
   className?: string
-  sessionColor?: null | string
 }) {
   return (
     <span className={cn('flex items-center gap-0.5', className)}>
@@ -322,7 +319,7 @@ function SessionRowLeadDot({
           {branchStem}
         </span>
       ) : null}
-      <SidebarRowDot dotState={dotState} reviewActivity={reviewActivity} sessionColor={sessionColor} />
+      <SidebarRowDot dotState={dotState} reviewActivity={reviewActivity} />
     </span>
   )
 }
@@ -394,29 +391,14 @@ const DOT_VARIANTS: Record<SessionDotState, DotVariant> = {
 function SidebarRowDot({
   dotState,
   className,
-  sessionColor,
   reviewActivity
 }: {
   dotState: SessionDotState
   reviewActivity?: NonNullable<ClientSessionState['reviewActivity']> | null
   className?: string
-  sessionColor?: null | string
 }) {
   const { t } = useI18n()
   const r = t.sidebar.row
-
-  // An idle session uses its conversation family's color. The active states
-  // (working / needs-input / background / unread) own the dot and keep their semantic color, so the
-  // inherited tint never competes with an attention cue.
-  if (dotState === 'idle' && sessionColor) {
-    return (
-      <span
-        aria-hidden="true"
-        className={cn('size-1 rounded-full', className)}
-        style={{ backgroundColor: sessionColor }}
-      />
-    )
-  }
 
   const variant = DOT_VARIANTS[dotState]
 
