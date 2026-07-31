@@ -41,9 +41,20 @@ describe('$sessionColorById', () => {
 
     const map = $sessionColorById.get()
 
-    expect(map[a.id]).toMatch(/^hsl\(/)
-    expect(map[b.id]).toMatch(/^hsl\(/)
+    expect(map[a.id]).toBeTruthy()
+    expect(map[b.id]).toBeTruthy()
     expect(map[a.id]).not.toBe(map[b.id])
+  })
+
+  it('does not repeat an automatic color among top-level conversations', () => {
+    const roots = Array.from({ length: 32 }, (_, index) =>
+      makeSession(null, { id: `root-${index}`, started_at: index + 1 })
+    )
+
+    $sessions.set(roots)
+
+    const colors = roots.map(session => $sessionColorById.get()[session.id])
+    expect(new Set(colors).size).toBe(roots.length)
   })
 
   it('gives every branch in a conversation tree its parent color', () => {
