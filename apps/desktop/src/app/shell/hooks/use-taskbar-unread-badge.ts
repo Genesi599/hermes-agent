@@ -12,6 +12,8 @@ import {
 
 type SetTaskbarBadgeCount = (count: number) => void
 
+const UNREAD_RECONCILIATION_RETRY_MS = 2_500
+
 export function subscribeTaskbarUnreadBadge(setBadgeCount?: SetTaskbarBadgeCount): () => void {
   if (!setBadgeCount) {
     return () => {}
@@ -76,6 +78,7 @@ export function subscribeUnreadSessionReconciliation(
   let previousMembership = sessionMembershipSignature()
   let previousUnread = new Set($unreadFinishedSessionIds.get())
   let queued = false
+  let retryTimer: ReturnType<typeof setTimeout> | null = null
 
   const queueReconcile = () => {
     if (queued) {
@@ -87,6 +90,20 @@ export function subscribeUnreadSessionReconciliation(
       queued = false
       void reconcile()
     })
+  }
+
+  const scheduleRetry = () => {
+    if (retryTimer !== null) {
+      return
+    }
+
+    retryTimer = setTimeout(() => {
+      retryTimer = null
+
+      if ($unreadFinishedSessionIds.get().length) {
+        queueReconcile()
+      }
+    }, UNREAD_RECONCILIATION_RETRY_MS)
   }
 
   const unsubscribeSessions = $sessions.subscribe(() => {
@@ -102,6 +119,7 @@ export function subscribeUnreadSessionReconciliation(
       queueReconcile()
     }
   })
+
   const unsubscribeUnread = $unreadFinishedSessionIds.subscribe(sessionIds => {
     const current = new Set(sessionIds)
     const added = sessionIds.some(id => !previousUnread.has(id))
@@ -109,10 +127,18 @@ export function subscribeUnreadSessionReconciliation(
 
     if (added) {
       queueReconcile()
+      // A branch can finish before its deferred merge deletes the stored row.
+      // Recheck once after that ordering window so the deleted child cannot
+      // leave an invisible unread id behind in the taskbar badge.
+      scheduleRetry()
     }
   })
 
   return () => {
+    if (retryTimer !== null) {
+      clearTimeout(retryTimer)
+    }
+
     unsubscribeSessions()
     unsubscribeUnread()
   }
@@ -123,11 +149,13 @@ export function useTaskbarUnreadBadge() {
     const unsubscribeBadge = subscribeTaskbarUnreadBadge(window.hermesDesktop?.setTaskbarBadgeCount)
     const unsubscribeSelected = subscribeSelectedSessionRead()
     const unsubscribeReconciliation = subscribeUnreadSessionReconciliation()
+
     const unsubscribeGateway = $gatewayState.subscribe(state => {
       if (state === 'open' || state === 'running') {
         void reconcileTaskbarUnreadSessions()
       }
     })
+
     void reconcileTaskbarUnreadSessions()
 
     return () => {
