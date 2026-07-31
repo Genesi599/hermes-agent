@@ -16,6 +16,7 @@ vi.mock('@/hermes', () => ({
 
 describe('subscribeTaskbarUnreadBadge', () => {
   afterEach(() => {
+    vi.useRealTimers()
     $unreadFinishedSessionIds.set([])
     $selectedStoredSessionId.set(null)
     setSessions([])
@@ -86,6 +87,25 @@ describe('subscribeTaskbarUnreadBadge', () => {
     await vi.waitFor(() => expect($unreadFinishedSessionIds.get()).toEqual([]))
 
     expect(listAllProfileSessions).toHaveBeenCalledTimes(1)
+    unsubscribe()
+  })
+
+  it('rechecks a new unread id after a deferred merge deletion settles', async () => {
+    vi.useFakeTimers()
+    vi.mocked(listAllProfileSessions)
+      .mockResolvedValueOnce({ sessions: [{ archived: false, id: 'branch-child' }] } as never)
+      .mockResolvedValueOnce({ sessions: [] } as never)
+    const unsubscribe = subscribeUnreadSessionReconciliation()
+
+    $unreadFinishedSessionIds.set(['branch-child'])
+    await vi.runAllTicks()
+    await vi.waitFor(() => expect(listAllProfileSessions).toHaveBeenCalledTimes(1))
+    expect($unreadFinishedSessionIds.get()).toEqual(['branch-child'])
+
+    await vi.advanceTimersByTimeAsync(2_500)
+    await vi.waitFor(() => expect($unreadFinishedSessionIds.get()).toEqual([]))
+    expect(listAllProfileSessions).toHaveBeenCalledTimes(2)
+
     unsubscribe()
   })
 
