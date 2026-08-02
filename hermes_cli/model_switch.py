@@ -27,6 +27,7 @@ from typing import Any, List, NamedTuple, Optional
 
 from hermes_cli.providers import (
     ProviderDef,
+    TRANSPORT_TO_API_MODE,
     custom_provider_slug,
     determine_api_mode,
     get_label,
@@ -51,6 +52,21 @@ from agent.models_dev import (
 _UNCAPPED_PICKER_PROVIDERS: frozenset[str] = frozenset({"opencode-zen", "opencode-go"})
 
 logger = logging.getLogger(__name__)
+
+
+def _configured_user_provider_api_mode(config: Any) -> str:
+    """Resolve a user provider's explicitly configured wire protocol."""
+    if not isinstance(config, dict):
+        return ""
+
+    api_mode = str(config.get("api_mode", "") or "").strip()
+    if api_mode:
+        return api_mode
+
+    transport = str(config.get("transport", "") or "").strip()
+    if not transport:
+        return ""
+    return TRANSPORT_TO_API_MODE.get(transport, transport)
 
 
 def _declared_model_ids(value: Any) -> list[str]:
@@ -1339,6 +1355,7 @@ def switch_model(
         if _user_pdef is not None and _user_pdef.base_url:
             _ucfg = (user_providers or {}).get(explicit_provider.strip().lower()) \
                 or (user_providers or {}).get(target_provider) or {}
+            _configured_mode = _configured_user_provider_api_mode(_ucfg)
             _ukey = str(_ucfg.get("api_key", "") or "").strip()
             if _ukey.startswith("${") and _ukey.endswith("}"):
                 _ukey = os.environ.get(_ukey[2:-1], "").strip()
@@ -1355,11 +1372,11 @@ def switch_model(
                 )
                 api_key = runtime.get("api_key", "") or _ukey
                 base_url = runtime.get("base_url", "") or _user_pdef.base_url
-                api_mode = runtime.get("api_mode", "")
+                api_mode = _configured_mode or runtime.get("api_mode", "")
             except Exception:
                 api_key = _ukey
                 base_url = _user_pdef.base_url
-                api_mode = ""
+                api_mode = _configured_mode
         elif target_provider == "custom" and current_base_url:
             api_key = current_api_key
             base_url = current_base_url

@@ -386,6 +386,53 @@ def test_switch_model_user_config_openai_does_not_hop_to_openrouter(monkeypatch)
     assert result.base_url == "https://api.openai.com/v1"
 
 
+@pytest.mark.parametrize(
+    ("protocol_config", "expected_mode"),
+    [
+        ({"api_mode": "chat_completions"}, "chat_completions"),
+        ({"transport": "openai_chat"}, "chat_completions"),
+    ],
+)
+def test_switch_model_user_provider_protocol_overrides_stale_runtime_mode(
+    monkeypatch, protocol_config, expected_mode
+):
+    """An explicit provider must not inherit the previous provider's protocol."""
+    monkeypatch.setenv("GLM_API_KEY", "test-key")
+    monkeypatch.setattr(
+        "hermes_cli.runtime_provider.resolve_runtime_provider",
+        lambda **_kwargs: {
+            "api_key": "test-key",
+            "base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
+            "api_mode": "codex_responses",
+        },
+    )
+    user_providers = {
+        "zai": {
+            "name": "Z.AI / GLM (Coding Plan)",
+            "base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
+            "key_env": "GLM_API_KEY",
+            "model": "glm-5.2",
+            "models": {"glm-5.2": {}},
+            **protocol_config,
+        }
+    }
+
+    result = switch_model(
+        raw_input="glm-5.2",
+        current_provider="codex_pool",
+        current_model="gpt-5.6-sol",
+        current_base_url="http://127.0.0.1:8787/v1",
+        current_api_key="placeholder",
+        explicit_provider="zai",
+        user_providers=user_providers,
+        custom_providers=[],
+    )
+
+    assert result.success, result.error_message
+    assert result.base_url == "https://open.bigmodel.cn/api/coding/paas/v4"
+    assert result.api_mode == expected_mode
+
+
 def test_list_authenticated_providers_user_openai_official_url_fallback(monkeypatch):
     """User providers: api.openai.com with no models list uses native curated fallback."""
     monkeypatch.setattr("agent.models_dev.fetch_models_dev", lambda: {})
