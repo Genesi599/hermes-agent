@@ -366,8 +366,13 @@ export function appendLiveSessionProjection(
 
   const sessionId = projection.session_id || 'session'
   const projected: ChatMessage[] = []
+  const lastVisibleMessage = messages.findLast(message => !message.hidden)
+  const inflightUserAlreadyStored =
+    Boolean(inflightUser) &&
+    lastVisibleMessage?.role === 'user' &&
+    chatMessageText(lastVisibleMessage).trim() === inflightUser
 
-  if (inflightUser) {
+  if (inflightUser && !inflightUserAlreadyStored) {
     projected.push({
       id: `user-inflight-${sessionId}`,
       role: 'user',

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import type { ChatMessage } from '@/lib/chat-messages'
+import { type ChatMessage, chatMessageText } from '@/lib/chat-messages'
 import { $approvalModes, approvalModeForProfile } from '@/store/approval-mode'
 import { $activeGatewayProfile } from '@/store/profile'
 import type { SessionInfo } from '@/types/hermes'
@@ -390,6 +390,49 @@ describe('appendLiveSessionProjection', () => {
       'newest prompt'
     ])
     expect(restored[3]).toMatchObject({ id: 'assistant-stream-runtime-1', pending: true })
+  })
+
+  it('does not duplicate an inflight user prompt already stored at the transcript tail', () => {
+    const stored = [
+      msg('stored-user', 'user', 'earlier'),
+      msg('stored-assistant', 'assistant', 'earlier answer'),
+      msg('stored-current-user', 'user', 'current prompt')
+    ]
+
+    const restored = appendLiveSessionProjection(stored, {
+      session_id: 'runtime-1',
+      inflight: {
+        user: 'current prompt',
+        assistant: '',
+        streaming: true
+      }
+    })
+
+    expect(restored.filter(message => chatMessageText(message) === 'current prompt')).toHaveLength(1)
+    expect(restored.map(message => message.id)).toEqual([
+      'stored-user',
+      'stored-assistant',
+      'stored-current-user',
+      'assistant-stream-runtime-1'
+    ])
+  })
+
+  it('keeps a repeated prompt when the matching stored prompt belongs to a completed turn', () => {
+    const stored = [
+      msg('stored-user', 'user', 'same prompt'),
+      msg('stored-assistant', 'assistant', 'completed answer')
+    ]
+
+    const restored = appendLiveSessionProjection(stored, {
+      session_id: 'runtime-1',
+      inflight: {
+        user: 'same prompt',
+        assistant: '',
+        streaming: true
+      }
+    })
+
+    expect(restored.filter(message => chatMessageText(message) === 'same prompt')).toHaveLength(2)
   })
 
   it('preserves the original array when no live projection exists', () => {
