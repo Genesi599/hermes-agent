@@ -591,6 +591,40 @@ def test_list_authenticated_providers_no_duplicate_labels_across_schemas(monkeyp
     )
 
 
+def test_configured_canonical_provider_has_one_custom_labeled_row(monkeypatch):
+    """A providers.<canonical> entry must not reappear as a custom:* shadow."""
+    monkeypatch.setenv("GLM_API_KEY", "test-key")
+    monkeypatch.setattr(
+        "agent.models_dev.fetch_models_dev",
+        lambda: {"zai": {"name": "Z.AI", "env": ["GLM_API_KEY"]}},
+    )
+    monkeypatch.setattr(
+        "hermes_cli.models.cached_provider_model_ids",
+        lambda slug, **_kwargs: ["glm-5.2"] if slug == "zai" else [],
+    )
+
+    configured = {
+        "name": "Z.AI / GLM (Coding Plan)",
+        "base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
+        "key_env": "GLM_API_KEY",
+        "model": "glm-5.2",
+        "models": {"glm-5.2": {}},
+    }
+    providers = list_authenticated_providers(
+        user_providers={"zai": configured},
+        custom_providers=[{**configured, "provider_key": "zai"}],
+        probe_custom_providers=False,
+    )
+
+    glm_rows = [
+        row for row in providers
+        if "glm" in row["name"].lower() or row["slug"].lower() == "zai"
+    ]
+    assert [(row["slug"], row["name"]) for row in glm_rows] == [
+        ("zai", "Z.AI / GLM (Coding Plan)")
+    ]
+
+
 def test_list_authenticated_providers_hides_custom_shadowing_builtin_endpoint(monkeypatch):
     """#16970: a custom_providers entry whose ``base_url`` matches a built-in
     provider's endpoint should be hidden. The built-in row already represents
