@@ -2174,6 +2174,16 @@ def list_authenticated_providers(
         if normed:
             _builtin_endpoints.add(normed)
 
+    def _configured_display_name(slug: str, fallback: str) -> str:
+        """Let an explicit providers.<slug>.name label its canonical row."""
+        if not isinstance(user_providers, dict):
+            return fallback
+        configured = user_providers.get(slug)
+        if not isinstance(configured, dict):
+            return fallback
+        name = configured.get("name")
+        return name.strip() if isinstance(name, str) and name.strip() else fallback
+
     def _has_fast_aws_sdk_signal() -> bool:
         """Return True when explicit AWS auth config is present.
 
@@ -2372,6 +2382,7 @@ def list_authenticated_providers(
 
         pinfo = _mdev_pinfo(mdev_id)
         display_name = pconfig.name if pconfig and pconfig.name else (pinfo.name if pinfo else mdev_id)
+        display_name = _configured_display_name(slug, display_name)
 
         results.append({
             "slug": slug,
@@ -2564,7 +2575,7 @@ def list_authenticated_providers(
 
         results.append({
             "slug": hermes_slug,
-            "name": get_label(hermes_slug),
+            "name": _configured_display_name(hermes_slug, get_label(hermes_slug)),
             "is_current": hermes_slug == current_provider or pid == current_provider,
             "is_user_defined": False,
             "models": top,
@@ -2639,7 +2650,7 @@ def list_authenticated_providers(
 
         results.append({
             "slug": _cp.slug,
-            "name": _cp.label,
+            "name": _configured_display_name(_cp.slug, _cp.label),
             "is_current": _cp.slug == current_provider,
             "is_user_defined": False,
             "models": _cp_top,
@@ -2981,6 +2992,15 @@ def list_authenticated_providers(
         groups: "OrderedDict[tuple, dict]" = OrderedDict()
         for entry in custom_providers:
             if not isinstance(entry, dict):
+                continue
+
+            # get_compatible_custom_providers() mirrors every providers:<key>
+            # entry into this legacy list. If an earlier section already owns
+            # that exact key (especially a configured canonical provider such
+            # as providers.zai), emitting the compatibility copy here creates
+            # a second custom:* picker row for the same configured backend.
+            provider_key = str(entry.get("provider_key", "") or "").strip().lower()
+            if provider_key and provider_key in seen_slugs:
                 continue
 
             raw_name = (entry.get("name") or "").strip()
