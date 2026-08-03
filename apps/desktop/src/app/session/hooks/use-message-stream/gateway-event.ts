@@ -359,6 +359,13 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
         notifySessionsChanged()
 
         return
+      } else if (event.type === 'branch.batch.status') {
+        // The backend owns durable Branch state; invalidate the list cache as
+        // soon as a child is created or changes phase. No transcript content
+        // is synthesized into the parent conversation.
+        broadcastSessionsChanged()
+
+        return
       } else if (event.type === 'session.info') {
         // Apply session-scoped fields when the event targets the active
         // session, OR when it's a global broadcast and we have no session.
@@ -461,6 +468,7 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
             }),
             payload?.stored_session_id || undefined
           )
+
           if (statePatch.experienceReview) {
             updateSessionState(
               sessionId,
@@ -591,6 +599,7 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
           if (state.interrupted) {
             return state
           }
+
           const reviewActivity = reviewActivityForInternalKind(payload?.internal_kind)
 
           return {

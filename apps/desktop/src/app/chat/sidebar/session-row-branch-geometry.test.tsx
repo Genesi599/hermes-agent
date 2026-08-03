@@ -103,4 +103,25 @@ describe('branch session status geometry', () => {
     expect(getByText(parent.title!).style.color).toBe(expectedCssColor.style.color)
     expect(getByText(child.title!).style.color).toBe(expectedCssColor.style.color)
   })
+
+  it.each(['queued', 'starting', 'running', 'completed', 'failed', 'cancelled'] as const)(
+    'renders durable batch status %s',
+    status => {
+      const { container: statusContainer } = render(
+        <SidebarSessionRow
+          branchStem="└─ "
+          isPinned={false}
+          isSelected={false}
+          isWorking={status === 'running'}
+          onArchive={vi.fn()}
+          onDelete={vi.fn()}
+          onPin={vi.fn()}
+          onResume={vi.fn()}
+          session={{ ...session, branch_task_status: status, branch_started_at: 1 }}
+        />
+      )
+
+      expect(statusContainer.querySelector(`[data-branch-task-status="${status}"]`)).toBeTruthy()
+    }
+  )
 })
