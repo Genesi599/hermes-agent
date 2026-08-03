@@ -3206,6 +3206,9 @@ def compress_context(
                 })
         _ensure_compressed_has_user_turn(messages, compressed)
 
+        from agent.shared_core_memory import load_shared_core_memory_prompt
+
+        agent._shared_core_memory_prompt = load_shared_core_memory_prompt()
         cached_system_prompt = agent._cached_system_prompt
         agent._invalidate_system_prompt()
 
@@ -3222,6 +3225,7 @@ def compress_context(
             cached_system_prompt is not None
             and getattr(agent, "_memory_manager", None) is None
             and _cached_prompt_reflects_builtin_memory(agent, cached_system_prompt)
+            and _cached_prompt_reflects_shared_core_memory(agent, cached_system_prompt)
         ):
             new_system_prompt = cached_system_prompt
             agent._cached_system_prompt = cached_system_prompt

@@ -540,6 +540,10 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         except Exception:
             pass
 
+    shared_core_memory = getattr(agent, "_shared_core_memory_prompt", "")
+    if shared_core_memory:
+        volatile_parts.append(shared_core_memory)
+
     from hermes_time import now as _hermes_now
     now = _hermes_now()
     # Date-only (not minute-precision) so the system prompt is byte-stable
