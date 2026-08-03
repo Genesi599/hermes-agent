@@ -56,6 +56,7 @@ interface SidebarSessionRowProps extends React.ComponentProps<'div'> {
   onDelete: () => void
   mergeChildrenCount?: number
   onMergeChildren?: () => Promise<void> | void
+  onMergeCompletedChildren?: () => Promise<void> | void
   onMerge?: () => Promise<void> | void
   onPin: () => void
   onResume: () => void
@@ -100,6 +101,7 @@ function SidebarSessionRowImpl({
   onDelete,
   mergeChildrenCount,
   onMergeChildren,
+  onMergeCompletedChildren,
   onMerge,
   onPin,
   onResume,
@@ -199,6 +201,20 @@ function SidebarSessionRowImpl({
   const isUnread = useStore($unreadSessionIds).includes(session.id)
   const sessionColor = useStore($sessionColorById)[session.id]
   const isMergeWaiting = session.branch_merge_status === 'waiting_for_parent'
+  const branchTaskStatus = session.branch_task_status
+
+  const branchElapsed = session.branch_started_at
+    ? formatDuration((session.branch_completed_at ?? Date.now() / 1000) - session.branch_started_at, r)
+    : null
+
+  const branchMeta = [
+    session.branch_model || session.model,
+    session.branch_provider,
+    session.branch_workspace_mode
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
   const reviewActivity = useStore($reviewActivityBySessionId)[session.id] ?? null
   const branchTaskStatus = session.branch_task_status
 
@@ -226,6 +242,7 @@ function SidebarSessionRowImpl({
       onDelete={onDelete}
       onMerge={onMerge}
       onMergeChildren={onMergeChildren}
+      onMergeCompletedChildren={onMergeCompletedChildren}
       onPin={onPin}
       pinned={isPinned}
       profile={session.profile}
@@ -258,6 +275,7 @@ function SidebarSessionRowImpl({
               onDelete={onDelete}
               onMerge={onMerge}
               onMergeChildren={onMergeChildren}
+              onMergeCompletedChildren={onMergeCompletedChildren}
               onPin={onPin}
               pinned={isPinned}
               profile={session.profile}

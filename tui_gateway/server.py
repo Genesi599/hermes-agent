@@ -11459,6 +11459,8 @@ def _(rid, params: dict) -> dict:
 
 @method("session.branch")
 def _(rid, params: dict) -> dict:
+    from tui_gateway.conversation_branches import fork_conversation_session
+
     session, err = _sess(params, rid)
     if err:
         return err
@@ -11489,29 +11491,31 @@ def _(rid, params: dict) -> dict:
                 if hasattr(db, "get_next_title_in_lineage")
                 else f"{current} (branch)"
             )
-        db.create_session(
-            new_key,
-            source=source,
-            model=_resolve_model(),
-            # Stable _branched_from marker so list_sessions_rich() keeps the
-            # branch visible in /resume and /sessions. The TUI branch leaves
-            # the parent live (no end_reason='branched'), so the legacy
-            # end_reason heuristic never matches it — the marker is the only
-            # thing that surfaces TUI branches. See issue #20856.
-            model_config={
-                "_branched_from": old_key,
-                "_branch_seed_message_count": len(history),
+        runtime_config = _runtime_model_config(session.get("agent"), session)
+        parent = db.get_session(old_key) if hasattr(db, "get_session") else None
+        if not parent:
+            parent = {
+                "id": old_key,
+                "source": source,
+                "model": runtime_config.get("model") or _resolve_model(),
+                "model_config": runtime_config,
+                "system_prompt": getattr(session.get("agent"), "_cached_system_prompt", None),
+                "cwd": _session_cwd(session),
+                "profile_name": _current_profile_name(),
+            }
+        fork_conversation_session(
+            db=db,
+            parent=parent,
+            checkpoint=history,
+            branch_session_id=new_key,
+            title=title,
+            runtime_options={
+                "model": runtime_config.get("model"),
+                "provider": runtime_config.get("provider"),
+                "cwd": _session_cwd(session),
+                "workspace_mode": "shared",
             },
-            parent_session_id=old_key,
-            cwd=_session_cwd(session),
         )
-        for msg in history:
-            db.append_message(
-                session_id=new_key,
-                role=msg.get("role", "user"),
-                content=msg.get("content"),
-            )
-        db.set_session_title(new_key, title)
     except Exception as e:
         if lease is not None:
             lease.release()
@@ -11542,6 +11546,91 @@ def _(rid, params: dict) -> dict:
             lease.release()
         return _err(rid, 5000, f"agent init failed on branch: {e}")
     return _ok(rid, {"session_id": new_sid, "title": title, "parent": old_key})
+
+
+@method("session.branch_batch")
+def _(rid, params: dict) -> dict:
+    runtime_sid = str(params.get("runtime_session_id") or params.get("session_id") or "")
+    session, err = _sess_nowait({"session_id": runtime_sid}, rid)
+    if err:
+        return err
+    payload = dict(params)
+    payload.pop("runtime_session_id", None)
+    payload.pop("session_id", None)
+    payload["parent_session_id"] = str(
+        payload.get("parent_session_id") or session.get("session_key") or ""
+    )
+    try:
+        result = _conversation_branches_action(
+            "create_batch",
+            payload,
+            str(session.get("session_key") or runtime_sid),
+        )
+        return _ok(rid, result)
+    except PermissionError as exc:
+        return _err(rid, 4003, str(exc))
+    except ValueError as exc:
+        return _err(rid, 4008, str(exc))
+
+
+@method("session.branch_batch_control")
+def _(rid, params: dict) -> dict:
+    from tui_gateway.conversation_branches import branch_batch_public_payload
+
+    parent_id = str(params.get("parent_session_id") or "").strip()
+    action = str(params.get("action") or "").strip()
+    if not parent_id:
+        return _err(rid, 4000, "parent_session_id required")
+    if action not in {"start_queued", "pause_all", "resume_all", "cancel_all"}:
+        return _err(rid, 4000, f"unsupported batch action: {action}")
+    db = _get_db()
+    parent = db.get_session(parent_id) if db is not None else None
+    if not parent:
+        return _err(rid, 4001, "parent session not found")
+    parent_profile = str(parent.get("profile_name") or "default")
+    if parent_profile != str(_current_profile_name() or "default"):
+        return _err(rid, 4003, "cross-profile Conversation Branch operations are not allowed")
+    batches = db.list_branch_batches(
+        parent_session_id=parent_id,
+        profile_name=str(parent.get("profile_name") or ""),
+    )
+    try:
+        for batch in batches:
+            for run in batch.get("branches") or []:
+                status = str(run.get("status") or "")
+                branch_id = str(run.get("branch_session_id") or "")
+                if not branch_id:
+                    continue
+                if action == "pause_all" and status in {"starting", "running"}:
+                    _conversation_branches_action(
+                        "pause", {"parent_session_id": parent_id, "branch_session_id": branch_id}, parent_id
+                    )
+                elif action == "cancel_all" and status not in {"completed", "failed", "cancelled"}:
+                    _conversation_branches_action(
+                        "cancel", {"parent_session_id": parent_id, "branch_session_id": branch_id}, parent_id
+                    )
+                elif action == "resume_all" and status in {"paused", "interrupted", "failed"}:
+                    db.update_branch_run(
+                        batch["batch_id"], run["client_branch_key"], status="queued", error=None, completed_at=None
+                    )
+            if action in {"start_queued", "resume_all"}:
+                _start_queued_branch_runs(batch["batch_id"])
+        updated = db.list_branch_batches(
+            parent_session_id=parent_id,
+            profile_name=str(parent.get("profile_name") or ""),
+        )
+        return _ok(
+            rid,
+            {
+                "parent_session_id": parent_id,
+                "batches": [
+                    branch_batch_public_payload(batch)
+                    for batch in updated
+                ],
+            },
+        )
+    except (PermissionError, ValueError) as exc:
+        return _err(rid, 4008, str(exc))
 
 
 @method("session.interrupt")
