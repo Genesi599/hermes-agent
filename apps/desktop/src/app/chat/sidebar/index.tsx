@@ -106,6 +106,7 @@ import {
 } from '@/store/pull-requests'
 import { openRouteTile } from '@/store/route-tiles'
 import {
+  $activeSessionId,
   $cronSessions,
   $currentCwd,
   $gatewayState,
@@ -115,6 +116,7 @@ import {
   $sessionProfilesTruncated,
   $sessions,
   $sessionsLoading,
+  $selectedStoredSessionId,
   $unreadFinishedSessionIds,
   sessionPinId,
   setCurrentCwd
@@ -142,7 +144,8 @@ import {
 import type { SidebarNavItem } from '../../types'
 
 import { SidebarCronJobsSection } from './cron-jobs-section'
-import { SidebarFilterMenu } from './filter-menu'
+import { ConversationBranchDialog } from './conversation-branch-dialog'
+import { SidebarFilterMenu } from './filter-menu' 
 import { SidebarLoadMoreRow } from './load-more-row'
 import { orderByIds, reconcileOrderIds, resolveManualSessionOrderIds, sameIds } from './order'
 import { ProfileRail } from './profile-switcher'
@@ -277,7 +280,7 @@ interface ChatSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onLoadMoreMessaging?: (platform: string) => Promise<void> | void
   onResumeSession: (sessionId: string) => void
   onDeleteSession: (sessionId: string) => void
-  onMergeSession: (sessionId: string, profile?: string) => Promise<void> | void
+  onMergeSession?: (sessionId: string, profile?: string) => Promise<void> | void
   onArchiveSession: (sessionId: string) => void
   onBranchSession: (sessionId: string) => void
   onNewSessionInWorkspace: (path: null | string) => void
@@ -357,6 +360,8 @@ export function ChatSidebar({
   // The sidebar highlight tracks the FOCUSED session — the interacted tile's
   // tab, else the main selection — so it stays 1:1 with whatever tab is active.
   const selectedSessionId = useStore($focusedStoredSessionId)
+  const selectedStoredSessionId = useStore($selectedStoredSessionId)
+  const activeRuntimeSessionId = useStore($activeSessionId)
   const sessions = useStore($sessions)
   const cronSessions = useStore($cronSessions)
   const cronJobs = useStore($cronJobs)
@@ -399,6 +404,7 @@ export function ChatSidebar({
   const [newSessionKbdFlash, setNewSessionKbdFlash] = useState(false)
   const [messagingLoadMorePending, setMessagingLoadMorePending] = useState<Record<string, boolean>>({})
   const [recentsLoadMorePending, setRecentsLoadMorePending] = useState(false)
+  const [branchBatchOpen, setBranchBatchOpen] = useState(false)
   const messagingOpenIds = useStore($sidebarMessagingOpenIds)
   // Per-platform count of rows currently revealed (starts at NON_SESSION_INITIAL_ROWS).
   const [messagingVisible, setMessagingVisible] = useState<Record<string, number>>({})
@@ -1641,6 +1647,22 @@ export function ChatSidebar({
                     </div>
                   ) : (
                     <div className="flex shrink-0 items-center gap-0.5">
+                      {selectedStoredSessionId && activeRuntimeSessionId ? (
+                        <Tip label={s.branchBatch.title}>
+                          <Button
+                            aria-label={s.branchBatch.title}
+                            className={HEADER_ACTION_BTN}
+                            onClick={event => {
+                              event.stopPropagation()
+                              setBranchBatchOpen(true)
+                            }}
+                            size="icon-xs"
+                            variant="ghost"
+                          >
+                            <Codicon name="type-hierarchy-sub" size="0.75rem" />
+                          </Button>
+                        </Tip>
+                      ) : null}
                       {!showAllProfiles ? (
                         <Tip label={agentsGrouped ? s.projects.newButton : s.nav['new-session']}>
                           <Button
@@ -1782,7 +1804,7 @@ export function ChatSidebar({
         open={branchBatchOpen}
         parentSessionId={selectedStoredSessionId}
         runtimeSessionId={activeRuntimeSessionId}
-      /> 
+      />
     </Sidebar>
   )
 }

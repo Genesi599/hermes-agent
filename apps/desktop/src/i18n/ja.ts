@@ -1768,6 +1768,21 @@ export const ja = defineLocale({
     loading: '読み込み中…',
     loadMore: 'さらに読み込む',
     loadCount: step => `さらに ${step} 件を読み込む`,
+    branchBatch: {
+      title: '会話ブランチを作成', description: '現在の会話チェックポイントから永続的な兄弟セッションを作成します。',
+      addTask: 'タスクを追加', removeTask: 'タスクを削除', taskTitle: 'タイトル', prompt: '初期プロンプト',
+      outputDir: '出力ディレクトリ', workspaceMode: 'ワークスペース', shared: '共有',
+      sharedUniqueOutputs: '共有入力、個別出力', gitWorktree: 'Git worktree',
+      model: 'モデル（空欄は継承）', provider: 'Provider（空欄は継承）',
+      maxParallel: '最大並列数', autoStart: '親ターン完了後に開始', preview: '確認', back: '戻る',
+      create: 'ブランチを作成', created: '会話ブランチを作成しました', failed: '会話ブランチを作成できませんでした',
+      requiresSession: '先に会話を開いてください。', taskNumber: index => `タスク ${index}`,
+      inherit: '継承', manage: 'ブランチタスク', startQueued: '待機中を開始', pauseAll: 'すべて一時停止',
+      resumeAll: 'すべて再開', cancelAll: 'すべてキャンセル',
+      mergeCompleted: count => `完了をマージ (${count})`, openAll: 'すべて開く',
+      controlFailed: 'Conversation Branch を更新できませんでした',
+      worktreeRequiresRepo: 'Git worktree モードには、現在の会話が Git リポジトリ内にある必要があります。'
+    },
     row: {
       pin: 'ピン留め',
       unpin: 'ピン留めを解除',
@@ -1788,6 +1803,19 @@ export const ja = defineLocale({
       sessionRunning: 'セッション実行中',
       branchMergeWaiting: '親セッション待ち',
       branchMergeWaitingDescription: 'レビューは完了しました。親セッションの終了後にマージします。',
+      branchTaskStatus: status =>
+        ({
+          cancelled: 'キャンセル済み',
+          completed: '完了',
+          creating: '作成中',
+          failed: '失敗',
+          interrupted: '中断',
+          paused: '一時停止',
+          pending_checkpoint: 'チェックポイント待ち',
+          queued: '待機中',
+          running: '実行中',
+          starting: '開始中'
+        })[status] ?? status,
       unreadCompletion: '完了、未読',
       needsInput: '入力が必要です',
       waitingForAnswer: '回答を待っています',

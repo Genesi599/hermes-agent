@@ -2140,6 +2140,21 @@ export const zh: Translations = {
     loading: '加载中…',
     loadMore: '加载更多',
     loadCount: step => `再加载 ${step} 个`,
+    branchBatch: {
+      title: '创建多个对话分支', description: '从当前对话检查点创建持久化、相互独立的兄弟会话。',
+      addTask: '添加任务', removeTask: '删除任务', taskTitle: '标题', prompt: '初始提示',
+      outputDir: '输出目录', workspaceMode: '工作区', shared: '共享',
+      sharedUniqueOutputs: '共享输入，独立输出', gitWorktree: 'Git worktree',
+      model: '模型（留空则继承）', provider: 'Provider（留空则继承）',
+      maxParallel: '最大并发数', autoStart: '父对话本轮结束后自动启动', preview: '预览',
+      back: '返回', create: '创建分支', created: '已创建对话分支批次', failed: '无法创建对话分支',
+      requiresSession: '请先打开一个对话。', taskNumber: index => `任务 ${index}`,
+      inherit: '继承', manage: '分支任务', startQueued: '启动排队任务', pauseAll: '全部暂停',
+      resumeAll: '全部继续', cancelAll: '全部取消',
+      mergeCompleted: count => `合并已完成 (${count})`, openAll: '全部打开',
+      controlFailed: '无法更新 Conversation Branch',
+      worktreeRequiresRepo: 'Git worktree 模式要求当前对话位于 Git 仓库中。'
+    },
     row: {
       pin: '置顶',
       unpin: '取消置顶',
@@ -2163,6 +2178,19 @@ export const zh: Translations = {
       sessionRunning: '会话运行中',
       branchMergeWaiting: '等待父对话',
       branchMergeWaitingDescription: '复盘已完成，正在等待父对话结束后合并。',
+      branchTaskStatus: status =>
+        ({
+          cancelled: '已取消',
+          completed: '已完成',
+          creating: '正在创建',
+          failed: '失败',
+          interrupted: '已中断',
+          paused: '已暂停',
+          pending_checkpoint: '等待检查点',
+          queued: '排队中',
+          running: '运行中',
+          starting: '正在启动'
+        })[status] ?? status,
       unreadCompletion: '已完成，未读',
       needsInput: '需要你输入',
       waitingForAnswer: '正在等待你的回答',

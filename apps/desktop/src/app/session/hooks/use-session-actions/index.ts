@@ -1395,7 +1395,6 @@ export function useSessionActions({
         if (result.deleted) {
           setSessions(prev => prev.filter(session => !sessionMatchesStoredId(session, storedSessionId)))
           tombstoneSessions([storedSessionId, child.id, child._lineage_root_id])
-          setSessionsTotal(prev => Math.max(0, prev - 1))
           $pinnedSessionIds.set(
             $pinnedSessionIds.get().filter(id => id !== storedSessionId && id !== sessionPinId(child))
           )

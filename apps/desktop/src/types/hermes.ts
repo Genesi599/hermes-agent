@@ -503,6 +503,27 @@ export interface SessionInfo {
   pinned?: boolean
   /** A reviewed branch summary is durably queued until its parent becomes idle. */
   branch_merge_status?: 'waiting_for_parent'
+  branch_batch_id?: null | string
+  branch_client_key?: null | string
+  branch_task_status?:
+    | 'cancelled'
+    | 'completed'
+    | 'creating'
+    | 'failed'
+    | 'interrupted'
+    | 'paused'
+    | 'pending_checkpoint'
+    | 'queued'
+    | 'running'
+    | 'starting'
+  branch_runtime_session_id?: null | string
+  branch_workspace_mode?: 'git_worktree' | 'shared' | 'shared_unique_outputs'
+  branch_output_dir?: null | string
+  branch_model?: null | string
+  branch_provider?: null | string
+  branch_error?: null | string
+  branch_started_at?: null | number
+  branch_completed_at?: null | number
   preview: null | string
   source: null | string
   /** Cross-client transient turn state, refreshed by the gateway. */

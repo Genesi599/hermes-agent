@@ -1641,6 +1641,40 @@ export interface Translations {
     loading: string
     loadMore: string
     loadCount: (step: number) => string
+    branchBatch: {
+      title: string
+      description: string
+      addTask: string
+      removeTask: string
+      taskTitle: string
+      prompt: string
+      outputDir: string
+      workspaceMode: string
+      shared: string
+      sharedUniqueOutputs: string
+      gitWorktree: string
+      model: string
+      provider: string
+      maxParallel: string
+      autoStart: string
+      preview: string
+      back: string
+      create: string
+      created: string
+      failed: string
+      requiresSession: string
+      taskNumber: (index: number) => string
+      inherit: string
+      manage: string
+      startQueued: string
+      pauseAll: string
+      resumeAll: string
+      cancelAll: string
+      mergeCompleted: (count: number) => string
+      openAll: string
+      controlFailed: string
+      worktreeRequiresRepo: string
+    }
     row: {
       pin: string
       unpin: string
@@ -1663,6 +1697,7 @@ export interface Translations {
       sessionRunning: string
       branchMergeWaiting: string
       branchMergeWaitingDescription: string
+      branchTaskStatus: (status: string) => string
       unreadCompletion: string
       needsInput: string
       waitingForAnswer: string

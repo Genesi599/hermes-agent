@@ -336,6 +336,10 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
         setChangeEventsAvailable(Boolean((payload as { change_events?: boolean } | undefined)?.change_events))
 
         return
+      } else if (event.type === 'branch.batch.status') {
+        notifySessionsChanged()
+
+        return
       } else if (event.type === 'skin.changed') {
         // A runtime skin switch (Hermes activating an authored skin, or `/skin`
         // on another surface). Only the active profile's change repaints.

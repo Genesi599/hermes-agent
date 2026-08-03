@@ -1950,6 +1950,23 @@ export const en: Translations = {
     loading: 'Loading…',
     loadMore: 'Load more',
     loadCount: step => `Load ${step} more`,
+    branchBatch: {
+      title: 'Create Conversation Branches',
+      description: 'Create durable sibling sessions from the current conversation checkpoint.',
+      addTask: 'Add task', removeTask: 'Remove task', taskTitle: 'Title', prompt: 'Initial prompt',
+      outputDir: 'Output directory', workspaceMode: 'Workspace', shared: 'Shared',
+      sharedUniqueOutputs: 'Shared, unique outputs', gitWorktree: 'Git worktree',
+      model: 'Model (inherit when empty)', provider: 'Provider (inherit when empty)',
+      maxParallel: 'Maximum parallel tasks', autoStart: 'Start after the parent turn finishes',
+      preview: 'Review', back: 'Back', create: 'Create branches',
+      created: 'Conversation Branch batch created', failed: 'Could not create Conversation Branches',
+      requiresSession: 'Open a conversation before creating branches.', taskNumber: index => `Task ${index}`,
+      inherit: 'inherit', manage: 'Branch tasks', startQueued: 'Start queued', pauseAll: 'Pause all',
+      resumeAll: 'Resume all', cancelAll: 'Cancel all',
+      mergeCompleted: count => `Merge completed (${count})`, openAll: 'Open all',
+      controlFailed: 'Could not update Conversation Branches',
+      worktreeRequiresRepo: 'Git worktree mode requires the current conversation to be inside a Git repository.'
+    },
     row: {
       pin: 'Pin',
       unpin: 'Unpin',
@@ -1973,6 +1990,19 @@ export const en: Translations = {
       sessionRunning: 'Session running',
       branchMergeWaiting: 'Waiting for parent',
       branchMergeWaitingDescription: 'Review complete; waiting for the parent session to finish before merging.',
+      branchTaskStatus: status =>
+        ({
+          cancelled: 'Cancelled',
+          completed: 'Completed',
+          creating: 'Creating',
+          failed: 'Failed',
+          interrupted: 'Interrupted',
+          paused: 'Paused',
+          pending_checkpoint: 'Waiting for checkpoint',
+          queued: 'Queued',
+          running: 'Running',
+          starting: 'Starting'
+        })[status] ?? status,
       unreadCompletion: 'Completed, unread',
       needsInput: 'Needs your input',
       waitingForAnswer: 'Waiting for your answer',
