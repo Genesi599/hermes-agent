@@ -23,6 +23,7 @@ interface SessionRowCommonProps {
   onDelete: () => void
   mergeChildrenCount?: number
   onMergeChildren?: () => Promise<void> | void
+  onMergeCompletedChildren?: () => Promise<void> | void
   onMerge?: () => Promise<void> | void
   onPin: () => void
   onResume: () => void
@@ -125,6 +126,10 @@ export const VirtualSessionList: FC<VirtualSessionListProps> = ({
     const reorderable = sortable && !branchStem
     const childCount = childCountByParent.get(session.id) ?? 0
 
+    const completedChildren = entries
+      .map(item => item.session)
+      .filter(child => child.parent_session_id?.trim() === session.id && child.branch_task_status === 'completed')
+
     const commonProps: SessionRowCommonProps = {
       branchStem,
       isPinned: pinnedSessionIdSet?.has(session.id) ?? pinned,
@@ -135,6 +140,14 @@ export const VirtualSessionList: FC<VirtualSessionListProps> = ({
       mergeChildrenCount: childCount,
       onMergeChildren:
         childCount > 0 && onMergeChildrenSession ? () => onMergeChildrenSession(session.id) : undefined,
+      onMergeCompletedChildren:
+        completedChildren.length > 0 && onMergeSession
+          ? async () => {
+              for (const child of completedChildren) {
+                await onMergeSession(child.id, child.profile)
+              }
+            }
+          : undefined,
       onMerge:
         session.parent_session_id && onMergeSession ? () => onMergeSession(session.id, session.profile) : undefined,
       onPin: () => onTogglePin(sessionPinId(session)),

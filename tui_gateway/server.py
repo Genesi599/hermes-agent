@@ -306,6 +306,8 @@ _LONG_HANDLERS = frozenset(
         # submission, or interrupts queued behind it on the same socket.
         "session.active_list",
         "session.branch",
+        "session.branch_batch",
+        "session.branch_batch_control",
         "session.compress",
         "session.review_delete",
         "session.merge_branch",
@@ -1353,6 +1355,7 @@ def _get_db():
 
         try:
             _db = SessionDB()
+            _db.recover_interrupted_branch_runs(_current_profile_name())
             _db_error = None
         except Exception as exc:
             _db_error = str(exc)
@@ -4294,7 +4297,7 @@ def _load_enabled_toolsets(platform: str | None = None) -> list[str] | None:
                 # coding posture returns before the fallback path that normally
                 # adds them — without this the desktop loses its pane/project
                 # tools exactly when sitting in a repo (see below).
-                return sorted({*selection, *_gui_surface_toolsets(session_platform)})
+                return sorted({*selection, *_gui_surface_toolsets(session_platform), "conversation_branches"})
         except Exception:
             pass
 
@@ -4411,7 +4414,7 @@ def _load_enabled_toolsets(platform: str | None = None) -> list[str] | None:
         # surface them. This resolver runs ONLY in the desktop/TUI gateway, so
         # folding them in here is the gate that exposes them on exactly the
         # surface that can answer them.
-        return sorted(enabled | _gui_surface_toolsets(session_platform))
+        return sorted(enabled | _gui_surface_toolsets(session_platform) | {"conversation_branches"})
     except Exception:
         if fallback_notice is not None:
             print(
@@ -6105,13 +6108,432 @@ def _apply_project_workspace(task_id: str, path: str, _name: str = "") -> None:
         logger.debug("failed to emit session.info after project workspace move", exc_info=True)
 
 
+def _live_session_for_task(task_id: str) -> tuple[str, dict | None]:
+    key = str(task_id or "")
+    with _sessions_lock:
+        if key in _sessions:
+            return key, _sessions[key]
+        for sid, session in _sessions.items():
+            if (
+                str(session.get("session_key") or "") == key
+                or str(getattr(session.get("agent"), "session_id", "") or "") == key
+            ):
+                return sid, session
+    return "", None
+
+
+def _conversation_branch_limits() -> tuple[int, int]:
+    cfg = _load_cfg()
+    desktop_cfg = cfg.get("desktop") if isinstance(cfg.get("desktop"), dict) else {}
+    branch_cfg = desktop_cfg.get("conversation_branches") if isinstance(desktop_cfg.get("conversation_branches"), dict) else {}
+    try:
+        from tools.delegate_tool import _get_max_concurrent_children, _get_max_spawn_depth
+
+        default_parallel = _get_max_concurrent_children()
+        default_depth = _get_max_spawn_depth()
+    except Exception:
+        default_parallel, default_depth = 3, 1
+    return (
+        max(1, min(10, int(branch_cfg.get("max_parallel", default_parallel)))),
+        max(1, min(10, int(branch_cfg.get("max_depth", default_depth)))),
+    )
+
+
+def _conversation_branch_max_active_batches() -> int:
+    cfg = _load_cfg()
+    desktop_cfg = cfg.get("desktop") if isinstance(cfg.get("desktop"), dict) else {}
+    branch_cfg = (
+        desktop_cfg.get("conversation_branches")
+        if isinstance(desktop_cfg.get("conversation_branches"), dict)
+        else {}
+    )
+    try:
+        return max(1, min(100, int(branch_cfg.get("max_active_batches_per_parent", 20))))
+    except (TypeError, ValueError):
+        return 20
+
+
+def _emit_branch_batch(batch: dict) -> None:
+    from tui_gateway.conversation_branches import branch_batch_public_payload
+
+    parent_id = str(batch.get("parent_session_id") or "")
+    sid, _ = _live_session_for_task(parent_id)
+    _emit("branch.batch.status", sid, branch_batch_public_payload(batch))
+
+
+def _conversation_branches_action(action: str, params: dict, task_id: str) -> dict:
+    from tui_gateway.conversation_branches import (
+        branch_batch_public_payload,
+        normalize_branch_specs,
+        validate_parent_lineage,
+    )
+
+    db = _get_db()
+    if db is None:
+        raise ValueError("Session database is unavailable")
+    invoking_sid, invoking_session = _live_session_for_task(task_id)
+    invoking_parent = str(invoking_session.get("session_key") or "") if invoking_session else ""
+    parent_id = str(params.get("parent_session_id") or invoking_parent).strip()
+    if not parent_id:
+        raise ValueError("parent_session_id is required outside an active Desktop Session")
+
+    parent = db.get_session(parent_id)
+    if not parent:
+        raise ValueError("parent session not found")
+    invoking_row = db.get_session(invoking_parent) if invoking_parent else None
+    parent_profile = str(parent.get("profile_name") or "")
+    invoking_profile = str((invoking_row or {}).get("profile_name") or parent_profile)
+    if parent_profile != invoking_profile:
+        raise PermissionError("cross-profile Conversation Branch operations are not allowed")
+
+    default_parallel, max_depth = _conversation_branch_limits()
+    if action == "create_batch":
+        request_id = str(params.get("request_id") or "").strip()
+        if not request_id:
+            raise ValueError("request_id is required for idempotent batch creation")
+        branches = normalize_branch_specs(params.get("branches"))
+        validate_parent_lineage(db, parent_id, max_depth=max_depth)
+        active_batches = sum(
+            batch.get("state") not in {"completed", "cancelled"}
+            for batch in db.list_branch_batches(
+                parent_session_id=parent_id,
+                profile_name=parent_profile,
+            )
+        )
+        if active_batches >= _conversation_branch_max_active_batches():
+            raise ValueError("maximum active Conversation Branch batches reached for this parent")
+        max_parallel = max(1, min(10, int(params.get("max_parallel") or default_parallel)))
+        batch = db.create_branch_batch(
+            batch_id=f"bb_{uuid.uuid4().hex}",
+            profile_name=parent_profile,
+            parent_session_id=parent_id,
+            request_id=request_id,
+            max_parallel=max_parallel,
+            requested_checkpoint_message_id=(
+                int(params["branch_point_message_id"])
+                if params.get("branch_point_message_id") is not None
+                else None
+            ),
+            branches=branches,
+        )
+        _emit_branch_batch(batch)
+        # UI-created idle batches can materialize immediately. Model-created
+        # batches remain pending until the current parent turn's finally block.
+        _, parent_live = _live_session_for_task(parent_id)
+        if parent_live is not None and not parent_live.get("running"):
+            _drain_pending_branch_batches(parent_id)
+            batch = db.get_branch_batch(batch["batch_id"]) or batch
+        return branch_batch_public_payload(batch)
+
+    if action == "list":
+        return {
+            "batches": [
+                branch_batch_public_payload(batch)
+                for batch in db.list_branch_batches(
+                    parent_session_id=parent_id,
+                    profile_name=parent_profile,
+                )
+            ]
+        }
+    if action == "status":
+        batch_id = str(params.get("batch_id") or "").strip()
+        batch = db.get_branch_batch(batch_id)
+        if not batch or str(batch.get("profile_name") or "") != parent_profile:
+            raise ValueError("branch batch not found")
+        return branch_batch_public_payload(batch)
+
+    branch_id = str(params.get("branch_session_id") or "").strip()
+    if not branch_id:
+        raise ValueError("branch_session_id is required")
+    branch = db.get_session(branch_id)
+    if not branch or str(branch.get("parent_session_id") or "") != parent_id:
+        raise PermissionError("branch does not belong to the selected parent")
+
+    batches = db.list_branch_batches(parent_session_id=parent_id, profile_name=parent_profile)
+    run = None
+    batch = None
+    for candidate in batches:
+        for item in candidate.get("branches") or []:
+            if item.get("branch_session_id") == branch_id:
+                batch, run = candidate, item
+                break
+        if run:
+            break
+    if not run or not batch:
+        raise ValueError("branch run metadata not found")
+
+    if action == "cancel":
+        runtime_sid = str(run.get("runtime_session_id") or "")
+        runtime = _sessions.get(runtime_sid)
+        if runtime is not None and runtime.get("running"):
+            agent = runtime.get("agent")
+            if hasattr(agent, "interrupt"):
+                agent.interrupt()
+        db.update_branch_run(batch["batch_id"], run["client_branch_key"], status="cancelled", completed_at=time.time())
+        updated = db.get_branch_batch(batch["batch_id"]) or batch
+        _emit_branch_batch(updated)
+        return branch_batch_public_payload(updated)
+    if action == "pause":
+        runtime_sid = str(run.get("runtime_session_id") or "")
+        runtime = _sessions.get(runtime_sid)
+        if runtime is not None and runtime.get("running") and hasattr(runtime.get("agent"), "interrupt"):
+            runtime["agent"].interrupt()
+        db.update_branch_run(batch["batch_id"], run["client_branch_key"], status="paused")
+        updated = db.get_branch_batch(batch["batch_id"]) or batch
+        _emit_branch_batch(updated)
+        return branch_batch_public_payload(updated)
+    if action == "resume":
+        if run.get("status") not in {"paused", "interrupted", "failed", "queued"}:
+            raise ValueError("branch is not resumable in its current state")
+        db.update_branch_run(batch["batch_id"], run["client_branch_key"], status="queued", error=None, completed_at=None)
+        _start_queued_branch_runs(batch["batch_id"])
+        return branch_batch_public_payload(db.get_branch_batch(batch["batch_id"]) or batch)
+    if action == "send":
+        message = str(params.get("message") or "").strip()
+        if not message:
+            raise ValueError("message is required")
+        runtime_sid = str(run.get("runtime_session_id") or "")
+        runtime = _sessions.get(runtime_sid)
+        if runtime is None or runtime.get("running"):
+            raise ValueError("branch must be open and idle before sending a message")
+        _submit_branch_prompt(batch["batch_id"], run["client_branch_key"], runtime_sid, runtime, message)
+        return branch_batch_public_payload(db.get_branch_batch(batch["batch_id"]) or batch)
+    if action == "request_merge":
+        runtime_sid = str(run.get("runtime_session_id") or "")
+        if not runtime_sid or runtime_sid not in _sessions:
+            raise ValueError("open or resume the branch before requesting merge")
+        response = _methods["session.merge_branch"](
+            f"branch-tool-{uuid.uuid4().hex[:8]}",
+            {
+                "runtime_session_id": runtime_sid,
+                "session_id": branch_id,
+            },
+        )
+        if response.get("error"):
+            raise ValueError(str(response["error"].get("message") or "merge failed"))
+        return response.get("result") or {}
+    raise ValueError(f"unsupported action: {action}")
+
+
+def _submit_branch_prompt(
+    batch_id: str,
+    client_key: str,
+    sid: str,
+    session: dict,
+    prompt: str,
+    *,
+    internal_kind: str | None = None,
+) -> None:
+    db = _get_db()
+    if db is None:
+        return
+    db.update_branch_run(batch_id, client_key, status="running", started_at=time.time())
+    with session["history_lock"]:
+        session["running"] = True
+        session["_turn_cancel_requested"] = False
+        _start_inflight_turn(session, prompt)
+
+    def _complete(status: str, text: str) -> None:
+        latest = db.get_branch_batch(batch_id) or {}
+        current = next(
+            (item for item in latest.get("branches") or [] if item.get("client_branch_key") == client_key),
+            {},
+        )
+        if current.get("status") in {"cancelled", "paused"}:
+            final_status = current["status"]
+        else:
+            final_status = "completed" if status == "complete" else "failed"
+        db.update_branch_run(
+            batch_id,
+            client_key,
+            status=final_status,
+            completed_at=time.time() if final_status in {"completed", "failed", "cancelled"} else None,
+            result_summary=text if final_status == "completed" else None,
+            error=text if final_status == "failed" else None,
+        )
+        updated = db.get_branch_batch(batch_id)
+        if updated:
+            _emit_branch_batch(updated)
+        _close_session_by_id(
+            sid,
+            end_reason=(
+                "branch_completed" if final_status == "completed" else f"branch_{final_status}"
+            ),
+        )
+        db.update_branch_run(batch_id, client_key, runtime_session_id=None)
+        _start_queued_branch_runs(batch_id)
+
+    threading.Thread(
+        target=lambda: _run_prompt_submit(
+            f"branch-run-{uuid.uuid4().hex[:8]}",
+            sid,
+            session,
+            prompt,
+            internal_kind=internal_kind,
+            completion_callback=_complete,
+        ),
+        daemon=True,
+    ).start()
+
+
+def _start_queued_branch_runs(batch_id: str) -> None:
+    db = _get_db()
+    batch = db.get_branch_batch(batch_id) if db is not None else None
+    if not batch:
+        return
+    branches = batch.get("branches") or []
+    running = sum(item.get("status") in {"starting", "running"} for item in branches)
+    capacity = max(0, int(batch.get("max_parallel") or 1) - running)
+    for run in [item for item in branches if item.get("status") == "queued"][:capacity]:
+        client_key = str(run["client_branch_key"])
+        branch_id = str(run.get("branch_session_id") or "")
+        if not branch_id:
+            db.update_branch_run(batch_id, client_key, status="failed", error="missing branch session")
+            continue
+        db.update_branch_run(batch_id, client_key, status="starting")
+        lease = None
+        try:
+            runtime_sid = uuid.uuid4().hex[:8]
+            lease, limit_message = _claim_active_session_slot(
+                branch_id,
+                live_session_id=runtime_sid,
+                surface="desktop_branch",
+            )
+            if lease is None and limit_message:
+                db.update_branch_run(
+                    batch_id,
+                    client_key,
+                    status="queued",
+                    error=limit_message,
+                )
+                continue
+            source_row = db.get_session(branch_id) or {}
+            source = str(source_row.get("source") or "desktop")
+            history = db.get_messages(branch_id)
+            tokens = _set_session_context(branch_id)
+            try:
+                agent = _make_agent(runtime_sid, branch_id, session_id=branch_id, platform_override=source)
+            finally:
+                _clear_session_context(tokens)
+            _init_session(
+                runtime_sid,
+                branch_id,
+                agent,
+                history,
+                cwd=source_row.get("cwd"),
+                source=source,
+            )
+            if lease is not None:
+                _sessions[runtime_sid]["active_session_lease"] = lease
+            db.update_branch_run(batch_id, client_key, runtime_session_id=runtime_sid, status="running")
+            first_start = not bool(run.get("started_at"))
+            prompt = (
+                str(run["initial_prompt"])
+                if first_start
+                else "Resume the assigned Conversation Branch task from its persisted history. Do not restart completed work."
+            )
+            _submit_branch_prompt(
+                batch_id,
+                client_key,
+                runtime_sid,
+                _sessions[runtime_sid],
+                prompt,
+                internal_kind=None if first_start else "branch_resume",
+            )
+        except Exception as exc:
+            if lease is not None and runtime_sid not in _sessions:
+                try:
+                    lease.release()
+                except Exception:
+                    pass
+            db.update_branch_run(batch_id, client_key, status="failed", error=str(exc), completed_at=time.time())
+    updated = db.get_branch_batch(batch_id)
+    if updated:
+        _emit_branch_batch(updated)
+
+
+def _drain_pending_branch_batches(parent_session_id: str) -> None:
+    from tui_gateway.conversation_branches import fork_conversation_session
+
+    db = _get_db()
+    if db is None:
+        return
+    parent = db.get_session(parent_session_id)
+    if not parent:
+        return
+    for batch in db.list_branch_batches(parent_session_id=parent_session_id, profile_name=str(parent.get("profile_name") or "")):
+        if batch.get("state") != "pending_checkpoint":
+            continue
+        checkpoint = db.get_messages(parent_session_id)
+        requested_checkpoint_id = batch.get("requested_checkpoint_message_id")
+        if requested_checkpoint_id is not None:
+            requested_checkpoint_id = int(requested_checkpoint_id)
+            checkpoint = [
+                message
+                for message in checkpoint
+                if int(message.get("id") or 0) <= requested_checkpoint_id
+            ]
+            if not checkpoint or int(checkpoint[-1].get("id") or 0) != requested_checkpoint_id:
+                for run in batch.get("branches") or []:
+                    db.update_branch_run(
+                        batch["batch_id"],
+                        run["client_branch_key"],
+                        status="failed",
+                        error="branch_point_message_id is not an active message in the parent Session",
+                        completed_at=time.time(),
+                    )
+                updated = db.get_branch_batch(batch["batch_id"])
+                if updated:
+                    _emit_branch_batch(updated)
+                continue
+        checkpoint_id = max((int(msg.get("id") or 0) for msg in checkpoint), default=0) or None
+        if not checkpoint or checkpoint[-1].get("role") not in {"assistant", "system"}:
+            continue
+        db.set_branch_batch_checkpoint(batch["batch_id"], checkpoint_id)
+        refreshed = db.get_branch_batch(batch["batch_id"]) or batch
+        for run in refreshed.get("branches") or []:
+            if run.get("status") != "creating":
+                continue
+            branch_id = _new_session_key()
+            try:
+                fork_conversation_session(
+                    db=db,
+                    parent=parent,
+                    checkpoint=checkpoint,
+                    branch_session_id=branch_id,
+                    title=str(run["title"]),
+                    runtime_options={**run, "batch_id": batch["batch_id"]},
+                )
+                status = "queued" if run.get("auto_start", 1) else "paused"
+                db.update_branch_run(
+                    batch["batch_id"],
+                    run["client_branch_key"],
+                    branch_session_id=branch_id,
+                    status=status,
+                )
+            except Exception as exc:
+                db.update_branch_run(
+                    batch["batch_id"],
+                    run["client_branch_key"],
+                    status="failed",
+                    error=str(exc),
+                    completed_at=time.time(),
+                )
+        _start_queued_branch_runs(batch["batch_id"])
+        updated = db.get_branch_batch(batch["batch_id"])
+        if updated:
+            _emit_branch_batch(updated)
+
+
 def _wire_callbacks(sid: str):
     from tools.terminal_tool import set_sudo_password_callback
     from tools.skills_tool import set_secret_capture_callback
     from tools.project_tools import set_project_workspace_callback
+    from tools.conversation_branches_tool import set_conversation_branches_callback
 
     set_sudo_password_callback(lambda: _block("sudo.request", sid, {}, timeout=120))
     set_project_workspace_callback(_apply_project_workspace)
+    set_conversation_branches_callback(_conversation_branches_action)
 
     def secret_cb(env_var, prompt, metadata=None):
         pl = {"prompt": prompt, "env_var": env_var}
@@ -6653,6 +7075,13 @@ def _make_agent(
     synthetic = maybe_build_synthetic_agent(session_id or key, model_override)
     if synthetic is not None:
         return synthetic
+
+    # The agent snapshots tool schemas during construction. Wire this
+    # Desktop-only service before that snapshot so the first GUI Session gets
+    # conversation_branches without mutating its toolset later.
+    from tools.conversation_branches_tool import set_conversation_branches_callback
+
+    set_conversation_branches_callback(_conversation_branches_action)
 
     from run_agent import AIAgent
 

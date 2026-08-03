@@ -52,6 +52,7 @@ interface SidebarSessionRowProps extends React.ComponentProps<'div'> {
   onDelete: () => void
   mergeChildrenCount?: number
   onMergeChildren?: () => Promise<void> | void
+  onMergeCompletedChildren?: () => Promise<void> | void
   onMerge?: () => Promise<void> | void
   onPin: () => void
   onResume: () => void
@@ -90,6 +91,7 @@ function SidebarSessionRowImpl({
   onDelete,
   mergeChildrenCount,
   onMergeChildren,
+  onMergeCompletedChildren,
   onMerge,
   onPin,
   onResume,
@@ -203,6 +205,7 @@ function SidebarSessionRowImpl({
       onDelete={onDelete}
       onMerge={onMerge}
       onMergeChildren={onMergeChildren}
+      onMergeCompletedChildren={onMergeCompletedChildren}
       onPin={onPin}
       pinned={isPinned}
       profile={session.profile}
@@ -235,6 +238,7 @@ function SidebarSessionRowImpl({
               onDelete={onDelete}
               onMerge={onMerge}
               onMergeChildren={onMergeChildren}
+              onMergeCompletedChildren={onMergeCompletedChildren}
               onPin={onPin}
               pinned={isPinned}
               profile={session.profile}
@@ -387,6 +391,23 @@ function SidebarSessionRowImpl({
               <Codicon aria-hidden="true" name="clock" size="0.6875rem" />
               <span>{r.branchMergeWaiting}</span>
             </span>
+          ) : null}
+          {branchTaskStatus ? (
+            <Tip label={branchMeta || r.branchTaskStatus(branchTaskStatus)}>
+              <span
+                className={cn(
+                  'flex shrink-0 items-center gap-1 text-[0.625rem] font-medium leading-5 text-(--ui-text-tertiary)',
+                  branchTaskStatus === 'failed' && 'text-destructive',
+                  branchTaskStatus === 'completed' && 'text-emerald-500',
+                  ['queued', 'pending_checkpoint', 'paused', 'interrupted'].includes(branchTaskStatus) &&
+                    'text-amber-400'
+                )}
+                data-branch-task-status={branchTaskStatus}
+              >
+                <span>{r.branchTaskStatus(branchTaskStatus)}</span>
+                {branchElapsed ? <span className="font-normal opacity-70">{branchElapsed}</span> : null}
+              </span>
+            </Tip>
           ) : null}
         </SidebarRowBody>
       </SidebarRowShell>

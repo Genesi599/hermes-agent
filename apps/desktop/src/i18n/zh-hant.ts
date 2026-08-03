@@ -1711,6 +1711,21 @@ export const zhHant = defineLocale({
     loading: '載入中…',
     loadMore: '載入更多',
     loadCount: step => `再載入 ${step} 個`,
+    branchBatch: {
+      title: '建立多個對話分支', description: '從目前對話檢查點建立持久且彼此獨立的兄弟會話。',
+      addTask: '新增任務', removeTask: '刪除任務', taskTitle: '標題', prompt: '初始提示',
+      outputDir: '輸出目錄', workspaceMode: '工作區', shared: '共享',
+      sharedUniqueOutputs: '共享輸入，獨立輸出', gitWorktree: 'Git worktree',
+      model: '模型（留空則繼承）', provider: 'Provider（留空則繼承）',
+      maxParallel: '最大並行數', autoStart: '父對話本輪結束後自動啟動', preview: '預覽',
+      back: '返回', create: '建立分支', created: '已建立對話分支批次', failed: '無法建立對話分支',
+      requiresSession: '請先開啟一個對話。', taskNumber: index => `任務 ${index}`,
+      inherit: '繼承', manage: '分支任務', startQueued: '啟動排隊任務', pauseAll: '全部暫停',
+      resumeAll: '全部繼續', cancelAll: '全部取消',
+      mergeCompleted: count => `合併已完成 (${count})`, openAll: '全部開啟',
+      controlFailed: '無法更新 Conversation Branch',
+      worktreeRequiresRepo: 'Git worktree 模式要求目前對話位於 Git 儲存庫中。'
+    },
     row: {
       pin: '釘選',
       unpin: '取消釘選',
@@ -1734,6 +1749,19 @@ export const zhHant = defineLocale({
       sessionRunning: '工作階段執行中',
       branchMergeWaiting: '等待父對話',
       branchMergeWaitingDescription: '複盤已完成，正在等待父對話結束後合併。',
+      branchTaskStatus: status =>
+        ({
+          cancelled: '已取消',
+          completed: '已完成',
+          creating: '正在建立',
+          failed: '失敗',
+          interrupted: '已中斷',
+          paused: '已暫停',
+          pending_checkpoint: '等待檢查點',
+          queued: '排隊中',
+          running: '執行中',
+          starting: '正在啟動'
+        })[status] ?? status,
       unreadCompletion: '已完成，未讀',
       needsInput: '需要您的輸入',
       waitingForAnswer: '等待您的回答',

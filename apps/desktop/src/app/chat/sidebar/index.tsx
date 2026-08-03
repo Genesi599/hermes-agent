@@ -105,6 +105,7 @@ import {
 } from '@/store/pull-requests'
 import { openRouteTile } from '@/store/route-tiles'
 import {
+  $activeSessionId,
   $cronSessions,
   $currentCwd,
   $gatewayState,
@@ -358,6 +359,8 @@ export function ChatSidebar({
   // The sidebar highlight tracks the FOCUSED session — the interacted tile's
   // tab, else the main selection — so it stays 1:1 with whatever tab is active.
   const selectedSessionId = useStore($focusedStoredSessionId)
+  const selectedStoredSessionId = useStore($selectedStoredSessionId)
+  const activeRuntimeSessionId = useStore($activeSessionId)
   const sessions = useStore($sessions)
   const cronSessions = useStore($cronSessions)
   const cronJobs = useStore($cronJobs)
@@ -402,6 +405,7 @@ export function ChatSidebar({
   const [messagingLoadMorePending, setMessagingLoadMorePending] = useState<Record<string, boolean>>({})
   const [recentsLoadMorePending, setRecentsLoadMorePending] = useState(false)
   const [runningOpen, setRunningOpen] = useState(true)
+  const [branchBatchOpen, setBranchBatchOpen] = useState(false)
   const messagingOpenIds = useStore($sidebarMessagingOpenIds)
   // Per-platform count of rows currently revealed (starts at NON_SESSION_INITIAL_ROWS).
   const [messagingVisible, setMessagingVisible] = useState<Record<string, number>>({})
@@ -1691,6 +1695,22 @@ export function ChatSidebar({
                     </div>
                   ) : (
                     <div className="flex shrink-0 items-center gap-0.5">
+                      {selectedStoredSessionId && activeRuntimeSessionId ? (
+                        <Tip label={s.branchBatch.title}>
+                          <Button
+                            aria-label={s.branchBatch.title}
+                            className={HEADER_ACTION_BTN}
+                            onClick={event => {
+                              event.stopPropagation()
+                              setBranchBatchOpen(true)
+                            }}
+                            size="icon-xs"
+                            variant="ghost"
+                          >
+                            <Codicon name="type-hierarchy-sub" size="0.75rem" />
+                          </Button>
+                        </Tip>
+                      ) : null}
                       {!showAllProfiles ? (
                         <Tip label={agentsGrouped ? s.projects.newButton : s.nav['new-session']}>
                           <Button
@@ -1831,6 +1851,12 @@ export function ChatSidebar({
       <ProjectDialog />
       {/* One mount for the whole app. The header of WorktreeDialog tells why. */}
       <WorktreeDialog />
+      <ConversationBranchDialog
+        onOpenChange={setBranchBatchOpen}
+        open={branchBatchOpen}
+        parentSessionId={selectedStoredSessionId}
+        runtimeSessionId={activeRuntimeSessionId}
+      /> 
     </Sidebar>
   )
 }

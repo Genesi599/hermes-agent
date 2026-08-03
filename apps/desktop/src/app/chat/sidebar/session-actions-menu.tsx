@@ -98,6 +98,7 @@ interface SessionActions {
   onBranch?: () => void
   mergeChildrenCount?: number
   onMergeChildren?: () => Promise<void> | void
+  onMergeCompletedChildren?: () => Promise<void> | void
   onMerge?: () => Promise<void> | void
   onArchive?: () => void
   onDelete?: () => void
@@ -184,6 +185,7 @@ function useSessionActions({
   onBranch,
   mergeChildrenCount = 0,
   onMergeChildren,
+  onMergeCompletedChildren,
   onMerge,
   onArchive,
   onDelete,
@@ -197,6 +199,9 @@ function useSessionActions({
   const [renameOpen, setRenameOpen] = useState(false)
   const tiles = useStore($sessionTiles)
   const selectedStoredSessionId = useStore($selectedStoredSessionId)
+  const sessions = useStore($sessions)
+  const branchChildren = sessions.filter(session => session.parent_session_id?.trim() === sessionId)
+  const completedBranchCount = branchChildren.filter(session => session.branch_task_status === 'completed').length
 
   // Already showing as a tab somewhere (a tile, or loaded in main — main IS
   // a tab): offering "Open in new tab" again is noise.
