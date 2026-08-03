@@ -62,6 +62,20 @@ class TestContextFileCwd:
         assert _captured_context_cwd(_make_agent()) == tmp_path
 
 
+def test_shared_core_memory_is_injected_in_volatile_prompt():
+    agent = _make_agent(_shared_core_memory_prompt="fresh shared memory")
+
+    with (
+        patch("run_agent.load_soul_md", return_value=""),
+        patch("run_agent.build_nous_subscription_prompt", return_value=""),
+        patch("run_agent.build_environment_hints", return_value=""),
+        patch("run_agent.build_context_files_prompt", return_value=""),
+    ):
+        parts = build_system_prompt_parts(agent)
+
+    assert "fresh shared memory" in parts["volatile"]
+
+
 def _stable_prompt(agent):
     with (
         patch("run_agent.load_soul_md", return_value=""),

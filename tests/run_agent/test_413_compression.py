@@ -38,6 +38,15 @@ def _no_compression_sleep(monkeypatch):
     monkeypatch.setattr(run_agent, "jittered_backoff", lambda *a, **k: 0.0)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_shared_core_memory(monkeypatch):
+    """Keep compression tests independent from the developer's real memory bank."""
+    monkeypatch.setattr(
+        "agent.shared_core_memory.load_shared_core_memory_prompt",
+        lambda: "",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
