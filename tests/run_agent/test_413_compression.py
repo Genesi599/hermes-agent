@@ -37,6 +37,15 @@ def _no_compression_sleep(monkeypatch):
     monkeypatch.setattr(run_agent, "jittered_backoff", lambda *a, **k: 0.0)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_shared_core_memory(monkeypatch):
+    """Keep compression tests independent from the developer's real memory bank."""
+    monkeypatch.setattr(
+        "agent.shared_core_memory.load_shared_core_memory_prompt",
+        lambda: "",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -665,6 +674,36 @@ class TestPreflightCompression:
         assert new_system_prompt == "rebuilt system prompt"
         build_prompt.assert_called_once_with("system prompt")
         memory_store.load_from_disk.assert_called_once()
+
+    def test_compression_reloads_changed_shared_core_memory(self, agent):
+        agent.compression_enabled = False
+        agent._memory_store = None
+        agent._memory_manager = None
+        agent._shared_core_memory_prompt = "old shared memory"
+        agent._cached_system_prompt = "cached system prompt\n\nold shared memory"
+
+        with (
+            patch.object(
+                agent.context_compressor,
+                "compress",
+                return_value=[{"role": "user", "content": f"{SUMMARY_PREFIX}\nPrevious conversation"}],
+            ),
+            patch(
+                "agent.shared_core_memory.load_shared_core_memory_prompt",
+                return_value="fresh shared memory",
+            ) as reload_memory,
+            patch.object(agent, "_build_system_prompt", return_value="rebuilt with fresh memory") as build_prompt,
+        ):
+            _, new_system_prompt = agent._compress_context(
+                [{"role": "user", "content": "hello"}],
+                "system prompt",
+                approx_tokens=1234,
+            )
+
+        assert agent._shared_core_memory_prompt == "fresh shared memory"
+        assert new_system_prompt == "rebuilt with fresh memory"
+        reload_memory.assert_called_once_with()
+        build_prompt.assert_called_once_with("system prompt")
 
     def test_compression_rebuilds_when_restored_prompt_predates_memory_write(self, agent):
         """Gateway fresh-agent path: a session-DB-restored prompt built with OLD

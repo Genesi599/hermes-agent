@@ -120,6 +120,16 @@ def _cached_prompt_reflects_builtin_memory(agent: Any, cached_prompt: str) -> bo
     return True
 
 
+def _cached_prompt_reflects_shared_core_memory(agent: Any, cached_prompt: str) -> bool:
+    """Whether the cached prompt carries the freshly reloaded shared bank."""
+    from agent.shared_core_memory import SHARED_CORE_MEMORY_HEADER
+
+    block = getattr(agent, "_shared_core_memory_prompt", "") or ""
+    if block:
+        return block in cached_prompt
+    return SHARED_CORE_MEMORY_HEADER not in cached_prompt
+
+
 def _lock_api_is_absent_on_session_db(lock_db: Any) -> bool:
     """Whether the live in-memory SessionDB class structurally predates locks.
 
@@ -1170,6 +1180,9 @@ def compress_context(
             })
         _ensure_compressed_has_user_turn(messages, compressed)
 
+        from agent.shared_core_memory import load_shared_core_memory_prompt
+
+        agent._shared_core_memory_prompt = load_shared_core_memory_prompt()
         cached_system_prompt = agent._cached_system_prompt
         agent._invalidate_system_prompt()
 
@@ -1186,6 +1199,7 @@ def compress_context(
             cached_system_prompt is not None
             and getattr(agent, "_memory_manager", None) is None
             and _cached_prompt_reflects_builtin_memory(agent, cached_system_prompt)
+            and _cached_prompt_reflects_shared_core_memory(agent, cached_system_prompt)
         ):
             new_system_prompt = cached_system_prompt
             agent._cached_system_prompt = cached_system_prompt

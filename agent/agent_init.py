@@ -1427,6 +1427,9 @@ def init_agent(
     agent._memory_nudge_interval = 10
     agent._turns_since_memory = 0
     agent._iters_since_skill = 0
+    # Populated only after a successful compression boundary. The compressed
+    # continuation then carries a fresh snapshot of the portable shared bank.
+    agent._shared_core_memory_prompt = ""
     if not skip_memory:
         try:
             mem_config = _agent_cfg.get("memory", {})
