@@ -57,6 +57,12 @@ function formatAge(seconds: number, r: Translations['sidebar']['row']): string {
   return unit === 'second' ? r.ageNow : `${value}${r[AGE_KEY[unit]]}`
 }
 
+function formatDuration(seconds: number, r: Translations['sidebar']['row']): string {
+  const { unit, value } = coarseElapsed(Math.max(0, seconds) * 1000)
+
+  return unit === 'second' ? '<1m' : `${value}${r[AGE_KEY[unit]]}`
+}
+
 function SidebarSessionRowImpl({
   session,
   branchStem,
@@ -92,6 +98,13 @@ function SidebarSessionRowImpl({
   // True when a clarify prompt in this session is waiting on the user.
   const needsInput = useStore($attentionSessionIds).includes(session.id)
   const isMergeWaiting = session.branch_merge_status === 'waiting_for_parent'
+  const branchTaskStatus = session.branch_task_status
+  const branchElapsed = session.branch_started_at
+    ? formatDuration((session.branch_completed_at ?? Date.now() / 1000) - session.branch_started_at, r)
+    : null
+  const branchMeta = [session.branch_model || session.model, session.branch_provider, session.branch_workspace_mode]
+    .filter(Boolean)
+    .join(' · ')
 
   return (
     <SessionContextMenu
@@ -256,6 +269,23 @@ function SidebarSessionRowImpl({
               <Codicon aria-hidden="true" name="clock" size="0.6875rem" />
               <span>{r.branchMergeWaiting}</span>
             </span>
+          ) : null}
+          {branchTaskStatus ? (
+            <Tip label={branchMeta || r.branchTaskStatus(branchTaskStatus)}>
+              <span
+                className={cn(
+                  'flex shrink-0 items-center gap-1 text-[0.625rem] font-medium leading-5 text-(--ui-text-tertiary)',
+                  branchTaskStatus === 'failed' && 'text-destructive',
+                  branchTaskStatus === 'completed' && 'text-emerald-500',
+                  ['queued', 'pending_checkpoint', 'paused', 'interrupted'].includes(branchTaskStatus) &&
+                    'text-amber-400'
+                )}
+                data-branch-task-status={branchTaskStatus}
+              >
+                <span>{r.branchTaskStatus(branchTaskStatus)}</span>
+                {branchElapsed ? <span className="font-normal opacity-70">{branchElapsed}</span> : null}
+              </span>
+            </Tip>
           ) : null}
         </SidebarRowBody>
       </SidebarRowShell>
