@@ -201,6 +201,7 @@ export function SidebarSessionsSection({
   // grouped/tree views always sort by creation date and never drag.
   const sessionsDraggable = sortable && !!onReorderSessions
   const displayEntries = useMemo(() => flattenSessionsWithBranches(sessions), [sessions])
+
   const childCountByParent = useMemo(() => {
     const counts = new Map<string, number>()
 
@@ -217,6 +218,11 @@ export function SidebarSessionsSection({
 
   const renderRow = (session: SessionInfo, draggable: boolean, branchStem?: string) => {
     const childCount = childCountByParent.get(session.id) ?? 0
+
+    const completedChildren = sessions.filter(
+      child => child.parent_session_id?.trim() === session.id && child.branch_task_status === 'completed'
+    )
+
     const rowProps = {
       branchStem,
       isPinned: pinnedSessionIdSet?.has(session.id) ?? pinned,
@@ -228,6 +234,14 @@ export function SidebarSessionsSection({
       mergeChildrenCount: childCount,
       onMergeChildren:
         childCount > 0 && onMergeChildrenSession ? () => onMergeChildrenSession(session.id) : undefined,
+      onMergeCompletedChildren:
+        completedChildren.length > 0 && onMergeSession
+          ? async () => {
+              for (const child of completedChildren) {
+                await onMergeSession(child.id, child.profile)
+              }
+            }
+          : undefined,
       onMerge:
         session.parent_session_id && onMergeSession ? () => onMergeSession(session.id, session.profile) : undefined,
       onPin: () => onTogglePin(sessionPinId(session)),

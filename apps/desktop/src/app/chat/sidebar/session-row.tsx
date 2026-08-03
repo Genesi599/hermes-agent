@@ -40,6 +40,7 @@ interface SidebarSessionRowProps extends React.ComponentProps<'div'> {
   onDelete: () => void
   mergeChildrenCount?: number
   onMergeChildren?: () => Promise<void> | void
+  onMergeCompletedChildren?: () => Promise<void> | void
   onMerge?: () => Promise<void> | void
   onPin: () => void
   onResume: () => void
@@ -61,6 +62,12 @@ function formatAge(seconds: number, r: Translations['sidebar']['row']): string {
   return unit === 'second' ? r.ageNow : `${value}${r[AGE_KEY[unit]]}`
 }
 
+function formatDuration(seconds: number, r: Translations['sidebar']['row']): string {
+  const { unit, value } = coarseElapsed(Math.max(0, seconds) * 1000)
+
+  return unit === 'second' ? '<1m' : `${value}${r[AGE_KEY[unit]]}`
+}
+
 export function SidebarSessionRow({
   session,
   branchStem,
@@ -72,6 +79,7 @@ export function SidebarSessionRow({
   onDelete,
   mergeChildrenCount,
   onMergeChildren,
+  onMergeCompletedChildren,
   onMerge,
   onPin,
   onResume,
@@ -114,6 +122,20 @@ export function SidebarSessionRow({
   // to collapse them at the leaf is backwards.
   const dotState = sessionDotState({ hasBackground, isStalled, isUnread, isWorking, needsInput })
   const isMergeWaiting = session.branch_merge_status === 'waiting_for_parent'
+  const branchTaskStatus = session.branch_task_status
+
+  const branchElapsed = session.branch_started_at
+    ? formatDuration((session.branch_completed_at ?? Date.now() / 1000) - session.branch_started_at, r)
+    : null
+
+  const branchMeta = [
+    session.branch_model || session.model,
+    session.branch_provider,
+    session.branch_workspace_mode
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
   const reviewActivity = useStore($reviewActivityBySessionId)[session.id] ?? null
   
 
@@ -125,6 +147,7 @@ export function SidebarSessionRow({
       onDelete={onDelete}
       onMerge={onMerge}
       onMergeChildren={onMergeChildren}
+      onMergeCompletedChildren={onMergeCompletedChildren}
       onPin={onPin}
       pinned={isPinned}
       profile={session.profile}
@@ -146,6 +169,7 @@ export function SidebarSessionRow({
               onDelete={onDelete}
               onMerge={onMerge}
               onMergeChildren={onMergeChildren}
+              onMergeCompletedChildren={onMergeCompletedChildren}
               onPin={onPin}
               pinned={isPinned}
               profile={session.profile}
@@ -294,6 +318,23 @@ export function SidebarSessionRow({
               <Codicon aria-hidden="true" name="clock" size="0.6875rem" />
               <span>{r.branchMergeWaiting}</span>
             </span>
+          ) : null}
+          {branchTaskStatus ? (
+            <Tip label={branchMeta || r.branchTaskStatus(branchTaskStatus)}>
+              <span
+                className={cn(
+                  'flex shrink-0 items-center gap-1 text-[0.625rem] font-medium leading-5 text-(--ui-text-tertiary)',
+                  branchTaskStatus === 'failed' && 'text-destructive',
+                  branchTaskStatus === 'completed' && 'text-emerald-500',
+                  ['queued', 'pending_checkpoint', 'paused', 'interrupted'].includes(branchTaskStatus) &&
+                    'text-amber-400'
+                )}
+                data-branch-task-status={branchTaskStatus}
+              >
+                <span>{r.branchTaskStatus(branchTaskStatus)}</span>
+                {branchElapsed ? <span className="font-normal opacity-70">{branchElapsed}</span> : null}
+              </span>
+            </Tip>
           ) : null}
         </SidebarRowBody>
       </SidebarRowShell>

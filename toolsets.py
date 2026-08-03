@@ -230,6 +230,12 @@ TOOLSETS = {
         "tools": ["project_list", "project_create", "project_switch"],
         "includes": []
     },
+
+    "conversation_branches": {
+        "description": "Desktop durable Conversation Branch orchestration (GUI sessions only)",
+        "tools": ["conversation_branches"],
+        "includes": []
+    },
     
     "clarify": {
         "description": "Ask the user clarifying questions (multiple-choice or open-ended)",

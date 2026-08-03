@@ -204,7 +204,7 @@ def session_live_status_is_working(
     current_time = time.time() if now is None else now
     return current_time - updated_at <= SESSION_LIVE_STATUS_STALE_SECONDS
 
-SCHEMA_VERSION = 22
+SCHEMA_VERSION = 23
 
 # Cap on user-controlled FTS5 query input before regex/sanitizer processing.
 # Search queries do not need to be arbitrarily large, and bounding them keeps
@@ -962,6 +962,44 @@ CREATE TABLE IF NOT EXISTS branch_merge_queue (
     requested_at REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS branch_batches (
+    batch_id TEXT PRIMARY KEY,
+    profile_name TEXT NOT NULL DEFAULT '',
+    parent_session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    request_id TEXT NOT NULL,
+    state TEXT NOT NULL,
+    max_parallel INTEGER NOT NULL,
+    requested_checkpoint_message_id INTEGER,
+    checkpoint_message_id INTEGER,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    UNIQUE(profile_name, parent_session_id, request_id)
+);
+
+CREATE TABLE IF NOT EXISTS branch_runs (
+    batch_id TEXT NOT NULL REFERENCES branch_batches(batch_id) ON DELETE CASCADE,
+    client_branch_key TEXT NOT NULL,
+    branch_session_id TEXT,
+    runtime_session_id TEXT,
+    title TEXT NOT NULL,
+    initial_prompt TEXT NOT NULL,
+    auto_start INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL,
+    cwd TEXT,
+    workspace_mode TEXT NOT NULL DEFAULT 'shared',
+    output_dir TEXT,
+    model TEXT,
+    provider TEXT,
+    toolsets_json TEXT,
+    error TEXT,
+    artifact_manifest TEXT,
+    result_summary TEXT,
+    started_at REAL,
+    completed_at REAL,
+    updated_at REAL NOT NULL,
+    PRIMARY KEY (batch_id, client_branch_key)
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_source ON sessions(source);
 CREATE INDEX IF NOT EXISTS idx_sessions_source_id ON sessions(source, id);
 CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id);
@@ -970,6 +1008,10 @@ CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, timestam
 CREATE INDEX IF NOT EXISTS idx_compression_locks_expires ON compression_locks(expires_at);
 CREATE INDEX IF NOT EXISTS idx_branch_merge_queue_parent
     ON branch_merge_queue(parent_session_id, requested_at);
+CREATE INDEX IF NOT EXISTS idx_branch_batches_parent
+    ON branch_batches(parent_session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_branch_runs_status
+    ON branch_runs(batch_id, status, updated_at);
 CREATE INDEX IF NOT EXISTS idx_session_model_usage_session ON session_model_usage(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_model_usage_model ON session_model_usage(model);
 CREATE INDEX IF NOT EXISTS idx_async_delegations_delivery
@@ -2339,6 +2381,201 @@ class SessionDB:
             return cursor.rowcount == 1
 
         return bool(self._execute_write(_do))
+
+    def create_branch_batch(
+        self,
+        *,
+        batch_id: str,
+        profile_name: str,
+        parent_session_id: str,
+        request_id: str,
+        max_parallel: int,
+        requested_checkpoint_message_id: Optional[int] = None,
+        branches: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Persist an idempotent Conversation Branch batch before execution."""
+        now = time.time()
+
+        def _do(conn):
+            existing = conn.execute(
+                "SELECT batch_id FROM branch_batches WHERE profile_name = ? "
+                "AND parent_session_id = ? AND request_id = ?",
+                (profile_name, parent_session_id, request_id),
+            ).fetchone()
+            if existing:
+                return str(existing["batch_id"])
+
+            conn.execute(
+                "INSERT INTO branch_batches "
+                "(batch_id, profile_name, parent_session_id, request_id, state, "
+                "max_parallel, requested_checkpoint_message_id, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    batch_id,
+                    profile_name,
+                    parent_session_id,
+                    request_id,
+                    "pending_checkpoint",
+                    max_parallel,
+                    requested_checkpoint_message_id,
+                    now,
+                    now,
+                ),
+            )
+            for branch in branches:
+                conn.execute(
+                    "INSERT INTO branch_runs "
+                    "(batch_id, client_branch_key, title, initial_prompt, auto_start, status, cwd, "
+                    "workspace_mode, output_dir, model, provider, toolsets_json, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        batch_id,
+                        branch["client_branch_key"],
+                        branch["title"],
+                        branch["initial_prompt"],
+                        1 if branch.get("auto_start", True) else 0,
+                        "pending_checkpoint",
+                        branch.get("cwd"),
+                        branch.get("workspace_mode") or "shared",
+                        branch.get("output_dir"),
+                        branch.get("model"),
+                        branch.get("provider"),
+                        json.dumps(branch.get("toolsets") or []),
+                        now,
+                    ),
+                )
+            return batch_id
+
+        resolved_batch_id = str(self._execute_write(_do))
+        return self.get_branch_batch(resolved_batch_id) or {}
+
+    def get_branch_batch(self, batch_id: str) -> Optional[Dict[str, Any]]:
+        """Return one batch and compact run metadata, never transcripts."""
+        with self._lock:
+            batch = self._conn.execute(
+                "SELECT * FROM branch_batches WHERE batch_id = ?", (batch_id,)
+            ).fetchone()
+            if not batch:
+                return None
+            runs = self._conn.execute(
+                "SELECT * FROM branch_runs WHERE batch_id = ? "
+                "ORDER BY rowid", (batch_id,)
+            ).fetchall()
+        payload = dict(batch)
+        payload["branches"] = [dict(row) for row in runs]
+        for branch in payload["branches"]:
+            try:
+                branch["toolsets"] = json.loads(branch.pop("toolsets_json") or "[]")
+            except (TypeError, json.JSONDecodeError):
+                branch["toolsets"] = []
+        return payload
+
+    def list_branch_batches(
+        self,
+        *,
+        parent_session_id: Optional[str] = None,
+        profile_name: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        clauses: List[str] = []
+        params: List[Any] = []
+        if parent_session_id:
+            clauses.append("parent_session_id = ?")
+            params.append(parent_session_id)
+        if profile_name is not None:
+            clauses.append("profile_name = ?")
+            params.append(profile_name)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT batch_id FROM branch_batches" + where + " ORDER BY created_at DESC",
+                tuple(params),
+            ).fetchall()
+        return [batch for row in rows if (batch := self.get_branch_batch(row["batch_id"]))]
+
+    def set_branch_batch_checkpoint(self, batch_id: str, message_id: Optional[int]) -> bool:
+        now = time.time()
+
+        def _do(conn):
+            conn.execute(
+                "UPDATE branch_batches SET checkpoint_message_id = ?, state = 'creating', "
+                "updated_at = ? WHERE batch_id = ? AND state = 'pending_checkpoint'",
+                (message_id, now, batch_id),
+            )
+            conn.execute(
+                "UPDATE branch_runs SET status = 'creating', updated_at = ? "
+                "WHERE batch_id = ? AND status = 'pending_checkpoint'",
+                (now, batch_id),
+            )
+            return conn.total_changes > 0
+
+        return bool(self._execute_write(_do))
+
+    def update_branch_run(self, batch_id: str, client_branch_key: str, **fields) -> bool:
+        allowed = {
+            "branch_session_id", "runtime_session_id", "status", "error",
+            "artifact_manifest", "result_summary", "started_at", "completed_at",
+        }
+        updates = {key: value for key, value in fields.items() if key in allowed}
+        if not updates:
+            return False
+        updates["updated_at"] = time.time()
+
+        def _do(conn):
+            assignments = ", ".join(f"{key} = ?" for key in updates)
+            cursor = conn.execute(
+                f"UPDATE branch_runs SET {assignments} "
+                "WHERE batch_id = ? AND client_branch_key = ?",
+                (*updates.values(), batch_id, client_branch_key),
+            )
+            self._refresh_branch_batch_state(conn, batch_id)
+            return cursor.rowcount == 1
+
+        return bool(self._execute_write(_do))
+
+    @staticmethod
+    def _refresh_branch_batch_state(conn, batch_id: str) -> None:
+        rows = conn.execute(
+            "SELECT status FROM branch_runs WHERE batch_id = ?", (batch_id,)
+        ).fetchall()
+        statuses = {str(row["status"]) for row in rows}
+        if not statuses:
+            state = "failed"
+        elif statuses <= {"completed", "failed", "cancelled"}:
+            state = "completed"
+        elif "running" in statuses or "starting" in statuses:
+            state = "running"
+        elif "creating" in statuses or "pending_checkpoint" in statuses:
+            state = "creating" if "creating" in statuses else "pending_checkpoint"
+        else:
+            state = "queued"
+        conn.execute(
+            "UPDATE branch_batches SET state = ?, updated_at = ? WHERE batch_id = ?",
+            (state, time.time(), batch_id),
+        )
+
+    def recover_interrupted_branch_runs(self, profile_name: str = "") -> int:
+        """Never replay side-effecting Branch work after a gateway restart."""
+        now = time.time()
+        profile_names = ("", "default") if profile_name in {"", "default"} else (profile_name,)
+        placeholders = ",".join("?" for _ in profile_names)
+
+        def _do(conn):
+            cursor = conn.execute(
+                "UPDATE branch_runs SET status = 'interrupted', runtime_session_id = NULL, "
+                "error = COALESCE(error, 'gateway restarted while branch was active'), "
+                "updated_at = ? WHERE status IN ('starting', 'running') AND batch_id IN "
+                f"(SELECT batch_id FROM branch_batches WHERE profile_name IN ({placeholders}))",
+                (now, *profile_names),
+            )
+            batch_ids = conn.execute(
+                f"SELECT batch_id FROM branch_batches WHERE profile_name IN ({placeholders})",
+                profile_names,
+            ).fetchall()
+            for row in batch_ids:
+                self._refresh_branch_batch_state(conn, row["batch_id"])
+            return cursor.rowcount
+
+        return int(self._execute_write(_do) or 0)
 
     def queue_branch_merge(self, child_session_id: str, summary: str) -> bool:
         """Persist a reviewed branch summary until its parent can accept it."""
@@ -4405,6 +4642,48 @@ class SessionDB:
         for session in sessions:
             if str(session.get("id") or "") in queued_child_ids:
                 session["branch_merge_status"] = "waiting_for_parent"
+
+        # Durable batch-run state is authoritative for visible Conversation
+        # Branch progress. Keep the transcript out of this projection; list
+        # clients need only compact status metadata.
+        visible_ids = [str(session.get("id") or "") for session in sessions if session.get("id")]
+        branch_runs_by_session: Dict[str, Dict[str, Any]] = {}
+        if visible_ids:
+            placeholders = ",".join("?" for _ in visible_ids)
+            try:
+                with self._lock:
+                    run_rows = self._conn.execute(
+                        "SELECT br.branch_session_id, br.batch_id, br.client_branch_key, "
+                        "br.status, br.runtime_session_id, br.workspace_mode, br.output_dir, "
+                        "br.model AS branch_model, br.provider AS branch_provider, br.error, "
+                        "br.started_at AS branch_started_at, br.completed_at AS branch_completed_at "
+                        f"FROM branch_runs br WHERE br.branch_session_id IN ({placeholders})",
+                        tuple(visible_ids),
+                    ).fetchall()
+                branch_runs_by_session = {
+                    str(row["branch_session_id"]): dict(row) for row in run_rows
+                }
+            except sqlite3.OperationalError:
+                branch_runs_by_session = {}
+        for session in sessions:
+            run = branch_runs_by_session.get(str(session.get("id") or ""))
+            if not run:
+                continue
+            session.update(
+                {
+                    "branch_batch_id": run.get("batch_id"),
+                    "branch_client_key": run.get("client_branch_key"),
+                    "branch_task_status": run.get("status"),
+                    "branch_runtime_session_id": run.get("runtime_session_id"),
+                    "branch_workspace_mode": run.get("workspace_mode"),
+                    "branch_output_dir": run.get("output_dir"),
+                    "branch_model": run.get("branch_model"),
+                    "branch_provider": run.get("branch_provider"),
+                    "branch_error": run.get("error"),
+                    "branch_started_at": run.get("branch_started_at"),
+                    "branch_completed_at": run.get("branch_completed_at"),
+                }
+            )
 
         return sessions
 

@@ -57,6 +57,7 @@ import {
 } from '@/store/session'
 import { $sessionColorOverrides, sessionColorFamilyId, setSessionColorOverride } from '@/store/session-color'
 import { $sessionTiles, openSessionTile } from '@/store/session-states'
+import { broadcastSessionsChanged } from '@/store/session-sync'
 import { canOpenSessionWindow, openSessionInNewWindow } from '@/store/windows'
 
 import type { SessionTitleResponse } from '../../types'
@@ -115,6 +116,7 @@ interface SessionActions {
   onBranch?: () => void
   mergeChildrenCount?: number
   onMergeChildren?: () => Promise<void> | void
+  onMergeCompletedChildren?: () => Promise<void> | void
   onMerge?: () => Promise<void> | void
   onArchive?: () => void
   onDelete?: () => void
@@ -199,6 +201,7 @@ function useSessionActions({
   onBranch,
   mergeChildrenCount = 0,
   onMergeChildren,
+  onMergeCompletedChildren,
   onMerge,
   onArchive,
   onDelete,
@@ -212,6 +215,9 @@ function useSessionActions({
   const [renameOpen, setRenameOpen] = useState(false)
   const tiles = useStore($sessionTiles)
   const selectedStoredSessionId = useStore($selectedStoredSessionId)
+  const sessions = useStore($sessions)
+  const branchChildren = sessions.filter(session => session.parent_session_id?.trim() === sessionId)
+  const completedBranchCount = branchChildren.filter(session => session.branch_task_status === 'completed').length
 
   // Already showing as a tab somewhere (a tile, or loaded in main — main IS
   // a tab): offering "Open in new tab" again is noise.
@@ -432,6 +438,60 @@ function useSessionActions({
       />
       <kit.Separator />
       {workItems.map(item => renderMenuItem(kit.Item, item))}
+      {branchChildren.length > 0 && (
+        <kit.Sub>
+          <kit.SubTrigger>
+            <Codicon name="type-hierarchy-sub" size="0.875rem" />
+            <span>{t.sidebar.branchBatch.manage}</span>
+          </kit.SubTrigger>
+          <kit.SubContent>
+            {(
+              [
+                ['start_queued', 'play', t.sidebar.branchBatch.startQueued],
+                ['pause_all', 'debug-pause', t.sidebar.branchBatch.pauseAll],
+                ['resume_all', 'debug-continue', t.sidebar.branchBatch.resumeAll],
+                ['cancel_all', 'debug-stop', t.sidebar.branchBatch.cancelAll]
+              ] as const
+            ).map(([action, icon, label]) => (
+              <kit.Item
+                key={action}
+                onSelect={() => {
+                  triggerHaptic(action === 'cancel_all' ? 'warning' : 'selection')
+                  void activeGateway()
+                    ?.request('session.branch_batch_control', {
+                      action,
+                      parent_session_id: sessionId
+                    })
+                    .then(() => broadcastSessionsChanged())
+                    .catch(error => notifyError(error, t.sidebar.branchBatch.controlFailed))
+                }}
+              >
+                <Codicon name={icon} size="0.875rem" />
+                <span>{label}</span>
+              </kit.Item>
+            ))}
+            <kit.Item
+              onSelect={() => {
+                triggerHaptic('selection')
+                branchChildren.forEach(child => openSessionTile(child.id, 'center'))
+              }}
+            >
+              <Codicon name="browser" size="0.875rem" />
+              <span>{t.sidebar.branchBatch.openAll}</span>
+            </kit.Item>
+            <kit.Item
+              disabled={!completedBranchCount || !onMergeCompletedChildren}
+              onSelect={() => {
+                triggerHaptic('warning')
+                void onMergeCompletedChildren?.()
+              }}
+            >
+              <Codicon name="git-merge" size="0.875rem" />
+              <span>{t.sidebar.branchBatch.mergeCompleted(completedBranchCount)}</span>
+            </kit.Item>
+          </kit.SubContent>
+        </kit.Sub>
+      )}
       {tabCloseItems.length > 0 && (
         <>
           <kit.Separator />
