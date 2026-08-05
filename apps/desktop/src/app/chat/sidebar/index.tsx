@@ -130,7 +130,12 @@ import {
 } from '@/store/session-pins' 
 import { $focusedStoredSessionId, $workingSessionIds, type SplitDir } from '@/store/session-states'
 import { $archivedSessions, loadArchivedSessions } from '@/store/sidebar-archive'
-import { expandPinnedSessionFamilies, pinSessionFamily, unpinSessionFamily } from '@/store/session-pins'
+import {
+  expandPinnedSessionFamilies,
+  expandSessionFamilyMemberIds,
+  pinSessionFamily,
+  unpinSessionFamily
+} from '@/store/session-pins'
 import { $sidebarSessionRankIds } from '@/store/sidebar-sort' 
 
 import {
@@ -510,6 +515,8 @@ export function ChatSidebar({
     [visibleSessions]
   )
 
+  const workingSessionIdSet = useMemo(() => new Set(workingSessionIds), [workingSessionIds])
+
   // Index sessions by every id a pin might be stored under — recents, cron,
   // AND messaging, since all three can be pinned (see session-index.ts).
   const sessionByAnyId = useMemo(
@@ -579,6 +586,15 @@ export function ChatSidebar({
     [isPinnedSession, filtersNarrow, sessionMatchesFilters]
   )
 
+  const runningFamilySessionIds = useMemo(
+    () => expandSessionFamilyMemberIds(visibleSessions, [...workingSessionIds, ...unreadFinishedSessionIds]),
+    [unreadFinishedSessionIds, visibleSessions, workingSessionIds]
+  )
+  const runningSessions = useMemo(
+    () => sortedSessions.filter(session => runningFamilySessionIds.has(session.id) && !isPinnedSession(session)),
+    [isPinnedSession, runningFamilySessionIds, sortedSessions]
+  )
+
   // Full-text search across *all* sessions (not just the loaded page) so 699
   // sessions stay findable. Debounced; loaded sessions are matched instantly
   // client-side and merged ahead of the server hits.
@@ -641,8 +657,8 @@ export function ChatSidebar({
   }, [trimmedQuery, sortedSessions, serverMatches, sessionByAnyId])
 
   const unpinnedAgentSessions = useMemo(
-    () => sortedSessions.filter(s => !isPinnedSession(s)),
-    [sortedSessions, isPinnedSession]
+    () => sortedSessions.filter(s => !isPinnedSession(s) && !runningFamilySessionIds.has(s.id)),
+    [runningFamilySessionIds, sortedSessions, isPinnedSession]
   )
 
   useEffect(() => {
@@ -1546,6 +1562,30 @@ export function ChatSidebar({
                 sessions={searchResults}
                 showProfileTags={showAllProfiles}
               />
+            )}
+
+            {!trimmedQuery && (
+              runningSessions.length > 0 ? (
+                <SidebarSessionsSection
+                  activeSessionId={activeSidebarSessionId}
+                  contentClassName="flex max-h-[50vh] flex-col gap-px rounded-lg pb-2 pt-1"
+                  emptyState={null}
+                  label="运行中"
+                  onArchiveSession={onArchiveSession}
+                  onBranchSession={onBranchSession}
+                  onDeleteSession={onDeleteSession}
+                  onMergeSession={onMergeSession}
+                  onResumeSession={onResumeSession}
+                  onToggle={() => undefined}
+                  onTogglePin={pinSessionFamily}
+                  open
+                  pinned={false}
+                  rootClassName="shrink-0 p-0 pb-1"
+                  sessions={runningSessions}
+                  showProfileTags={showAllProfiles}
+                  workingSessionIdSet={workingSessionIdSet}
+                />
+              ) : null
             )}
 
             {!trimmedQuery && (
