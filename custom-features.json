@@ -272,6 +272,11 @@
       "source_commit": "c589d827d0",
       "patch_id": "910259c4c8a419e16f1e8bf50650bd12990e6d5a",
       "feature": "transient-retry"
+    },
+    {
+      "source_commit": "c6eb13088e",
+      "patch_id": "85b2344b539f4ba4856626fd8d3f8dc4f9495ada",
+      "feature": "runtime-status"
     }
   ],
   "features": [
