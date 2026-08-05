@@ -237,6 +237,16 @@
       "source_commit": "16a4458abc",
       "patch_id": "1cf2a667dd604021fd9733c81743f260bd73b7a5",
       "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "3bb70734cd",
+      "patch_id": "a4df4645f3b05f0bee1f1e0069be01613896448a",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "bbb8aa509c",
+      "patch_id": "113118bf915287822fe7e4bdc0f60ec77762c524",
+      "feature": "v2026.8.3-port"
     }
   ],
   "features": [
