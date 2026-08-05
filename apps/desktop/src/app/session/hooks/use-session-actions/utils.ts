@@ -303,9 +303,6 @@ export function restoreInflightView(messages: ChatMessage[], resumed: SessionRes
 
   if (resumed.inflight.assistant) {
     parts.push(assistantTextPart(resumed.inflight.assistant))
-  } else if (parts.length === 0) {
-    // Keep a non-empty part array so AssistantMessage mounts its stalled-thinking indicator.
-    parts.push(assistantTextPart(''))
   }
 
   return {

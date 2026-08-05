@@ -1327,6 +1327,19 @@ describe('appendLiveSessionProjection', () => {
 })
 
 describe('restoreInflightView', () => {
+  it('restores an empty running turn as a true placeholder for the immediate thinking indicator', () => {
+    const restored = restoreInflightView([msg('u', 'user', 'continue')], {
+      inflight: { assistant: '', streaming: true, user: 'continue' },
+      message_count: 1,
+      messages: [],
+      resumed: 'stored-1',
+      running: true,
+      session_id: 'runtime-1'
+    })
+
+    expect(restored.messages.at(-1)).toMatchObject({ parts: [], pending: true, role: 'assistant' })
+  })
+
   it('rebuilds reasoning and the current tool when resuming a running session', () => {
     const restored = restoreInflightView([msg('u', 'user', 'open it')], {
       inflight: {
