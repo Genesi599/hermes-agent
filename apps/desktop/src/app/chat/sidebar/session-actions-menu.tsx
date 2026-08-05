@@ -36,7 +36,6 @@ import {
   $selectedStoredSessionId,
   $sessions,
   sessionMatchesStoredId,
-  sessionPinId,
   setSessions
 } from '@/store/session'
 import { $sessionColorOverrides, sessionColorFamilyId, setSessionColorOverride } from '@/store/session-color'
