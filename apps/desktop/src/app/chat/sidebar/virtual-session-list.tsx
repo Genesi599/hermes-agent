@@ -20,6 +20,7 @@ interface SessionRowCommonProps {
   isSelected: boolean
   onArchive: () => void
   onBranch?: () => void
+  onCreateBranches?: () => void
   onDelete: () => void
   mergeChildrenCount?: number
   onMergeChildren?: () => Promise<void> | void
@@ -39,6 +40,7 @@ export interface VirtualSessionListProps {
   rows: SidebarListRow[]
   onArchiveSession: (sessionId: string) => void
   onBranchSession?: (sessionId: string, profile?: string) => void
+  onCreateBranchesSession?: (sessionId: string) => void
   onDeleteSession: (sessionId: string) => void
   onMergeChildrenSession?: (sessionId: string) => Promise<void> | void
   onMergeSession?: (sessionId: string, profile?: string) => Promise<void> | void
@@ -60,6 +62,7 @@ export const VirtualSessionList: FC<VirtualSessionListProps> = ({
   rows: listRows,
   onArchiveSession,
   onBranchSession,
+  onCreateBranchesSession,
   onDeleteSession,
   onMergeChildrenSession,
   onMergeSession,
@@ -136,6 +139,10 @@ export const VirtualSessionList: FC<VirtualSessionListProps> = ({
       isSelected: session.id === activeSessionId,
       onArchive: () => onArchiveSession(session.id),
       onBranch: onBranchSession ? () => onBranchSession(session.id, session.profile) : undefined,
+      onCreateBranches:
+        session.id === activeSessionId && onCreateBranchesSession
+          ? () => onCreateBranchesSession(session.id)
+          : undefined,
       onDelete: () => onDeleteSession(session.id),
       mergeChildrenCount: childCount,
       onMergeChildren:

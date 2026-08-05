@@ -259,6 +259,20 @@ export function SidebarSessionsSection({
     return counts
   }, [sessions])
 
+  const childCountByParent = useMemo(() => {
+    const counts = new Map<string, number>()
+
+    for (const session of sessions) {
+      const parentId = session.parent_session_id?.trim()
+
+      if (parentId) {
+        counts.set(parentId, (counts.get(parentId) ?? 0) + 1)
+      }
+    }
+
+    return counts
+  }, [sessions])
+
   const renderRow = useCallback(
     (session: SessionInfo, draggable: boolean, branchStem?: string) => {
       const childCount = childCountByParent.get(session.id) ?? 0
@@ -268,6 +282,10 @@ export function SidebarSessionsSection({
         isSelected: session.id === activeSessionId,
         onArchive: () => onArchiveSession(session.id),
         onBranch: onBranchSession ? () => onBranchSession(session.id, session.profile) : undefined,
+        onCreateBranches:
+          session.id === activeSessionId && onCreateBranchesSession
+            ? () => onCreateBranchesSession(session.id)
+            : undefined,
         onDelete: () => onDeleteSession(session.id),
         mergeChildrenCount: childCount,
         onMergeChildren:
@@ -292,6 +310,7 @@ export function SidebarSessionsSection({
       childCountByParent,
       onArchiveSession,
       onBranchSession,
+      onCreateBranchesSession,
       onDeleteSession,
       onMergeChildrenSession,
       onMergeSession,
@@ -477,6 +496,7 @@ export function SidebarSessionsSection({
         dividerAction={dividerAction}
         onArchiveSession={onArchiveSession}
         onBranchSession={onBranchSession}
+        onCreateBranchesSession={onCreateBranchesSession}
         onDeleteSession={onDeleteSession}
         onMergeChildrenSession={onMergeChildrenSession}
         onMergeSession={onMergeSession}

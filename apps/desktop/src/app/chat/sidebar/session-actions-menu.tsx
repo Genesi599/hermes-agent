@@ -279,6 +279,19 @@ function useSessionActions({
         onBranch?.()
       }
     }),
+    ...(onCreateBranches
+      ? [
+          spec({
+            disabled: false,
+            icon: 'type-hierarchy-sub',
+            label: t.sidebar.branchBatch.title,
+            onSelect: () => {
+              triggerHaptic('selection')
+              onCreateBranches()
+            }
+          })
+        ]
+      : []),
     spec({
       disabled: !sessionId,
       icon: 'cloud-download',
@@ -310,6 +323,19 @@ function useSessionActions({
             onSelect: () => {
               triggerHaptic('warning')
               void onMerge()
+            }
+          })
+        ]
+      : []),
+    ...(onMergeChildren
+      ? [
+          spec({
+            disabled: false,
+            icon: 'repo-pull',
+            label: r.mergeChildren(mergeChildrenCount),
+            onSelect: () => {
+              triggerHaptic('warning')
+              void onMergeChildren()
             }
           })
         ]

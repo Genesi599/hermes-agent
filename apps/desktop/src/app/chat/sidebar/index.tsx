@@ -406,6 +406,16 @@ export function ChatSidebar({
   const [messagingLoadMorePending, setMessagingLoadMorePending] = useState<Record<string, boolean>>({})
   const [recentsLoadMorePending, setRecentsLoadMorePending] = useState(false)
   const [branchBatchOpen, setBranchBatchOpen] = useState(false)
+
+  const openBranchBatchForSession = useCallback(
+    (sessionId: string) => {
+      if (sessionId === selectedStoredSessionId && activeRuntimeSessionId) {
+        setBranchBatchOpen(true)
+      }
+    },
+    [activeRuntimeSessionId, selectedStoredSessionId]
+  )
+
   const messagingOpenIds = useStore($sidebarMessagingOpenIds)
   // Per-platform count of rows currently revealed (starts at NON_SESSION_INITIAL_ROWS).
   const [messagingVisible, setMessagingVisible] = useState<Record<string, number>>({})
@@ -1571,6 +1581,7 @@ export function ChatSidebar({
                 label={s.results}
                 onArchiveSession={onArchiveSession}
                 onBranchSession={onBranchSession}
+                onCreateBranchesSession={openBranchBatchForSession}
                 onDeleteSession={onDeleteSession}
                 onMergeChildrenSession={onMergeChildrenSession}
                 onMergeSession={onMergeSession}
@@ -1619,7 +1630,9 @@ export function ChatSidebar({
                   label="运行中"
                   onArchiveSession={onArchiveSession}
                   onBranchSession={onBranchSession}
+                  onCreateBranchesSession={openBranchBatchForSession}
                   onDeleteSession={onDeleteSession}
+                  onMergeChildrenSession={onMergeChildrenSession}
                   onMergeSession={onMergeSession}
                   onResumeSession={onResumeSession}
                   onToggle={() => undefined}
@@ -1643,6 +1656,7 @@ export function ChatSidebar({
                 label={s.pinned}
                 onArchiveSession={onArchiveSession}
                 onBranchSession={onBranchSession}
+                onCreateBranchesSession={openBranchBatchForSession}
                 onDeleteSession={onDeleteSession}
                 onMergeChildrenSession={onMergeChildrenSession}
                 onMergeSession={onMergeSession}
@@ -1796,6 +1810,7 @@ export function ChatSidebar({
                 manualOrderIds={agentOrderManual ? agentOrderIds : sortOrderIds}
                 onArchiveSession={onArchiveSession}
                 onBranchSession={onBranchSession}
+                onCreateBranchesSession={openBranchBatchForSession}
                 onDeleteSession={onDeleteSession}
                 onEnterProject={onEnterProject}
                 onMergeChildrenSession={onMergeChildrenSession}

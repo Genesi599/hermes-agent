@@ -53,6 +53,7 @@ interface SidebarSessionRowProps extends React.ComponentProps<'div'> {
   isSelected: boolean
   onArchive: () => void
   onBranch?: () => void
+  onCreateBranches?: () => void
   onDelete: () => void
   mergeChildrenCount?: number
   onMergeChildren?: () => Promise<void> | void
@@ -98,6 +99,7 @@ function SidebarSessionRowImpl({
   isSelected,
   onArchive,
   onBranch,
+  onCreateBranches,
   onDelete,
   mergeChildrenCount,
   onMergeChildren,
@@ -239,6 +241,7 @@ function SidebarSessionRowImpl({
       mergeChildrenCount={mergeChildrenCount}
       onArchive={onArchive}
       onBranch={onBranch}
+      onCreateBranches={onCreateBranches}
       onDelete={onDelete}
       onMerge={onMerge}
       onMergeChildren={onMergeChildren}
@@ -272,6 +275,7 @@ function SidebarSessionRowImpl({
               mergeChildrenCount={mergeChildrenCount}
               onArchive={onArchive}
               onBranch={onBranch}
+              onCreateBranches={onCreateBranches}
               onDelete={onDelete}
               onMerge={onMerge}
               onMergeChildren={onMergeChildren}
