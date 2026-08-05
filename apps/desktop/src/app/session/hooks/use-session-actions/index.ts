@@ -1204,6 +1204,7 @@ export function useSessionActions({
           : await requestGateway<SessionCreateResponse>('session.create', {
               cols: 96,
               source: 'desktop',
+              title: copy.branchTitle(1).toLowerCase(),
               ...(cwd && { cwd }),
               ...(profile ? { profile } : {}),
               messages: branchMessages.map(({ content, role }) => ({ content, role })),
