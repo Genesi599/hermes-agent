@@ -1938,6 +1938,9 @@ export const en: Translations = {
       export: 'Export',
       branchFrom: 'Branch',
       mergeBranch: 'Merge into parent',
+      mergeChildren: count => `Recall ${count} child conversations`,
+      mergeChildrenDeferred: 'Some branch reviews finished and are waiting for the parent conversation to stop.',
+      mergeChildrenFailed: 'Some child conversations could not be recalled',
       mergeBranchTitle: 'Merge branch into parent?',
       mergeBranchDesc:
         'Hermes will summarize new information into the parent session, then permanently delete this branch.',

@@ -514,6 +514,8 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     branchCurrentSession,
     branchStoredSession,
     createBackendSessionForSend,
+    mergeAllChildrenIntoParent,
+    mergeBranchIntoParent,
     openNewSessionTile,
     removeSession,
     resumeSession,
@@ -928,6 +930,8 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     onAttachImageBlob: composer.attachImageBlob,
     onBranchInNewChat: messageId => void branchInNewChat(messageId),
     onBranchSession: sessionId => void branchStoredSession(sessionId),
+    onMergeChildrenSession: sessionId => void mergeAllChildrenIntoParent(sessionId),
+    onMergeSession: sessionId => void mergeBranchIntoParent(sessionId),
     onCancel: cancelRun,
     onDeleteSelectedSession: () => {
       const id = $selectedStoredSessionId.get()

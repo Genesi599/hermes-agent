@@ -21,4 +21,39 @@ describe('SessionActionsMenu branch merge', () => {
     await waitFor(() => expect(onMerge).toHaveBeenCalledOnce())
     expect(screen.queryByText('Merge branch into parent?')).toBeNull()
   })
+
+  it('starts a parent recall immediately and shows the child count', async () => {
+    const onMergeChildren = vi.fn(async () => undefined)
+
+    render(
+      <SessionActionsMenu
+        mergeChildrenCount={3}
+        onMergeChildren={onMergeChildren}
+        sessionId="parent"
+        title="Parent"
+      >
+        <button type="button">Open parent actions</button>
+      </SessionActionsMenu>
+    )
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Open parent actions' }), { button: 0 })
+    fireEvent.click(await screen.findByText('Recall 3 child conversations'))
+
+    await waitFor(() => expect(onMergeChildren).toHaveBeenCalledOnce())
+  })
+
+  it('opens batch branch creation from the active parent menu', async () => {
+    const onCreateBranches = vi.fn()
+
+    render(
+      <SessionActionsMenu onCreateBranches={onCreateBranches} sessionId="parent" title="Parent">
+        <button type="button">Open branch actions</button>
+      </SessionActionsMenu>
+    )
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Open branch actions' }), { button: 0 })
+    fireEvent.click(await screen.findByText('Create Conversation Branches'))
+
+    expect(onCreateBranches).toHaveBeenCalledOnce()
+  })
 })

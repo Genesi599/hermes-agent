@@ -241,6 +241,7 @@ interface ChatSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onLoadMoreMessaging?: (platform: string) => Promise<void> | void
   onResumeSession: (sessionId: string) => void
   onDeleteSession: (sessionId: string) => void
+  onMergeChildrenSession?: (sessionId: string) => Promise<void> | void
   onMergeSession?: (sessionId: string, profile?: string) => Promise<void> | void
   onArchiveSession: (sessionId: string) => void
   onBranchSession: (sessionId: string) => void
@@ -259,6 +260,7 @@ export function ChatSidebar({
   onLoadMoreMessaging,
   onResumeSession,
   onDeleteSession,
+  onMergeChildrenSession,
   onMergeSession,
   onArchiveSession,
   onBranchSession,
@@ -351,6 +353,16 @@ export function ChatSidebar({
   const [messagingLoadMorePending, setMessagingLoadMorePending] = useState<Record<string, boolean>>({})
   const [recentsLoadMorePending, setRecentsLoadMorePending] = useState(false)
   const [branchBatchOpen, setBranchBatchOpen] = useState(false)
+
+  const openBranchBatchForSession = useCallback(
+    (sessionId: string) => {
+      if (sessionId === selectedStoredSessionId && activeRuntimeSessionId) {
+        setBranchBatchOpen(true)
+      }
+    },
+    [activeRuntimeSessionId, selectedStoredSessionId]
+  )
+
   const messagingOpenIds = useStore($sidebarMessagingOpenIds)
   // Per-platform count of rows currently revealed (starts at NON_SESSION_INITIAL_ROWS).
   const [messagingVisible, setMessagingVisible] = useState<Record<string, number>>({})
@@ -1289,7 +1301,9 @@ export function ChatSidebar({
                 label={s.results}
                 onArchiveSession={onArchiveSession}
                 onBranchSession={onBranchSession}
+                onCreateBranchesSession={openBranchBatchForSession}
                 onDeleteSession={onDeleteSession}
+                onMergeChildrenSession={onMergeChildrenSession}
                 onMergeSession={onMergeSession}
                 onResumeSession={onResumeSession}
                 onToggle={() => undefined}
@@ -1313,7 +1327,9 @@ export function ChatSidebar({
                   label="运行中"
                   onArchiveSession={onArchiveSession}
                   onBranchSession={onBranchSession}
+                  onCreateBranchesSession={openBranchBatchForSession}
                   onDeleteSession={onDeleteSession}
+                  onMergeChildrenSession={onMergeChildrenSession}
                   onMergeSession={onMergeSession}
                   onResumeSession={onResumeSession}
                   onToggle={() => undefined}
@@ -1337,7 +1353,9 @@ export function ChatSidebar({
                 label={s.pinned}
                 onArchiveSession={onArchiveSession}
                 onBranchSession={onBranchSession}
+                onCreateBranchesSession={openBranchBatchForSession}
                 onDeleteSession={onDeleteSession}
+                onMergeChildrenSession={onMergeChildrenSession}
                 onMergeSession={onMergeSession}
                 onReorderSessions={reorderPinned}
                 onResumeSession={onResumeSession}
@@ -1503,8 +1521,10 @@ export function ChatSidebar({
                 liveSessions={inProject ? agentSessions : undefined}
                 onArchiveSession={onArchiveSession}
                 onBranchSession={onBranchSession}
+                onCreateBranchesSession={openBranchBatchForSession}
                 onDeleteSession={onDeleteSession}
                 onEnterProject={onEnterProject}
+                onMergeChildrenSession={onMergeChildrenSession}
                 onMergeSession={onMergeSession}
                 onNewSessionInWorkspace={showAllProfiles ? undefined : onNewSessionInWorkspace}
                 onReorderProjects={showAllProfiles ? undefined : reorderProjects}

@@ -95,6 +95,9 @@ interface SessionActions {
   profile?: string
   onPin?: () => void
   onBranch?: () => void
+  onCreateBranches?: () => void
+  mergeChildrenCount?: number
+  onMergeChildren?: () => Promise<void> | void
   onMerge?: () => Promise<void> | void
   onArchive?: () => void
   onDelete?: () => void
@@ -141,6 +144,9 @@ function useSessionActions({
   profile,
   onPin,
   onBranch,
+  onCreateBranches,
+  mergeChildrenCount = 0,
+  onMergeChildren,
   onMerge,
   onArchive,
   onDelete,
@@ -231,6 +237,19 @@ function useSessionActions({
         onBranch?.()
       }
     }),
+    ...(onCreateBranches
+      ? [
+          spec({
+            disabled: false,
+            icon: 'type-hierarchy-sub',
+            label: t.sidebar.branchBatch.title,
+            onSelect: () => {
+              triggerHaptic('selection')
+              onCreateBranches()
+            }
+          })
+        ]
+      : []),
     spec({
       disabled: !sessionId,
       icon: 'cloud-download',
@@ -249,6 +268,19 @@ function useSessionActions({
             onSelect: () => {
               triggerHaptic('warning')
               void onMerge()
+            }
+          })
+        ]
+      : []),
+    ...(onMergeChildren
+      ? [
+          spec({
+            disabled: false,
+            icon: 'repo-pull',
+            label: r.mergeChildren(mergeChildrenCount),
+            onSelect: () => {
+              triggerHaptic('warning')
+              void onMergeChildren()
             }
           })
         ]
