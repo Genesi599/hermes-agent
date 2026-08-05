@@ -13,70 +13,10 @@ import {
   reasoningPart,
   renderMediaTags,
   toChatMessages,
-  upsertToolPart,
-  withUniqueToolCallIds
+  upsertToolPart
 } from './chat-messages'
 
-describe('withUniqueToolCallIds', () => {
-  const toolMessage = (id: string, toolCallId: string): ChatMessage => ({
-    id,
-    role: 'assistant',
-    parts: [{ type: 'tool-call', toolCallId, toolName: 'read_file', args: {} as never, argsText: '{}' }]
-  })
-
-  it('keeps provider ids unique across the entire rendered thread', () => {
-    const messages = withUniqueToolCallIds([
-      toolMessage('assistant-1', 'call-duplicate'),
-      toolMessage('assistant-2', 'call-duplicate')
-    ])
-
-    const ids = messages.flatMap(message =>
-      message.parts.flatMap(part => (part.type === 'tool-call' ? [part.toolCallId] : []))
-    )
-
-    expect(ids).toEqual(['call-duplicate', 'call-duplicate-assistant-2-0'])
-
-    expect(new Set(ids).size).toBe(ids.length)
-  })
-
-  it('avoids collisions with an existing generated suffix', () => {
-    const messages = withUniqueToolCallIds([
-      toolMessage('assistant-1', 'call-duplicate'),
-      toolMessage('assistant-2', 'call-duplicate-assistant-2-0'),
-      toolMessage('assistant-2', 'call-duplicate')
-    ])
-
-    const ids = messages.flatMap(message =>
-      message.parts.flatMap(part => (part.type === 'tool-call' ? [part.toolCallId] : []))
-    )
-
-    expect(ids).toEqual([
-      'call-duplicate',
-      'call-duplicate-assistant-2-0',
-      'call-duplicate-assistant-2-0-2'
-    ])
-
-    expect(new Set(ids).size).toBe(ids.length)
-  })
-})
-
 describe('toChatMessages', () => {
-  it('hides the internal experience-review prompt but keeps its summary', () => {
-    const messages = toChatMessages([
-      { role: 'user', content: 'real message', timestamp: 1 },
-      { role: 'assistant', content: 'real reply', timestamp: 2 },
-      {
-        role: 'user',
-        content: '[HERMES_INTERNAL_EXPERIENCE_REVIEW]\nreview this batch',
-        timestamp: 3
-      },
-      { role: 'assistant', content: '批次复盘', timestamp: 4 }
-    ])
-
-    expect(messages.map(chatMessageText)).toEqual(['real message', 'real reply', '批次复盘'])
-    expect(messages.filter(message => message.role === 'user')).toHaveLength(1)
-  })
-
   it('keeps a turn with interleaved tool-only rows in a single bubble', () => {
     const messages = toChatMessages([
       { role: 'assistant', content: 'Planning.', timestamp: 1 },

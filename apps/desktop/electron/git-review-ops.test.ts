@@ -35,19 +35,7 @@ test('resolveRenamePath: plain path is unchanged', () => {
 })
 
 test('gitFor accepts an internally resolved git binary path containing spaces', () => {
-  const originalWarn = console.warn
-  let warningCount = 0
-
-  console.warn = () => {
-    warningCount += 1
-  }
-
-  try {
-    assert.doesNotThrow(() => gitFor(process.cwd(), 'C:\\Program Files\\Git\\cmd\\git.exe'))
-    assert.equal(warningCount, 0)
-  } finally {
-    console.warn = originalWarn
-  }
+  assert.doesNotThrow(() => gitFor(process.cwd(), 'C:\\Program Files\\Git\\cmd\\git.exe'))
 })
 
 test('gitFor runs git through a spaced binary path', async () => {

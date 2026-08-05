@@ -17,9 +17,6 @@ import {
   setCurrentProvider,
   setCurrentReasoningEffort,
   setCurrentServiceTier,
-  setExperienceReview,
-  setReviewActivity,
-  setSessionReviewActivity,
   setTurnStartedAt,
   setYoloActive
 } from '@/store/session'
@@ -46,8 +43,6 @@ function syncRuntimeMetadataToView(state: ClientSessionState) {
   setCurrentFastMode(state.fast ?? false)
   setYoloActive(state.yolo ?? false)
   setCurrentPersonality(state.personality ?? '')
-  setExperienceReview(state.experienceReview)
-  setReviewActivity(state.reviewActivity)
 }
 
 export function useSessionStateCache({
@@ -313,10 +308,6 @@ export function useSessionStateCache({
       // (watchdog, settle grace, unread marker, compression id rotation) inside
       // publishSessionState — no manual transition call needed.
       publishSessionState(sessionId, next)
-      if (previous.storedSessionId !== next.storedSessionId) {
-        setSessionReviewActivity(previous.storedSessionId, null)
-      }
-      setSessionReviewActivity(next.storedSessionId, next.reviewActivity)
       syncSessionStateToView(sessionId, next)
 
       return next

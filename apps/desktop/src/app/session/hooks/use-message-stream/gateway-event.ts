@@ -46,8 +46,6 @@ import {
   $currentCwd,
   $currentModel,
   $currentProvider,
-  clearPendingModelSelectionIfApplied,
-  clearUnreadSessionIds,
   sessionMatchesStoredId,
   setCurrentBranch,
   setCurrentCwd,
@@ -76,14 +74,7 @@ import type { RpcEvent } from '@/types/hermes'
 import type { ClientSessionState } from '../../../types'
 import { finalizeInterruptedMessages } from '../use-prompt-actions/rewind'
 
-import {
-  hasSessionInfoStatePatch,
-  reviewActivityForInternalKind,
-  reviewActivityForStatusEvent,
-  sessionInfoStatePatch,
-  SUBAGENT_EVENT_TYPES,
-  toTodoPayload
-} from './utils'
+import { hasSessionInfoStatePatch, sessionInfoStatePatch, SUBAGENT_EVENT_TYPES, toTodoPayload } from './utils'
 
 function firstBillingLine(text: string): string {
   return (text || '').split('\n')[0]?.trim() ?? ''
@@ -359,13 +350,6 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
         notifySessionsChanged()
 
         return
-      } else if (event.type === 'branch.batch.status') {
-        // The backend owns durable Branch state; invalidate the list cache as
-        // soon as a child is created or changes phase. No transcript content
-        // is synthesized into the parent conversation.
-        broadcastSessionsChanged()
-
-        return
       } else if (event.type === 'session.info') {
         // Apply session-scoped fields when the event targets the active
         // session, OR when it's a global broadcast and we have no session.
@@ -410,10 +394,6 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
           // (or a stale session model) and would silently revert the dropdown.
           // Active-session model/provider still flows through the session state
           // cache via updateSessionState → syncRuntimeMetadataToView below.
-
-          if (sessionId && modelChanged && providerChanged) {
-            clearPendingModelSelectionIfApplied(sessionId, payload!.model || '', payload!.provider || '')
-          }
 
           if (typeof payload?.cwd === 'string') {
             // The active session's agent can relocate itself (new repo/worktree
@@ -468,22 +448,6 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
             }),
             payload?.stored_session_id || undefined
           )
-
-          if (statePatch.experienceReview) {
-            updateSessionState(
-              sessionId,
-              state => ({
-                ...state,
-                reviewActivity:
-                  statePatch.experienceReview?.phase === 'reviewing'
-                    ? 'experience'
-                    : state.reviewActivity === 'experience'
-                      ? null
-                      : state.reviewActivity
-              }),
-              payload?.stored_session_id || undefined
-            )
-          }
         }
 
         // The running→busy transition must reach EVERY session, not just the
@@ -540,7 +504,6 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
                 // already settled everything and this is a no-op.
                 messages: finalizeInterruptedMessages(state.messages, state.streamId),
                 pendingBranchGroup: null,
-                reviewActivity: null,
                 streamId: null,
                 turnStartedAt: null
               }
@@ -600,8 +563,6 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
             return state
           }
 
-          const reviewActivity = reviewActivityForInternalKind(payload?.internal_kind)
-
           return {
             ...state,
             busy: true,
@@ -609,7 +570,6 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
             sawAssistantPayload: false,
             interrupted: false,
             interimBoundaryPending: false,
-            reviewActivity: reviewActivity ?? state.reviewActivity,
             turnStartedAt: Date.now()
           }
         })
@@ -1125,46 +1085,6 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
           void refreshBackgroundProcesses(sessionId)
         } else if (sessionId && payload?.kind === 'goal') {
           applyGoalStatusText(sessionId, coerceGatewayText(payload?.text))
-        }
-      } else if (
-        event.type === 'experience_review.status' ||
-        event.type === 'branch_merge.status' ||
-        event.type === 'delete_review.status'
-      ) {
-        const text = coerceGatewayText(payload?.text).trim()
-
-        // Deferred branch merges finish in the parent runtime, after the child
-        // has already disappeared from its own event stream. Clear the child
-        // directly so a stale unread ID cannot keep the taskbar badge alive.
-        if (event.type === 'branch_merge.status' && payload?.phase === 'complete') {
-          const childSessionId = typeof payload.child_session_id === 'string' ? payload.child_session_id.trim() : ''
-
-          if (childSessionId) {
-            clearUnreadSessionIds([childSessionId])
-          }
-        }
-
-        if (sessionId) {
-          updateSessionState(sessionId, state => ({
-            ...state,
-            reviewActivity: reviewActivityForStatusEvent(event.type, payload?.phase, state.reviewActivity)
-          }))
-        }
-
-        if (text && sessionId) {
-          flushQueuedDeltas(sessionId)
-          updateSessionState(sessionId, state => ({
-            ...state,
-            messages: [
-              ...state.messages,
-              {
-                id: `${event.type.replace('.', '-')}-${Date.now()}`,
-                role: 'system',
-                parts: [textPart(text)],
-                timestamp: Math.floor(Date.now() / 1000)
-              }
-            ]
-          }))
         }
       } else if (event.type === 'review.summary') {
         // Self-improvement background review saved something to memory/skills

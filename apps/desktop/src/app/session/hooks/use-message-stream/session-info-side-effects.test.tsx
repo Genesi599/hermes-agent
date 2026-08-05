@@ -66,14 +66,12 @@ beforeEach(() => {
   queryClient = new QueryClient()
   setCurrentModel('')
   setCurrentProvider('')
-  $unreadFinishedSessionIds.set([])
 })
 
 afterEach(() => {
   cleanup()
   setCurrentModel('')
   setCurrentProvider('')
-  $unreadFinishedSessionIds.set([])
   vi.useRealTimers()
   vi.restoreAllMocks()
 })
@@ -156,22 +154,5 @@ describe('message.complete sidebar refresh coalescing', () => {
     })
 
     expect(refreshSessions).toHaveBeenCalledTimes(1)
-  })
-})
-
-describe('deferred branch merge cleanup', () => {
-  it('clears the merged child from the taskbar unread set on the parent completion event', async () => {
-    await mountStream()
-    $unreadFinishedSessionIds.set(['branch-child', 'another-unread-session'])
-
-    act(() =>
-      handleEvent!({
-        payload: { child_session_id: 'branch-child', phase: 'complete' },
-        session_id: ACTIVE_SID,
-        type: 'branch_merge.status'
-      })
-    )
-
-    expect($unreadFinishedSessionIds.get()).toEqual(['another-unread-session'])
   })
 })

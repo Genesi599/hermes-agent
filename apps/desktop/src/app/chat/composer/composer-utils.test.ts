@@ -12,17 +12,6 @@ import {
   type TriggerAcceptInput
 } from './composer-utils'
 
-describe('composerInputIsDisabled', () => {
-  it('allows drafting while a session rebind keeps submit controls disabled', () => {
-    expect(composerInputIsDisabled(true, false, true)).toBe(false)
-    expect(composerInputIsDisabled(true, false, false)).toBe(true)
-  })
-
-  it('keeps the existing reconnecting draft behavior', () => {
-    expect(composerInputIsDisabled(true, true, false)).toBe(false)
-  })
-})
-
 const item = (group: string): Unstable_TriggerItem =>
   ({ id: 'x', type: 'slash', label: 'x', metadata: { group } }) as unknown as Unstable_TriggerItem
 

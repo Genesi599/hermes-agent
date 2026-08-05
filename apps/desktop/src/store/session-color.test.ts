@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { SessionInfo } from '@/types/hermes'
+import type { ProjectInfo, SessionInfo } from '@/types/hermes'
 
+import { $projects } from './projects'
 import { $sessions } from './session'
 import { $sessionColorById, $sessionColorOverrides, sessionColorFor, setSessionColorOverride } from './session-color'
 
@@ -28,67 +29,86 @@ function makeSession(cwd: null | string, overrides: Partial<SessionInfo> = {}): 
   }
 }
 
+function makeProject(id: string, folders: string[], color: null | string): ProjectInfo {
+  return {
+    archived: false,
+    board_slug: null,
+    color,
+    created_at: 0,
+    description: null,
+    folders: folders.map((path, i) => ({ added_at: 0, is_primary: i === 0, label: null, path })),
+    icon: null,
+    id,
+    name: id,
+    primary_path: folders[0] ?? null,
+    slug: id
+  }
+}
+
 afterEach(() => {
   $sessions.set([])
+  $projects.set([])
   $sessionColorOverrides.set({})
 })
 
 describe('$sessionColorById', () => {
-  it('gives independent conversations stable, distinct automatic colors', () => {
-    const a = makeSession('/www/app/src', { id: 'alpha' })
-    const b = makeSession('/other/place', { id: 'beta' })
+  it('maps each session under a colored project to that color, keyed by live id', () => {
+    const a = makeSession('/www/app/src', { git_repo_root: '/www/app' })
+    const b = makeSession('/other/place')
+
+    $projects.set([makeProject('p_app', ['/www/app'], '#4a9eff')])
     $sessions.set([a, b])
 
     const map = $sessionColorById.get()
 
-    expect(map[a.id]).toBeTruthy()
-    expect(map[b.id]).toBeTruthy()
-    expect(map[a.id]).not.toBe(map[b.id])
+    expect(map[a.id]).toBe('#4a9eff')
+    // Sessions with no colored project are absent (a sparse map, not null-filled).
+    expect(b.id in map).toBe(false)
   })
 
-  it('does not repeat an automatic color among top-level conversations', () => {
-    const roots = Array.from({ length: 32 }, (_, index) =>
-      makeSession(null, { id: `root-${index}`, started_at: index + 1 })
-    )
+  it('omits a session whose project has no color', () => {
+    const a = makeSession('/www/app', { git_repo_root: '/www/app' })
 
-    $sessions.set(roots)
+    $projects.set([makeProject('p_app', ['/www/app'], null)])
+    $sessions.set([a])
 
-    const colors = roots.map(session => $sessionColorById.get()[session.id])
-    expect(new Set(colors).size).toBe(roots.length)
+    expect(a.id in $sessionColorById.get()).toBe(false)
   })
 
-  it('gives every branch in a conversation tree its parent color', () => {
-    const parent = makeSession('/www/app', { id: 'parent' })
-    const child = makeSession('/www/app', { id: 'child', parent_session_id: 'parent' })
-    const grandchild = makeSession('/www/app', { id: 'grandchild', parent_session_id: 'child' })
+  it('recomputes when the projects list changes (color applied later)', () => {
+    const a = makeSession('/www/app', { git_repo_root: '/www/app' })
 
-    $sessions.set([parent, child, grandchild])
+    $sessions.set([a])
+    $projects.set([makeProject('p_app', ['/www/app'], null)])
+    expect($sessionColorById.get()[a.id]).toBeUndefined()
 
-    const map = $sessionColorById.get()
-    expect(map[child.id]).toBe(map[parent.id])
-    expect(map[grandchild.id]).toBe(map[parent.id])
-  })
-
-  it('keeps sibling branches aligned when their unloaded parent is outside the page', () => {
-    const childA = makeSession('/www/app', { id: 'child-a', parent_session_id: 'missing-parent' })
-    const childB = makeSession('/www/app', { id: 'child-b', parent_session_id: 'missing-parent' })
-
-    $sessions.set([childA, childB])
-
-    expect($sessionColorById.get()[childA.id]).toBe($sessionColorById.get()[childB.id])
+    $projects.set([makeProject('p_app', ['/www/app'], '#7bc86c')])
+    expect($sessionColorById.get()[a.id]).toBe('#7bc86c')
   })
 })
 
 describe('$sessionColorOverrides', () => {
-  it('an override on the parent wins for every branch', () => {
-    const parent = makeSession('/www/app', { id: 'parent' })
-    const child = makeSession('/www/app', { id: 'child', parent_session_id: 'parent' })
+  it('an override wins over the inherited project color', () => {
+    const a = makeSession('/www/app', { git_repo_root: '/www/app' })
 
-    $sessions.set([parent, child])
-    setSessionColorOverride(parent.id, '#ff0000')
+    $projects.set([makeProject('p_app', ['/www/app'], '#4a9eff')])
+    $sessions.set([a])
+    setSessionColorOverride(a.id, '#ff0000')
 
-    expect($sessionColorById.get()[parent.id]).toBe('#ff0000')
-    expect($sessionColorById.get()[child.id]).toBe('#ff0000')
+    expect($sessionColorById.get()[a.id]).toBe('#ff0000')
+  })
+
+  it('clearing an override falls back to the project color', () => {
+    const a = makeSession('/www/app', { git_repo_root: '/www/app' })
+
+    $projects.set([makeProject('p_app', ['/www/app'], '#4a9eff')])
+    $sessions.set([a])
+
+    setSessionColorOverride(a.id, '#ff0000')
+    expect($sessionColorById.get()[a.id]).toBe('#ff0000')
+
+    setSessionColorOverride(a.id, null)
+    expect($sessionColorById.get()[a.id]).toBe('#4a9eff')
   })
 
   it('keys on the durable lineage id so a color survives compression', () => {
@@ -106,11 +126,12 @@ describe('$sessionColorOverrides', () => {
 
 describe('sessionColorFor', () => {
   it('reads a single session through the same shared map', () => {
-    const a = makeSession('/www/app')
+    const a = makeSession('/www/app', { git_repo_root: '/www/app' })
 
+    $projects.set([makeProject('p_app', ['/www/app'], '#5865f2')])
     $sessions.set([a])
 
-    expect(sessionColorFor(a)).toBe($sessionColorById.get()[a.id])
+    expect(sessionColorFor(a)).toBe('#5865f2')
   })
 
   it('returns undefined for a null/absent session', () => {

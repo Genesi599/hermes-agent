@@ -26,8 +26,8 @@ import { RemoteDisplayBanner } from '@/components/remote-display-banner'
 import { emitGatewayEvent } from '@/contrib/events'
 import { getSessionMessages, triggerCronJob } from '@/hermes'
 import { type ChatMessage, chatMessageText, preserveLocalAssistantErrors, toChatMessages } from '@/lib/chat-messages'
-import { createClientSessionState } from '@/lib/chat-runtime'
 import { sessionMessagesSignature } from '@/lib/session-signatures'
+import { isMessagingSource } from '@/lib/session-source'
 import { latestSessionTodos } from '@/lib/todos'
 import { activateWakeIndicator } from '@/lib/wake-indicator'
 import { playWakeSound } from '@/lib/wake-sound'
@@ -53,6 +53,7 @@ import {
   $freshDraftReady,
   $gatewayState,
   $messages,
+  $messagingSessions,
   $resumeExhaustedSessionId,
   $resumeFailedSessionId,
   $selectedStoredSessionId,
@@ -108,7 +109,6 @@ import { useSessionListActions } from '../session/hooks/use-session-list-actions
 import { useSessionStateCache } from '../session/hooks/use-session-state-cache'
 import { startWorkspaceSession } from '../session/workspace-session-target'
 import { useOverlayRouting } from '../shell/hooks/use-overlay-routing'
-import { useTaskbarUnreadBadge } from '../shell/hooks/use-taskbar-unread-badge'
 import { useWindowControlsOverlayWidth } from '../shell/hooks/use-window-controls-overlay-width'
 import { titlebarControlsPosition } from '../shell/titlebar'
 import { TitlebarControls } from '../shell/titlebar-controls'
@@ -144,8 +144,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
   const location = useLocation()
   const navigate = useNavigate()
-
-  useTaskbarUnreadBadge()
 
   const busyRef = useRef(false)
   const creatingSessionRef = useRef(false)
@@ -358,10 +356,10 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     [activeSessionIdRef, selectedStoredSessionIdRef, updateSessionState]
   )
 
-  // External Desktop-compatible clients can write the selected stored session
-  // without this renderer receiving a websocket event. Signature-gate the
-  // durable-history refresh and never replace a local active stream.
-  const refreshActiveStoredTranscript = useCallback(async () => {
+  // Refresh the open messaging transcript (inbound platform turns arrive via
+  // the background gateway, not the desktop websocket). Signature-gated so a
+  // no-change poll doesn't churn the thread.
+  const refreshActiveMessagingTranscript = useCallback(async () => {
     const storedSessionId = selectedStoredSessionIdRef.current
     const runtimeSessionId = activeSessionIdRef.current
 
@@ -369,9 +367,9 @@ export function ContribWiring({ children }: { children: ReactNode }) {
       return
     }
 
-    const stored = $sessions.get().find(s => sessionMatchesStoredId(s, storedSessionId))
+    const stored = $messagingSessions.get().find(s => sessionMatchesStoredId(s, storedSessionId))
 
-    if (!stored) {
+    if (!stored || !isMessagingSource(stored.source)) {
       return
     }
 
@@ -380,11 +378,11 @@ export function ContribWiring({ children }: { children: ReactNode }) {
       const signatureKey = `${stored.profile ?? 'default'}:${storedSessionId}`
       const sig = sessionMessagesSignature(latest.messages)
 
-      if (transcriptSignatureRef.current.get(signatureKey) === sig) {
+      if (messagingTranscriptSignatureRef.current.get(signatureKey) === sig) {
         return
       }
 
-      transcriptSignatureRef.current.set(signatureKey, sig)
+      messagingTranscriptSignatureRef.current.set(signatureKey, sig)
       const messages = toChatMessages(latest.messages)
 
       updateSessionState(
@@ -439,8 +437,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     branchCurrentSession,
     branchStoredSession,
     createBackendSessionForSend,
-    mergeAllChildrenIntoParent,
-    mergeBranchIntoParent,
     openNewSessionTile,
     removeSession,
     resumeSession,
@@ -758,11 +754,11 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   // cron / messaging / transcript visibility polls + fresh-draft reseed).
   useBackgroundSync({
     activeGatewayProfile,
-    hasActiveStoredSession,
+    activeIsMessaging,
     activeSessionId,
     freshDraftReady,
     gatewayState,
-    refreshActiveStoredTranscript,
+    refreshActiveMessagingTranscript,
     refreshCronJobs,
     refreshCurrentModel,
     refreshHermesConfig,
@@ -857,8 +853,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     onAttachImageBlob: composer.attachImageBlob,
     onBranchInNewChat: messageId => void branchInNewChat(messageId),
     onBranchSession: sessionId => void branchStoredSession(sessionId),
-    onMergeChildrenSession: sessionId => void mergeAllChildrenIntoParent(sessionId),
-    onMergeSession: sessionId => void mergeBranchIntoParent(sessionId),
     onCancel: cancelRun,
     onDeleteSelectedSession: () => {
       const id = $selectedStoredSessionId.get()

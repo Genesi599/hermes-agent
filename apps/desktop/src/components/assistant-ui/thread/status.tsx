@@ -102,16 +102,6 @@ function useStatusHint(compacting: boolean, drafting: DraftingTool | null): stri
   return revealed && name ? toolPresentVerb(name) : ''
 }
 
-const ReviewActivityIndicator: FC<{ activity: ReviewActivity; elapsed: number }> = ({ activity, elapsed }) => (
-  <>
-    <ReviewActivityPulse className="text-teal-500/90" />
-    <span className="min-w-0 truncate font-medium text-teal-600/80 dark:text-teal-300/75">
-      {reviewActivityLabel(activity)}
-    </span>
-    <ActivityTimerText seconds={elapsed} />
-  </>
-)
-
 export const CenteredThreadSpinner: FC = () => {
   const { t } = useI18n()
 
@@ -247,14 +237,6 @@ export const StreamStallIndicator: FC = () => {
 
   if (!active) {
     return null
-  }
-
-  if (reviewActivity) {
-    return (
-      <StatusRow className="mt-1.5" data-slot="aui_review-stall" label={reviewActivityLabel(reviewActivity)}>
-        <ReviewActivityIndicator activity={reviewActivity} elapsed={elapsed} />
-      </StatusRow>
-    )
   }
 
   return (

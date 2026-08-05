@@ -16,7 +16,6 @@ import { pathLeaf } from '@/lib/display-path'
 import { triggerHaptic } from '@/lib/haptics'
 import { Archive, ArchiveOff, FolderOpen, Loader2, Trash2 } from '@/lib/icons'
 import { notify, notifyError } from '@/store/notifications'
-import { ensureGatewayProfile } from '@/store/profile'
 import { untombstoneSessions } from '@/store/projects'
 import { applyConfiguredDefaultProjectDir, ensureDefaultWorkspaceCwd, setSessions } from '@/store/session'
 import type { HermesConfigRecord, SessionInfo } from '@/types/hermes'
@@ -30,7 +29,6 @@ const ARCHIVED_FETCH_LIMIT = 200
 
 export function SessionsSettings() {
   const { t } = useI18n()
-  const { requestGateway } = useGatewayRequest()
   const s = t.settings.sessions
   const [sessions, setLocalSessions] = useState<SessionInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -84,19 +82,7 @@ export function SessionsSettings() {
       setBusyId(session.id)
 
       try {
-        await ensureGatewayProfile(session.profile)
-        const resumed = await requestGateway<SessionResumeResponse>('session.resume', {
-          session_id: session.id,
-          source: 'desktop'
-        })
-        await requestGateway(
-          'session.review_delete',
-          {
-            runtime_session_id: resumed.session_id,
-            session_id: session.id
-          },
-          PROMPT_SUBMIT_REQUEST_TIMEOUT_MS
-        )
+        await deleteSession(session.id, session.profile)
         setLocalSessions(prev => prev.filter(s => s.id !== session.id))
         triggerHaptic('warning')
       } catch (err) {
@@ -105,7 +91,7 @@ export function SessionsSettings() {
         setBusyId(null)
       }
     },
-    [requestGateway, s]
+    [s]
   )
 
   useDeepLinkHighlight({
