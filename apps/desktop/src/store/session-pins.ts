@@ -129,6 +129,20 @@ export function expandPinnedSessionFamilies(
   return expanded
 }
 
+/** Return every live member of the branch families containing the requested sessions. */
+export function expandSessionFamilyMemberIds(
+  sessions: readonly SessionInfo[],
+  sessionIds: readonly string[]
+): Set<string> {
+  const familyIds = new Set<string>()
+
+  for (const sessionId of sessionIds) {
+    for (const familyId of sessionFamilyPinIds(sessions, sessionId)) familyIds.add(familyId)
+  }
+
+  return new Set(sessions.filter(session => familyIds.has(sessionPinId(session))).map(session => session.id))
+}
+
 export function isSessionFamilyPinned(
   sessionId: string,
   sessions: readonly SessionInfo[] = $sessions.get(),
