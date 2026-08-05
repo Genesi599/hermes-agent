@@ -247,6 +247,11 @@
       "source_commit": "bbb8aa509c",
       "patch_id": "113118bf915287822fe7e4bdc0f60ec77762c524",
       "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "cabb4b5929",
+      "patch_id": "4b79bf740fef3e68680e87720dec3ab6b7010103",
+      "feature": "runtime-status-and-sidebar"
     }
   ],
   "features": [
@@ -307,7 +312,7 @@
     {
       "id": "runtime-status",
       "label": "runtime recovery and status reconciliation",
-      "commits": ["a2289fa57e", "c9e338e3e2", "59d9b2fd30", "5227f6bc27", "7003eae129", "c645100d63", "354b9476d0"],
+      "commits": ["a2289fa57e", "c9e338e3e2", "59d9b2fd30", "5227f6bc27", "7003eae129", "c645100d63", "354b9476d0", "cabb4b5929"],
       "source_paths": ["tui_gateway/server.py", "hermes_state.py"],
       "test_paths": ["tests/hermes_state/test_session_live_status.py"]
     },
@@ -351,7 +356,8 @@
         "eb8fb34dc9",
         "c1b3e5eea1",
         "eb20648368",
-        "87be48ec19"
+        "87be48ec19",
+        "cabb4b5929"
       ],
       "source_paths": [
         "apps/desktop/src/app/chat/sidebar/index.tsx",
