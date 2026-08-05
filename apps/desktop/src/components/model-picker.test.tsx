@@ -7,6 +7,7 @@ import { I18nProvider } from '@/i18n'
 import { ModelPickerDialog } from './model-picker'
 
 vi.mock('@/lib/model-options', () => ({
+  modelOptionsQueryKey: (_profile: string, sessionId?: string | null) => ['model-options', sessionId || 'global'],
   requestModelOptions: vi.fn().mockResolvedValue({
     providers: [{ slug: 'new-provider', name: 'New provider', models: ['new/model'] }]
   })

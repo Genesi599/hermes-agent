@@ -334,6 +334,51 @@ class TestSessionLifecycle:
         assert "browser_model_lock" not in model_config
         assert model_config["_branched_from"] == "parent-session"
 
+    def test_update_sessions_model_runtime_preserves_metadata_atomically(self, db):
+        db.create_session(
+            session_id="branch",
+            source="desktop",
+            model="old-model",
+            model_config={
+                "model": "old-model",
+                "provider": "old-provider",
+                "_branched_from": "parent",
+                "reasoning_config": {"effort": "high"},
+                "api_key": "must-not-survive",
+            },
+            system_prompt="Model: old-model",
+        )
+        db.create_session(
+            session_id="plain",
+            source="desktop",
+            model="old-model",
+            model_config={"service_tier": "priority", "base_url": "https://old.example"},
+        )
+
+        updated = db.update_sessions_model_runtime(
+            ["branch", "plain", "branch"],
+            model="new-model",
+            provider="custom:new-provider",
+            base_url="https://new.example/v1",
+            api_mode="chat_completions",
+        )
+
+        assert updated == 2
+        branch = db.get_session("branch")
+        branch_config = json.loads(branch["model_config"])
+        assert branch["model"] == "new-model"
+        assert branch["system_prompt_hash"] is None
+        assert branch_config["_branched_from"] == "parent"
+        assert branch_config["reasoning_config"] == {"effort": "high"}
+        assert branch_config["provider"] == "custom:new-provider"
+        assert branch_config["base_url"] == "https://new.example/v1"
+        assert branch_config["api_mode"] == "chat_completions"
+        assert "api_key" not in branch_config
+
+        plain_config = json.loads(db.get_session("plain")["model_config"])
+        assert plain_config["service_tier"] == "priority"
+        assert plain_config["model"] == "new-model"
+
 
 
 

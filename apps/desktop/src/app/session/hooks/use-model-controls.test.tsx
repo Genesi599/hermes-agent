@@ -386,10 +386,9 @@ describe('useModelControls', () => {
     )
 
     let controls!: Controls
+    $activeSessionId.set('session-1')
 
-    render(
-      <Harness activeSessionId="session-1" onReady={value => (controls = value)} requestGateway={requestGateway} />
-    )
+    render(<Harness onReady={value => (controls = value)} requestGateway={requestGateway} />)
 
     await expect(
       controls.selectModel({ model: 'next/model', provider: 'next-provider', scope: 'all' })
