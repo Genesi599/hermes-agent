@@ -264,7 +264,7 @@ export function SidebarSessionsSection({
       const childCount = childCountByParent.get(session.id) ?? 0
       const rowProps = {
         branchStem,
-        isPinned: pinned,
+        isPinned: isSessionPinned?.(session) ?? pinned,
         isSelected: session.id === activeSessionId,
         onArchive: () => onArchiveSession(session.id),
         onBranch: onBranchSession ? () => onBranchSession(session.id, session.profile) : undefined,

@@ -10,6 +10,7 @@ import {
   isSessionFamilyPinned,
   pinSessionFamily,
   sessionFamilyPinIds,
+  splitActiveSessionFamilies,
   unpinSessionFamily
 } from './session-pins'
 
@@ -87,5 +88,19 @@ describe('session Branch family pins', () => {
 
     expect($pinnedSessionIds.get()).toEqual(['unrelated'])
     expect(isSessionFamilyPinned('parent')).toBe(false)
+  })
+
+  it('moves a pinned active family into the active bucket until it is read', () => {
+    const unrelated = session('unrelated')
+    const sessions = [...family, unrelated]
+
+    const active = splitActiveSessionFamilies(sessions, [family[0], unrelated], ['child-a'])
+
+    expect(active.activeSessions.map(item => item.id)).toEqual(['parent', 'child-a', 'grandchild', 'child-b'])
+    expect(active.inactivePinnedSessions.map(item => item.id)).toEqual(['unrelated'])
+
+    const settled = splitActiveSessionFamilies(sessions, [family[0], unrelated], [])
+    expect(settled.activeSessions).toEqual([])
+    expect(settled.inactivePinnedSessions.map(item => item.id)).toEqual(['parent', 'unrelated'])
   })
 })

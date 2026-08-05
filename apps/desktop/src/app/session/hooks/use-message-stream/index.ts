@@ -194,6 +194,10 @@ export function useMessageStream({
   const nativeSubagentSessionsRef = useRef<Set<string>>(new Set())
   // Turns that auto-compacted: skip post-turn hydrate so live scrollback survives.
   const compactedTurnRef = useRef<Set<string>>(new Set())
+  // A terminal message.complete already settled these runtime sessions. Ignore
+  // a late running=true heartbeat from the completed turn until the next
+  // message.start explicitly opens a new turn.
+  const completedTurnRef = useRef<Set<string>>(new Set())
   // Last session we applied a session.info cwd for — lets us tell an agent
   // relocating the SAME session (follow it) from a session switch (don't yank).
   const lastCwdInfoSessionRef = useRef<null | string>(null)
@@ -765,6 +769,7 @@ export function useMessageStream({
     appendReasoningDelta,
     activeSessionIdRef,
     compactedTurnRef,
+    completedTurnRef,
     lastCwdInfoSessionRef,
     nativeSubagentSessionsRef,
     completeAssistantMessage,

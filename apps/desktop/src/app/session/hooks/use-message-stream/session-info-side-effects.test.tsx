@@ -22,6 +22,7 @@ let handleEvent: ((event: RpcEvent) => void) | null = null
 let refreshHermesConfig: ReturnType<typeof vi.fn<() => Promise<void>>>
 let refreshSessions: ReturnType<typeof vi.fn<() => Promise<void>>>
 let queryClient: QueryClient
+let sessionStates: Map<string, ClientSessionState>
 
 function Harness() {
   const activeSessionIdRef = useRef<string | null>(ACTIVE_SID)
@@ -39,6 +40,7 @@ function Harness() {
       const current = sessionStateByRuntimeIdRef.current.get(sessionId) ?? createClientSessionState()
       const next = updater(current)
       sessionStateByRuntimeIdRef.current.set(sessionId, next)
+      sessionStates.set(sessionId, next)
 
       return next
     }
@@ -64,6 +66,7 @@ beforeEach(() => {
   refreshHermesConfig = vi.fn<() => Promise<void>>(async () => undefined)
   refreshSessions = vi.fn<() => Promise<void>>(async () => undefined)
   queryClient = new QueryClient()
+  sessionStates = new Map()
   setCurrentModel('')
   setCurrentProvider('')
   $unreadFinishedSessionIds.set([])
@@ -156,6 +159,19 @@ describe('message.complete sidebar refresh coalescing', () => {
     })
 
     expect(refreshSessions).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not let a late running heartbeat re-open a completed turn', async () => {
+    await mountStream()
+
+    act(() => handleEvent!({ payload: {}, session_id: ACTIVE_SID, type: 'message.start' }))
+    act(() => handleEvent!({ payload: { text: 'done' }, session_id: ACTIVE_SID, type: 'message.complete' }))
+    sessionInfo(ACTIVE_SID, { running: true })
+
+    expect(sessionStates.get(ACTIVE_SID)?.busy).toBe(false)
+
+    act(() => handleEvent!({ payload: {}, session_id: ACTIVE_SID, type: 'message.start' }))
+    expect(sessionStates.get(ACTIVE_SID)?.busy).toBe(true)
   })
 })
 

@@ -123,7 +123,6 @@ import {
 import { $sessionDotStateById, sessionStatusBucket } from '@/store/session-dot-state'
 import {
   expandPinnedSessionFamilies,
-  expandSessionFamilyMemberIds,
   pinSessionFamily,
   toggleSessionFamilyPin,
   unpinSessionFamily
@@ -604,15 +603,17 @@ export function ChatSidebar({
     [isPinnedSession, filtersNarrow, sessionMatchesFilters]
   )
 
-  const runningFamilySessionIds = useMemo(
-    () => expandSessionFamilyMemberIds(visibleSessions, [...workingSessionIds, ...unreadFinishedSessionIds]),
-    [unreadFinishedSessionIds, visibleSessions, workingSessionIds]
+  const runningBuckets = useMemo(
+    () =>
+      splitActiveSessionFamilies(sortedSessions, resolvedPinnedSessions, [
+        ...workingSessionIds,
+        ...unreadFinishedSessionIds
+      ]),
+    [resolvedPinnedSessions, sortedSessions, unreadFinishedSessionIds, workingSessionIds]
   )
-
-  const runningSessions = useMemo(
-    () => sortedSessions.filter(session => runningFamilySessionIds.has(session.id) && !isPinnedSession(session)),
-    [isPinnedSession, runningFamilySessionIds, sortedSessions]
-  )
+  const runningFamilySessionIds = runningBuckets.activeFamilyIds
+  const runningSessions = runningBuckets.activeSessions
+  const pinnedSessions = runningBuckets.inactivePinnedSessions
 
   // Full-text search across *all* sessions (not just the loaded page) so 699
   // sessions stay findable. Debounced; loaded sessions are matched instantly
@@ -1614,6 +1615,7 @@ export function ChatSidebar({
                   activeSessionId={activeSidebarSessionId}
                   contentClassName="flex max-h-[50vh] flex-col gap-px rounded-lg pb-2 pt-1"
                   emptyState={null}
+                  isSessionPinned={isPinnedSession}
                   label="运行中"
                   onArchiveSession={onArchiveSession}
                   onBranchSession={onBranchSession}
@@ -1621,7 +1623,7 @@ export function ChatSidebar({
                   onMergeSession={onMergeSession}
                   onResumeSession={onResumeSession}
                   onToggle={() => undefined}
-                  onTogglePin={pinSessionFamily}
+                  onTogglePin={toggleSessionFamilyPin}
                   open
                   pinned={false}
                   rootClassName="shrink-0 p-0 pb-1"

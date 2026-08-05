@@ -39,8 +39,9 @@ const ACTIVE_SESSION_POLL_INTERVAL_MS = 2_000
 const LIVE_SESSION_STATUS_POLL_INTERVAL_MS = 1_500
 // With change events the snapshot re-pulls on every sessions.changed tick, so
 // the interval only covers the degraded-socket edge the stream can't replay
-// (see rehydrateLiveSessionStatuses) — 30s is plenty for that.
-const LIVE_SESSION_STATUS_BACKSTOP_INTERVAL_MS = 30_000
+// (see rehydrateLiveSessionStatuses). Keep this close to the live cadence so a
+// missed terminal edge cannot leave a completed row spinning noticeably.
+const LIVE_SESSION_STATUS_BACKSTOP_INTERVAL_MS = 2_000
 // Coalesce tick-driven sidebar list refreshes: sessions.changed fires (floored
 // to 2s server-side) on every state.db write during a streaming turn, and the
 // full list refresh is heavier than the active_list snapshot. Trailing-edge

@@ -143,6 +143,24 @@ export function expandSessionFamilyMemberIds(
   return new Set(sessions.filter(session => familyIds.has(sessionPinId(session))).map(session => session.id))
 }
 
+export function splitActiveSessionFamilies(
+  sessions: readonly SessionInfo[],
+  pinnedSessions: readonly SessionInfo[],
+  activeSessionIds: readonly string[]
+): {
+  activeFamilyIds: Set<string>
+  activeSessions: SessionInfo[]
+  inactivePinnedSessions: SessionInfo[]
+} {
+  const activeFamilyIds = expandSessionFamilyMemberIds(sessions, activeSessionIds)
+
+  return {
+    activeFamilyIds,
+    activeSessions: sessions.filter(session => activeFamilyIds.has(session.id)),
+    inactivePinnedSessions: pinnedSessions.filter(session => !activeFamilyIds.has(session.id))
+  }
+}
+
 export function isSessionFamilyPinned(
   sessionId: string,
   sessions: readonly SessionInfo[] = $sessions.get(),
