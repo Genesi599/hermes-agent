@@ -47,7 +47,10 @@ function Get-PatchId([string]$Commit) {
 }
 
 function Get-RangePatches([string]$Base, [string]$Head) {
-    $commits = @(Invoke-Git @('rev-list', '--reverse', '--no-merges', "$Base..$Head"))
+    # Follow the deployed tree's first-parent line. Reconciliation merges keep
+    # the legacy custom branch as a second parent for history, but those old
+    # commits must not be reclassified as new patches in the ported stack.
+    $commits = @(Invoke-Git @('rev-list', '--reverse', '--no-merges', '--first-parent', "$Base..$Head"))
     $guardPaths = @($manifest.guard_paths | ForEach-Object { $_.ToString().Replace('\\', '/') })
     $entries = @()
     foreach ($commit in $commits) {
