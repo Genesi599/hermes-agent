@@ -68,4 +68,15 @@ describe('status line', () => {
 
     expect(container.querySelector('[role="status"]')?.hasAttribute('data-conversation-scaffold')).toBe(true)
   })
+
+  it('keeps a visible thinking label and continuous motion cue before the first token', () => {
+    $activeSessionId.set('session-a')
+    $turnStartedAt.set(Date.now())
+    const { container } = renderIndicator()
+
+    expect(screen.getByText('Thinking')).toBeTruthy()
+    expect(
+      container.querySelector('[data-slot="aui_response-loading"] [class~="motion-safe:animate-pulse"]')
+    ).toBeTruthy()
+  })
 })
