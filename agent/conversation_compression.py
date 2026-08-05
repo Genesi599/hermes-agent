@@ -245,6 +245,16 @@ def _cached_prompt_reflects_builtin_memory(agent: Any, cached_prompt: str) -> bo
     return True
 
 
+def _cached_prompt_reflects_shared_core_memory(agent: Any, cached_prompt: str) -> bool:
+    """Whether the cached prompt carries the freshly reloaded shared bank."""
+    from agent.shared_core_memory import SHARED_CORE_MEMORY_HEADER
+
+    block = getattr(agent, "_shared_core_memory_prompt", "") or ""
+    if block:
+        return block in cached_prompt
+    return SHARED_CORE_MEMORY_HEADER not in cached_prompt
+
+
 _COMPRESSOR_ATTEMPT_STATE_FIELDS = (
     "_previous_summary",
     "_summary_has_user_turn",

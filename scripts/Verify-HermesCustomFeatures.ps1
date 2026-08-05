@@ -55,6 +55,11 @@ function Get-RangePatches([string]$Base, [string]$Head) {
         if (-not $commit) { continue }
         $changedPaths = @(Invoke-Git @('diff-tree', '--no-commit-id', '--name-only', '-r', $commit) |
             ForEach-Object { $_.ToString().Replace('\\', '/') })
+        # Official histories may contain empty retrigger commits. They have no
+        # patch-id and must not invalidate the custom-feature audit.
+        if ($changedPaths.Count -eq 0) {
+            continue
+        }
         if (
             $changedPaths.Count -gt 0 -and
             @($changedPaths | Where-Object { $_ -notin $guardPaths }).Count -eq 0
