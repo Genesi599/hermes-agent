@@ -6,8 +6,8 @@ import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { triggerHaptic } from '@/lib/haptics'
 import {
   $composerPopoutZone,
-  COMPOSER_POPOUT_ENABLED,
   clampPopoutPosition,
+  COMPOSER_POPOUT_ENABLED,
   getComposerPopoutZone,
   popoutBoundsElement,
   type PopoutPosition,

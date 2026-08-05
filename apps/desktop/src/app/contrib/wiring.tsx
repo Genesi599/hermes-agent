@@ -267,13 +267,16 @@ export function ContribWiring({ children }: { children: ReactNode }) {
 
     for (const session of storedSessions) {
       const nextStatus = session.status
-      if (nextStatus !== 'idle' && nextStatus !== 'working') continue
+
+      if (nextStatus !== 'idle' && nextStatus !== 'working') {continue}
 
       const key = `${session.profile ?? 'default'}\0${session.id}`
       seen.add(key)
+
       const storedSessionId = [session.id, session._lineage_root_id].find(
         id => id && runtimeIdByStoredSessionIdRef.current.has(id)
       ) ?? session.id
+
       const localRuntimeId = runtimeIdByStoredSessionIdRef.current.get(storedSessionId)
       const syntheticRuntimeId = `durable:${key}`
       const ownerRuntimeId = localRuntimeId ?? syntheticRuntimeId
@@ -281,7 +284,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
       const previousStatus = durableStatusRef.current.get(key)
       const ownerChanged = previousOwner !== ownerRuntimeId
 
-      if (previousOwner && ownerChanged) dropSessionState(previousOwner)
+      if (previousOwner && ownerChanged) {dropSessionState(previousOwner)}
       durableStatusRef.current.set(key, nextStatus)
 
       if (nextStatus === 'working' && (previousStatus !== 'working' || ownerChanged)) {
@@ -304,6 +307,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
             turnStartedAt: current.turnStartedAt ?? startedAt
           })
         }
+
         durableOwnerRef.current.set(key, ownerRuntimeId)
       } else if (nextStatus === 'idle' && previousStatus === 'working') {
         if (localRuntimeId) {
@@ -315,6 +319,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
         } else {
           dropSessionState(syntheticRuntimeId)
         }
+
         durableOwnerRef.current.delete(key)
       }
     }

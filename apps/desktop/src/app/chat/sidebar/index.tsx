@@ -112,10 +112,10 @@ import {
   $messagingPlatformTotals,
   $messagingSessions,
   $messagingTruncated,
+  $selectedStoredSessionId,
   $sessionProfilesTruncated,
   $sessions,
   $sessionsLoading,
-  $selectedStoredSessionId,
   $unreadFinishedSessionIds,
   sessionPinId,
   setCurrentCwd
@@ -129,7 +129,7 @@ import {
   unpinSessionFamily
 } from '@/store/session-pins' 
 import { $focusedStoredSessionId, $workingSessionIds, type SplitDir } from '@/store/session-states'
-import { $archivedSessions, loadArchivedSessions } from '@/store/sidebar-archive'
+import { $archivedSessions, loadArchivedSessions } from '@/store/sidebar-archive' 
 import {
   expandPinnedSessionFamilies,
   expandSessionFamilyMemberIds,
@@ -148,8 +148,8 @@ import {
 } from '../../routes'
 import type { SidebarNavItem } from '../../types'
 
-import { SidebarCronJobsSection } from './cron-jobs-section'
 import { ConversationBranchDialog } from './conversation-branch-dialog'
+import { SidebarCronJobsSection } from './cron-jobs-section'
 import { SidebarFilterMenu } from './filter-menu' 
 import { SidebarLoadMoreRow } from './load-more-row'
 import { orderByIds, reconcileOrderIds, resolveManualSessionOrderIds, sameIds } from './order'
@@ -590,6 +590,7 @@ export function ChatSidebar({
     () => expandSessionFamilyMemberIds(visibleSessions, [...workingSessionIds, ...unreadFinishedSessionIds]),
     [unreadFinishedSessionIds, visibleSessions, workingSessionIds]
   )
+
   const runningSessions = useMemo(
     () => sortedSessions.filter(session => runningFamilySessionIds.has(session.id) && !isPinnedSession(session)),
     [isPinnedSession, runningFamilySessionIds, sortedSessions]

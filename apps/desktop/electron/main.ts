@@ -183,7 +183,6 @@ import {
   SESSION_WINDOW_MIN_WIDTH
 } from './session-windows'
 import { ensureSpawnHelperExecutable } from './spawn-helper-perms'
-import { setWindowsTaskbarBadge } from './taskbar-badge'
 import { createBootstrapCoordinator, sshConfigFingerprint } from './ssh-bootstrap-coordinator'
 import { collectSshConfigHosts, parseSshGOutput } from './ssh-config'
 import {
@@ -194,6 +193,7 @@ import {
   SshConnection
 } from './ssh-connection'
 import { createStreamThrottle } from './stream-throttle'
+import { setWindowsTaskbarBadge } from './taskbar-badge'
 import { nativeOverlayWidth as computeNativeOverlayWidth, macTitleBarOverlayHeight } from './titlebar-overlay-width'
 import { resolveBehindCount, shouldCountCommits } from './update-count'
 import { waitForUpdateClearance } from './update-gate'
