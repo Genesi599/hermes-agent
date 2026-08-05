@@ -53,31 +53,16 @@ function normalizeMessage(value: null | string | undefined): null | string {
   return next ? next : null
 }
 
-function isRequestTimeout(error: unknown): boolean {
-  return /request timed out/i.test(toErrorMessage(error) ?? '')
-}
-
 async function requestWithFallback<T>(
   requestGateway: RuntimeReadinessRequester,
   method: string,
-  params?: Record<string, unknown>,
-  retryTimeout = false
+  params?: Record<string, unknown>
 ): Promise<{ error: null | string; value: null | T }> {
-  const attempts = retryTimeout ? 2 : 1
-
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      return { error: null, value: await requestGateway<T>(method, params) }
-    } catch (error) {
-      if (attempt + 1 < attempts && isRequestTimeout(error)) {
-        continue
-      }
-
-      return { error: toErrorMessage(error), value: null }
-    }
+  try {
+    return { error: null, value: await requestGateway<T>(method, params) }
+  } catch (error) {
+    return { error: toErrorMessage(error), value: null }
   }
-
-  return { error: null, value: null }
 }
 
 export async function fetchRuntimeReadinessSignals(
@@ -88,7 +73,7 @@ export async function fetchRuntimeReadinessSignals(
 
   const [setup, runtime] = await Promise.all([
     requestWithFallback<SetupStatusSnapshot>(requestGateway, 'setup.status'),
-    requestWithFallback<RuntimeCheckSnapshot>(requestGateway, 'setup.runtime_check', runtimeParams, true)
+    requestWithFallback<RuntimeCheckSnapshot>(requestGateway, 'setup.runtime_check', runtimeParams)
   ])
 
   return {

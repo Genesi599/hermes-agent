@@ -503,10 +503,6 @@ export interface SessionInfo {
   pinned?: boolean
   preview: null | string
   source: null | string
-  /** Cross-client transient turn state, refreshed by the gateway. */
-  status?: 'idle' | 'working'
-  /** Epoch seconds for the last durable cross-client status transition. */
-  live_status_updated_at?: null | number
   started_at: number
   title: null | string
   tool_call_count: number
@@ -632,16 +628,6 @@ export interface SessionResumeResponse {
   status?: string
 }
 
-export type ExperienceReviewPhase = 'counting' | 'queued' | 'reviewing'
-
-export interface ExperienceReviewInfo {
-  batch: number
-  pending: boolean
-  phase: ExperienceReviewPhase
-  threshold: number
-  user_count: number
-}
-
 export interface SessionRuntimeInfo {
   approval_mode?: 'manual' | 'off' | 'smart'
   branch?: string
@@ -649,7 +635,6 @@ export interface SessionRuntimeInfo {
   credential_warning?: string
   cwd?: string
   desktop_contract?: number
-  experience_review?: ExperienceReviewInfo
   fast?: boolean
   install_warning?: string
   model?: string

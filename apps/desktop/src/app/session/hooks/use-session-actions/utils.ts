@@ -1,15 +1,7 @@
 import { textWithoutReferenceLines } from '@/components/assistant-ui/reference-kinds'
 import { getSession } from '@/hermes'
-import {
-  assistantTextPart,
-  type ChatMessage,
-  chatMessageText,
-  type GatewayEventPayload,
-  reasoningPart,
-  textPart,
-  upsertToolPart
-} from '@/lib/chat-messages'
-import { DEFAULT_EXPERIENCE_REVIEW, normalizeExperienceReview, normalizePersonalityValue } from '@/lib/chat-runtime'
+import { assistantTextPart, type ChatMessage, chatMessageText, textPart } from '@/lib/chat-messages'
+import { normalizePersonalityValue } from '@/lib/chat-runtime'
 import { embeddedImageUrls, textWithoutEmbeddedImages } from '@/lib/embedded-images'
 import { reconcileApprovalModeForProfile } from '@/store/approval-mode'
 import { requestDesktopOnboardingForCredentialWarning } from '@/store/onboarding'
@@ -29,7 +21,6 @@ import {
   setCurrentReasoningEffort,
   setCurrentServiceTier,
   setCurrentUsage,
-  setExperienceReview,
   setSessions,
   setWorkspaceCwdOwner,
   setYoloActive
@@ -267,52 +258,6 @@ export function chatMessageArraysEquivalent(a: ChatMessage[], b: ChatMessage[]):
   }
 
   return a.length === b.length && a.every((message, index) => chatMessagesEquivalent(message, b[index]))
-}
-
-export interface RestoredInflightView {
-  messages: ChatMessage[]
-  sawAssistantPayload: boolean
-  streamId: null | string
-}
-
-export function restoreInflightView(messages: ChatMessage[], resumed: SessionResumeResponse): RestoredInflightView {
-  if (!resumed.running || !resumed.inflight?.streaming) {
-    return { messages, sawAssistantPayload: false, streamId: null }
-  }
-
-  const pending = [...messages].reverse().find(message => message.role === 'assistant' && message.pending)
-
-  if (pending) {
-    return { messages, sawAssistantPayload: true, streamId: pending.id }
-  }
-
-  const streamId = `assistant-resume-${resumed.session_id}`
-  let parts = resumed.inflight.reasoning?.trim() ? [reasoningPart(resumed.inflight.reasoning)] : []
-
-  for (const event of resumed.inflight.events ?? []) {
-    if (!event.type.startsWith('tool.')) {
-      continue
-    }
-
-    parts = upsertToolPart(
-      parts,
-      event.payload as GatewayEventPayload | undefined,
-      event.type === 'tool.complete' ? 'complete' : 'running'
-    )
-  }
-
-  if (resumed.inflight.assistant) {
-    parts.push(assistantTextPart(resumed.inflight.assistant))
-  } else if (parts.length === 0) {
-    // Keep a non-empty part array so AssistantMessage mounts its stalled-thinking indicator.
-    parts.push(assistantTextPart(''))
-  }
-
-  return {
-    messages: [...messages, { id: streamId, parts, pending: true, role: 'assistant' }],
-    sawAssistantPayload: true,
-    streamId
-  }
 }
 
 export function reconcileResumeMessages(nextMessages: ChatMessage[], previousMessages: ChatMessage[]): ChatMessage[] {
@@ -830,36 +775,6 @@ export const toBranchMessages = (messages: ChatMessage[]): BranchMessage[] =>
     .map(message => ({ content: chatMessageText(message), role: message.role, source: message }))
     .filter(({ content, role }) => content.trim() && (role === 'assistant' || role === 'user'))
 
-/** Return the transcript prefix selected by a message-level branch action. */
-export function branchMessagesThroughPoint(messages: ChatMessage[], messageId?: string): BranchMessage[] {
-  const at = messageId ? messages.findIndex(message => message.id === messageId) : -1
-  const end = at >= 0 ? at + 1 : messages.length
-
-  return toBranchMessages(messages.slice(0, end))
-}
-
-/**
- * Return only completed parent turns for a generic sidebar branch.
- *
- * A working transcript can already contain partial assistant text for its
- * active user request, so cut before that request. Otherwise the last
- * assistant message is the durable boundary; this also drops an unanswered
- * trailing user request when the cached working status is stale.
- */
-export function branchMessagesAtStableBoundary(messages: ChatMessage[], parentWorking: boolean): BranchMessage[] {
-  const branchMessages = toBranchMessages(messages)
-
-  if (parentWorking) {
-    const activeUser = branchMessages.findLastIndex(message => message.role === 'user')
-
-    return activeUser >= 0 ? branchMessages.slice(0, activeUser) : []
-  }
-
-  const lastAssistant = branchMessages.findLastIndex(message => message.role === 'assistant')
-
-  return lastAssistant >= 0 ? branchMessages.slice(0, lastAssistant + 1) : []
-}
-
 export function upsertOptimisticSession(
   created: SessionCreateResponse,
   id: string,
@@ -1015,16 +930,7 @@ export async function resolveSessionProfile(storedSessionId: null | string): Pro
 type SessionRuntimeStatePatch = Partial<
   Pick<
     ClientSessionState,
-    | 'branch'
-    | 'cwd'
-    | 'experienceReview'
-    | 'fast'
-    | 'model'
-    | 'personality'
-    | 'provider'
-    | 'reasoningEffort'
-    | 'serviceTier'
-    | 'yolo'
+    'branch' | 'cwd' | 'fast' | 'model' | 'personality' | 'provider' | 'reasoningEffort' | 'serviceTier' | 'yolo'
   >
 >
 
@@ -1138,10 +1044,6 @@ export function applyRuntimeInfo(
 
   if (typeof info.personality === 'string') {
     sessionState.personality = normalizePersonalityValue(info.personality)
-  }
-
-  if (info.experience_review) {
-    sessionState.experienceReview = normalizeExperienceReview(info.experience_review)
   }
 
   if (typeof info.reasoning_effort === 'string') {

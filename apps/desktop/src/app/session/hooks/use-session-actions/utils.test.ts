@@ -27,7 +27,6 @@ import {
   isSessionGoneError,
   preserveLocalPendingTurnMessages,
   reconcileResumeMessages,
-  restoreInflightView,
   sessionMatchesStoredId,
   sessionShouldHaveTranscript,
   toBranchMessages
@@ -246,41 +245,6 @@ describe('toBranchMessages', () => {
 
     expect(out.map(b => b.source.id)).toEqual(['u', 'a'])
     expect(out[0]).toMatchObject({ content: 'hi', role: 'user' })
-  })
-})
-
-describe('branch boundaries', () => {
-  const transcript = [
-    msg('u1', 'user', 'first question'),
-    msg('a1', 'assistant', 'first answer'),
-    msg('u2', 'user', 'unfinished parent request')
-  ]
-
-  it('copies the full prefix through a selected message', () => {
-    expect(branchMessagesThroughPoint(transcript, 'a1').map(message => message.source.id)).toEqual(['u1', 'a1'])
-    expect(branchMessagesThroughPoint(transcript, 'u2').map(message => message.source.id)).toEqual(['u1', 'a1', 'u2'])
-  })
-
-  it('drops a trailing unanswered request even when cached parent status is idle', () => {
-    expect(branchMessagesAtStableBoundary(transcript, true).map(message => message.source.id)).toEqual(['u1', 'a1'])
-    expect(branchMessagesAtStableBoundary(transcript, false).map(message => message.source.id)).toEqual(['u1', 'a1'])
-  })
-
-  it('keeps a completed final turn when the parent is idle', () => {
-    const completed = [...transcript, msg('a2', 'assistant', 'second answer')]
-
-    expect(branchMessagesAtStableBoundary(completed, false).map(message => message.source.id)).toEqual([
-      'u1',
-      'a1',
-      'u2',
-      'a2'
-    ])
-  })
-
-  it('drops the entire active turn including partial assistant text', () => {
-    const streaming = [...transcript, msg('a2-partial', 'assistant', 'partial answer')]
-
-    expect(branchMessagesAtStableBoundary(streaming, true).map(message => message.source.id)).toEqual(['u1', 'a1'])
   })
 })
 
@@ -1323,50 +1287,5 @@ describe('appendLiveSessionProjection', () => {
       id: 'assistant-stream-runtime-1',
       pending: true
     })
-  })
-})
-
-describe('restoreInflightView', () => {
-  it('rebuilds reasoning and the current tool when resuming a running session', () => {
-    const restored = restoreInflightView([msg('u', 'user', 'open it')], {
-      inflight: {
-        assistant: '',
-        events: [
-          {
-            payload: { args: { url: 'http://localhost' }, name: 'browser', tool_id: 'tool-1' },
-            type: 'tool.start'
-          }
-        ],
-        reasoning: 'Checking the page',
-        streaming: true,
-        user: 'open it'
-      },
-      message_count: 1,
-      messages: [],
-      resumed: 'stored-1',
-      running: true,
-      session_id: 'runtime-1'
-    })
-
-    expect(restored.streamId).toBe('assistant-resume-runtime-1')
-    expect(restored.sawAssistantPayload).toBe(true)
-    expect(restored.messages.at(-1)).toMatchObject({ pending: true, role: 'assistant' })
-    expect(restored.messages.at(-1)?.parts.map(part => part.type)).toEqual(['reasoning', 'tool-call'])
-  })
-
-  it('keeps an existing pending assistant instead of duplicating it', () => {
-    const pending = msg('stream-1', 'assistant', '', { pending: true })
-    const messages = [msg('u', 'user', 'open it'), pending]
-    const restored = restoreInflightView(messages, {
-      inflight: { assistant: '', streaming: true, user: 'open it' },
-      message_count: 2,
-      messages: [],
-      resumed: 'stored-1',
-      running: true,
-      session_id: 'runtime-1'
-    })
-
-    expect(restored.messages).toBe(messages)
-    expect(restored.streamId).toBe('stream-1')
   })
 })

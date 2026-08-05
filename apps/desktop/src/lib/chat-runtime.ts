@@ -6,7 +6,7 @@ import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { type ChatMessage, type ChatMessagePart, chatMessageText, textPart } from '@/lib/chat-messages'
 import { normalize } from '@/lib/text'
 import type { ComposerAttachment } from '@/store/composer'
-import type { ExperienceReviewInfo, ModelOptionsResponse, SessionInfo } from '@/types/hermes'
+import type { ModelOptionsResponse, SessionInfo } from '@/types/hermes'
 
 export const SLASH_COMMAND_RE = /^\/[^\s/]*(?:\s|$)/
 export { BUILTIN_PERSONALITIES } from '@/lib/personalities'
@@ -16,29 +16,6 @@ const THINKING_STATUS_PREFIX_RE =
 
 const EMPTY_THINKING_PLACEHOLDER_RE =
   /\b(?:current rewritten thinking|next thinking to process|provide the thinking content|don't see any .*thinking)\b/i
-
-export const DEFAULT_EXPERIENCE_REVIEW: ExperienceReviewInfo = {
-  batch: 0,
-  pending: false,
-  phase: 'counting',
-  threshold: 20,
-  user_count: 0
-}
-
-export function normalizeExperienceReview(value: unknown): ExperienceReviewInfo {
-  if (!value || typeof value !== 'object') {
-    return DEFAULT_EXPERIENCE_REVIEW
-  }
-
-  const raw = value as Partial<ExperienceReviewInfo>
-  const threshold = Math.max(1, Number.isFinite(raw.threshold) ? Math.trunc(raw.threshold!) : 20)
-  const userCount = Math.min(threshold, Math.max(0, Number.isFinite(raw.user_count) ? Math.trunc(raw.user_count!) : 0))
-  const batch = Math.max(0, Number.isFinite(raw.batch) ? Math.trunc(raw.batch!) : 0)
-  const pending = raw.pending === true
-  const phase = raw.phase === 'reviewing' ? 'reviewing' : pending || raw.phase === 'queued' ? 'queued' : 'counting'
-
-  return { batch, pending, phase, threshold, user_count: userCount }
-}
 
 export function createClientSessionState(
   storedSessionId: string | null = null,
@@ -56,8 +33,6 @@ export function createClientSessionState(
     fast: false,
     yolo: false,
     personality: '',
-    experienceReview: DEFAULT_EXPERIENCE_REVIEW,
-    reviewActivity: null,
     busy: false,
     awaitingResponse: false,
     streamId: null,

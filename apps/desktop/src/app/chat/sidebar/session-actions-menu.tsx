@@ -36,6 +36,7 @@ import {
   $selectedStoredSessionId,
   $sessions,
   sessionMatchesStoredId,
+  sessionPinId,
   setSessions
 } from '@/store/session'
 import { $sessionColorOverrides, setSessionColorOverride } from '@/store/session-color'
@@ -96,10 +97,6 @@ interface SessionActions {
   profile?: string
   onPin?: () => void
   onBranch?: () => void
-  mergeChildrenCount?: number
-  onMergeChildren?: () => Promise<void> | void
-  onMergeCompletedChildren?: () => Promise<void> | void
-  onMerge?: () => Promise<void> | void
   onArchive?: () => void
   onDelete?: () => void
   /** Close this surface (a tile tab) — omitted where nothing closes (sidebar
@@ -118,22 +115,21 @@ interface SessionActions {
 
 // The color picker inside the session menu's Appearance submenu. Its own
 // component so only an OPEN submenu subscribes to the stores (not every row's
-// menu). Reads/writes the override keyed by the branch family so a color stays
-// aligned across the parent, children, and compression continuations.
+// menu). Reads/writes the override keyed by the DURABLE id so a color survives
+// compression; clearing falls back to the inherited project color.
 function SessionColorSwatches({ sessionId }: { sessionId: string }) {
   const { t } = useI18n()
   const overrides = useStore($sessionColorOverrides)
-  const sessions = useStore($sessions)
-  const session = sessions.find(s => sessionMatchesStoredId(s, sessionId))
-  const familyId = session ? sessionColorFamilyId(session, sessions) : sessionId
+  const session = useStore($sessions).find(s => sessionMatchesStoredId(s, sessionId))
+  const durableId = session ? sessionPinId(session) : sessionId
 
   return (
     <ColorSwatches
       clearIcon="circle-slash"
       clearLabel={t.sidebar.projects.noColor}
-      onChange={color => setSessionColorOverride(familyId, color)}
+      onChange={color => setSessionColorOverride(durableId, color)}
       swatches={PROFILE_SWATCHES}
-      value={overrides[familyId] ?? null}
+      value={overrides[durableId] ?? null}
     />
   )
 }
@@ -183,10 +179,6 @@ function useSessionActions({
   profile,
   onPin,
   onBranch,
-  mergeChildrenCount = 0,
-  onMergeChildren,
-  onMergeCompletedChildren,
-  onMerge,
   onArchive,
   onDelete,
   onClose,
@@ -199,9 +191,6 @@ function useSessionActions({
   const [renameOpen, setRenameOpen] = useState(false)
   const tiles = useStore($sessionTiles)
   const selectedStoredSessionId = useStore($selectedStoredSessionId)
-  const sessions = useStore($sessions)
-  const branchChildren = sessions.filter(session => session.parent_session_id?.trim() === sessionId)
-  const completedBranchCount = branchChildren.filter(session => session.branch_task_status === 'completed').length
 
   // Already showing as a tab somewhere (a tile, or loaded in main — main IS
   // a tab): offering "Open in new tab" again is noise.
@@ -287,33 +276,7 @@ function useSessionActions({
         triggerHaptic('selection')
         void exportSession(sessionId, { profile, title })
       }
-    }),
-    ...(onMergeChildren
-      ? [
-          spec({
-            disabled: false,
-            icon: 'repo-pull',
-            label: r.mergeChildren(mergeChildrenCount),
-            onSelect: () => {
-              triggerHaptic('warning')
-              void onMergeChildren()
-            }
-          })
-        ]
-      : []),
-    ...(onMerge
-      ? [
-          spec({
-            disabled: false,
-            icon: 'git-merge',
-            label: r.mergeBranch,
-            onSelect: () => {
-              triggerHaptic('warning')
-              void onMerge()
-            }
-          })
-        ]
-      : [])
+    })
   ]
 
   // TAB — verbs that act on the strip (tabs only; a row isn't a tab).

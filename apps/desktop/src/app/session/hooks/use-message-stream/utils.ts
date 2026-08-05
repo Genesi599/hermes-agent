@@ -1,56 +1,12 @@
 import type { GatewayEventPayload } from '@/lib/chat-messages'
-import { normalizeExperienceReview, normalizePersonalityValue } from '@/lib/chat-runtime'
+import { normalizePersonalityValue } from '@/lib/chat-runtime'
 
 import type { ClientSessionState } from '../../../types'
-
-export function reviewActivityForStatusEvent(
-  eventType: string,
-  phase: unknown,
-  current: ClientSessionState['reviewActivity']
-): ClientSessionState['reviewActivity'] {
-  const kind =
-    eventType === 'branch_merge.status'
-      ? 'branch-merge'
-      : eventType === 'delete_review.status'
-        ? 'delete'
-        : 'experience'
-
-  if (phase === 'reviewing') {
-    return kind
-  }
-
-  return current === kind ? null : current
-}
-
-export function reviewActivityForInternalKind(internalKind: unknown): ClientSessionState['reviewActivity'] {
-  if (internalKind === 'experience_review') {
-    return 'experience'
-  }
-
-  if (internalKind === 'branch_merge_review') {
-    return 'branch-merge'
-  }
-
-  if (internalKind === 'delete_review') {
-    return 'delete'
-  }
-
-  return null
-}
 
 type SessionRuntimeStatePatch = Partial<
   Pick<
     ClientSessionState,
-    | 'branch'
-    | 'cwd'
-    | 'experienceReview'
-    | 'fast'
-    | 'model'
-    | 'personality'
-    | 'provider'
-    | 'reasoningEffort'
-    | 'serviceTier'
-    | 'yolo'
+    'branch' | 'cwd' | 'fast' | 'model' | 'personality' | 'provider' | 'reasoningEffort' | 'serviceTier' | 'yolo'
   >
 >
 
@@ -75,10 +31,6 @@ export function sessionInfoStatePatch(payload: GatewayEventPayload | undefined):
 
   if (typeof payload?.personality === 'string') {
     patch.personality = normalizePersonalityValue(payload.personality)
-  }
-
-  if (payload?.experience_review) {
-    patch.experienceReview = normalizeExperienceReview(payload.experience_review)
   }
 
   if (typeof payload?.reasoning_effort === 'string') {
@@ -126,8 +78,7 @@ export const MAX_STREAM_FLUSH_GAP_MS = 250
 const COMPLETION_ERROR_PATTERNS = [
   /^API call failed after \d+ retries:/i,
   /^HTTP\s+\d{3}\b/i,
-  /^(Provider|Gateway)\s+error:/i,
-  /^Codex response remained incomplete after \d+ continuation attempts/i
+  /^(Provider|Gateway)\s+error:/i
 ]
 
 export function completionErrorText(finalText: string): string | null {

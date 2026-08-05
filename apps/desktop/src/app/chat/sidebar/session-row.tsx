@@ -50,10 +50,6 @@ interface SidebarSessionRowProps extends React.ComponentProps<'div'> {
   onArchive: () => void
   onBranch?: () => void
   onDelete: () => void
-  mergeChildrenCount?: number
-  onMergeChildren?: () => Promise<void> | void
-  onMergeCompletedChildren?: () => Promise<void> | void
-  onMerge?: () => Promise<void> | void
   onPin: () => void
   onResume: () => void
   reorderable?: boolean
@@ -89,10 +85,6 @@ function SidebarSessionRowImpl({
   onArchive,
   onBranch,
   onDelete,
-  mergeChildrenCount,
-  onMergeChildren,
-  onMergeCompletedChildren,
-  onMerge,
   onPin,
   onResume,
   reorderable = false,
@@ -199,13 +191,9 @@ function SidebarSessionRowImpl({
 
   return (
     <SessionContextMenu
-      mergeChildrenCount={mergeChildrenCount}
       onArchive={onArchive}
       onBranch={onBranch}
       onDelete={onDelete}
-      onMerge={onMerge}
-      onMergeChildren={onMergeChildren}
-      onMergeCompletedChildren={onMergeCompletedChildren}
       onPin={onPin}
       pinned={isPinned}
       profile={session.profile}
@@ -232,13 +220,9 @@ function SidebarSessionRowImpl({
               </span>
             ))}
             <SessionActionsMenu
-              mergeChildrenCount={mergeChildrenCount}
               onArchive={onArchive}
               onBranch={onBranch}
               onDelete={onDelete}
-              onMerge={onMerge}
-              onMergeChildren={onMergeChildren}
-              onMergeCompletedChildren={onMergeCompletedChildren}
               onPin={onPin}
               pinned={isPinned}
               profile={session.profile}
@@ -353,7 +337,7 @@ function SidebarSessionRowImpl({
               ariaLabel={handleLabel}
               dragging={dragging}
               dragHandleProps={dragHandleProps}
-              leadClassName={needsInput || branchStem ? 'overflow-visible' : undefined}
+              leadClassName={needsInput ? 'overflow-visible' : undefined}
             >
               {lead ?? (
                 <SessionStatusDot
@@ -378,37 +362,10 @@ function SidebarSessionRowImpl({
               />
             </Tip>
           ) : null}
-          <SidebarRowLabel className="flex-1 font-normal" style={{ color: sessionColor }}>
+          <SidebarRowLabel className="flex-1 font-normal group-hover:text-foreground group-data-[working=true]:text-foreground/90">
             {title}
           </SidebarRowLabel>
           {showProfile && <ProfileTag profile={session.profile} />}
-          {isMergeWaiting ? (
-            <span
-              className="flex shrink-0 items-center gap-1 text-[0.625rem] font-medium leading-5 text-amber-400"
-              data-branch-merge-status="waiting_for_parent"
-              title={r.branchMergeWaitingDescription}
-            >
-              <Codicon aria-hidden="true" name="clock" size="0.6875rem" />
-              <span>{r.branchMergeWaiting}</span>
-            </span>
-          ) : null}
-          {branchTaskStatus ? (
-            <Tip label={branchMeta || r.branchTaskStatus(branchTaskStatus)}>
-              <span
-                className={cn(
-                  'flex shrink-0 items-center gap-1 text-[0.625rem] font-medium leading-5 text-(--ui-text-tertiary)',
-                  branchTaskStatus === 'failed' && 'text-destructive',
-                  branchTaskStatus === 'completed' && 'text-emerald-500',
-                  ['queued', 'pending_checkpoint', 'paused', 'interrupted'].includes(branchTaskStatus) &&
-                    'text-amber-400'
-                )}
-                data-branch-task-status={branchTaskStatus}
-              >
-                <span>{r.branchTaskStatus(branchTaskStatus)}</span>
-                {branchElapsed ? <span className="font-normal opacity-70">{branchElapsed}</span> : null}
-              </span>
-            </Tip>
-          ) : null}
         </SidebarRowBody>
       </SidebarRowShell>
     </SessionContextMenu>

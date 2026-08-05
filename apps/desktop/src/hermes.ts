@@ -422,7 +422,6 @@ export async function listSessions(
 export interface SessionSourceFilter {
   source?: string
   excludeSources?: string[]
-  includeNamedEmpty?: boolean
 }
 
 export async function listAllProfileSessions(
@@ -439,13 +438,10 @@ export async function listAllProfileSessions(
     ? `&exclude_sources=${encodeURIComponent(filter.excludeSources.join(','))}`
     : ''
 
-  const includeNamedEmptyParam = filter.includeNamedEmpty ? '&include_named_empty=1' : ''
-
   const result = await window.hermesDesktop.api<PaginatedSessions>({
     path:
       `/api/profiles/sessions?limit=${limit}&offset=0&min_messages=${Math.max(0, minMessages)}` +
-      `&archived=${archived}&order=${order}&profile=${encodeURIComponent(profile)}` +
-      `${sourceParam}${excludeParam}${includeNamedEmptyParam}`,
+      `&archived=${archived}&order=${order}&profile=${encodeURIComponent(profile)}${sourceParam}${excludeParam}`,
     timeoutMs: SESSION_LIST_REQUEST_TIMEOUT_MS
   })
 
@@ -547,8 +543,7 @@ function isEndpointMissingError(err: unknown): boolean {
 async function listSidebarSessionsLegacy(req: SidebarSessionsRequest): Promise<SidebarSessionsResponse> {
   const [recents, cron, messaging] = await Promise.all([
     listAllProfileSessions(req.recentsLimit, 1, 'exclude', 'recent', req.recentsProfile, {
-      excludeSources: req.recentsExclude,
-      includeNamedEmpty: true
+      excludeSources: req.recentsExclude
     }),
     listAllProfileSessions(req.cronLimit, 1, 'exclude', 'recent', 'all', { source: 'cron' }),
     listAllProfileSessions(req.messagingLimit, 1, 'exclude', 'recent', 'all', {

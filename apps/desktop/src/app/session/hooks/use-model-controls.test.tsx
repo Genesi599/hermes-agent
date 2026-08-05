@@ -9,7 +9,6 @@ import {
   $activeSessionId,
   $currentModel,
   $currentProvider,
-  $pendingModelSelection,
   getCurrentModelSource,
   setCurrentModel,
   setCurrentModelSource,
@@ -20,7 +19,6 @@ import type * as SessionStates from '@/store/session-states'
 import { useModelControls } from './use-model-controls'
 
 const setGlobalModel = vi.fn()
-const notify = vi.fn()
 const notifyError = vi.fn()
 
 function deferred<T>() {
@@ -52,16 +50,13 @@ vi.mock('@/i18n', () => ({
   useI18n: () => ({
     t: {
       desktop: {
-        modelSwitchFailed: 'Model switch failed',
-        modelSwitchAllResult: (switched: number, queued: number, failed: number) =>
-          `${switched}/${queued}/${failed}`
+        modelSwitchFailed: 'Model switch failed'
       }
     }
   })
 }))
 
 vi.mock('@/store/notifications', () => ({
-  notify: (...args: Parameters<typeof notify>) => notify(...args),
   notifyError: (...args: Parameters<typeof notifyError>) => notifyError(...args)
 }))
 
@@ -88,7 +83,6 @@ describe('useModelControls', () => {
   beforeEach(() => {
     $activeGatewayProfile.set('default')
     $activeSessionId.set(null)
-    $pendingModelSelection.set(null)
     setCurrentModel('')
     setCurrentModelSource('')
     setCurrentProvider('')
@@ -99,7 +93,6 @@ describe('useModelControls', () => {
     vi.restoreAllMocks()
     $activeGatewayProfile.set('default')
     $activeSessionId.set(null)
-    $pendingModelSelection.set(null)
     setCurrentModel('')
     setCurrentModelSource('')
     setCurrentProvider('')
@@ -342,65 +335,6 @@ describe('useModelControls', () => {
       key: 'model',
       value: 'BeastMode --provider moa --session'
     })
-  })
-
-  it('keeps the live model visible and marks a running-session selection as next', async () => {
-    setCurrentModel('old/model')
-    setCurrentProvider('old-provider')
-    const requestGateway = vi.fn(async () => ({ queued: true }) as never)
-    let controls!: Controls
-
-    $activeSessionId.set('session-1')
-    render(<Harness onReady={value => (controls = value)} requestGateway={requestGateway} />)
-
-    await expect(controls.selectModel({ model: 'next/model', provider: 'next-provider' })).resolves.toBe(true)
-
-    expect($currentModel.get()).toBe('old/model')
-    expect($currentProvider.get()).toBe('old-provider')
-    expect($pendingModelSelection.get()).toEqual({
-      model: 'next/model',
-      provider: 'next-provider',
-      sessionId: 'session-1'
-    })
-  })
-
-  it('switches all stored conversations and keeps the active running model marked as next', async () => {
-    $activeSessionId.set('session-1')
-    setCurrentModel('old/model')
-    setCurrentProvider('old-provider')
-
-    const requestGateway = vi.fn(async () =>
-      ({
-        total: 3,
-        switched: 2,
-        queued: 1,
-        failed: 0,
-        active_affected: true,
-        active_queued: true,
-        active_failed: false
-      }) as never
-    )
-
-    let controls!: Controls
-
-    render(<Harness onReady={value => (controls = value)} requestGateway={requestGateway} />)
-
-    await expect(
-      controls.selectModel({ model: 'next/model', provider: 'next-provider', scope: 'all' })
-    ).resolves.toBe(true)
-
-    expect(requestGateway).toHaveBeenCalledWith('session.model_all', {
-      value: 'next/model --provider next-provider --session',
-      active_session_id: 'session-1'
-    })
-    expect($currentModel.get()).toBe('old/model')
-    expect($currentProvider.get()).toBe('old-provider')
-    expect($pendingModelSelection.get()).toEqual({
-      model: 'next/model',
-      provider: 'next-provider',
-      sessionId: 'session-1'
-    })
-    expect(notify).toHaveBeenCalledWith({ kind: 'success', message: '2/1/0' })
   })
 
   it('stores a no-session pick as UI state with no gateway or global write', async () => {

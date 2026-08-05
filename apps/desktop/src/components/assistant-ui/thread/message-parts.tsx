@@ -4,7 +4,6 @@ import {
   useAuiState,
   useMessagePartReasoning
 } from '@assistant-ui/react'
-import { useStore } from '@nanostores/react'
 import { type ComponentProps, type FC, type ReactNode, useEffect, useRef, useState } from 'react'
 
 import { ClarifyTool } from '@/components/assistant-ui/clarify-tool'
@@ -20,7 +19,6 @@ import { generatedImageFromResult } from '@/lib/generated-images'
 import { separateGluedReasoningBlocks } from '@/lib/reasoning-blocks'
 import { useEnterAnimation } from '@/lib/use-enter-animation'
 import { cn } from '@/lib/utils'
-import { $reviewActivity } from '@/store/session'
 
 const ImageGenerateTool: FC<ToolCallMessagePartProps> = props => {
   const { args, result } = props

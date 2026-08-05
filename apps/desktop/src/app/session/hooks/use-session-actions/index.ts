@@ -32,7 +32,6 @@ import {
   $newChatWorkspaceTarget,
   $sessions,
   $yoloActive,
-  clearUnreadSessionIds,
   type NewChatWorkspaceTarget,
   resolveComposerSessionKey,
   sessionPinId,
@@ -58,7 +57,6 @@ import {
   setWorkspaceCwdOwner,
   setYoloActive
 } from '@/store/session'
-import { isSessionFamilyPinned, pinSessionFamily } from '@/store/session-pins'
 import {
   $sessionTiles,
   closeSessionTile,
@@ -76,16 +74,11 @@ import { navigateToWorkspacePage, NEW_CHAT_ROUTE, sessionRoute, SETTINGS_ROUTE }
 import type { ClientSessionState, SidebarNavItem } from '../../../types'
 import { sessionContextDrift } from '../session-context-drift'
 
-const MERGE_RUNTIME_MAPPING_WAIT_MS = 5_000
-const MERGE_RUNTIME_MAPPING_POLL_MS = 50
-
 import {
   appendLiveSessionProjection,
   applyRuntimeInfo,
   applyStoredSessionPreviewRuntimeInfo,
   type BranchMessage,
-  branchMessagesAtStableBoundary,
-  branchMessagesThroughPoint,
   chatMessageArraysEquivalent,
   isSessionGoneError,
   patchSessionWorkspace,
@@ -93,9 +86,9 @@ import {
   reconcileResumeMessages,
   resolveSessionProfile,
   resolveStoredSession,
-  restoreInflightView,
   sessionMatchesStoredId,
   sessionShouldHaveTranscript,
+  toBranchMessages,
   upsertOptimisticSession
 } from './utils'
 
@@ -106,11 +99,11 @@ interface SessionActionsOptions {
   creatingSessionRef: MutableRefObject<boolean>
   ensureSessionState: (sessionId: string, storedSessionId?: string | null) => ClientSessionState
   getRouteToken: () => string
-  getRoutedStoredSessionId?: () => null | string
+  getRoutedStoredSessionId: () => null | string
   navigate: NavigateFunction
   onFreshDraftRouteIntent?: () => void
-  requestGateway: <T>(method: string, params?: Record<string, unknown>, timeoutMs?: number) => Promise<T>
-  resetViewSync?: () => void
+  requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
+  resetViewSync: () => void
   runtimeIdByStoredSessionIdRef: MutableRefObject<Map<string, string>>
   selectedStoredSessionId: string | null
   selectedStoredSessionIdRef: MutableRefObject<string | null>
@@ -203,69 +196,6 @@ function normalizeNewChatWorkspaceTarget(target: NewChatWorkspaceTarget): NewCha
   return typeof target === 'string' ? target.trim() || null : target
 }
 
-interface MergeBranchResponse {
-  deleted_ids?: string[]
-  deleted: string | null
-  queued: boolean
-  parent_session_id: string
-  summary: string
-}
-
-export function descendantBranchMergeOrder(sessions: SessionInfo[], parentSessionId: string): SessionInfo[] {
-  const childrenByParent = new Map<string, SessionInfo[]>()
-
-  for (const session of sessions) {
-    const parentId = session.parent_session_id?.trim()
-
-    if (parentId) {
-      childrenByParent.set(parentId, [...(childrenByParent.get(parentId) ?? []), session])
-    }
-  }
-
-  const ordered: SessionInfo[] = []
-  const visited = new Set<string>([parentSessionId])
-
-  const visit = (parentId: string) => {
-    for (const child of childrenByParent.get(parentId) ?? []) {
-      if (visited.has(child.id)) {
-        continue
-      }
-
-      visited.add(child.id)
-      visit(child.id)
-      ordered.push(child)
-    }
-  }
-
-  visit(parentSessionId)
-
-  return ordered
-}
-
-interface ReviewDeleteResponse {
-  deleted: string
-  summary: string
-}
-
-function activeRuntimeForStoredSession(
-  storedSessionId: string,
-  selectedStoredSessionId: string | null,
-  activeRuntimeId: string | null,
-  runtimeIdByStoredSessionId: Map<string, string>,
-  sessionStateByRuntimeId: Map<string, ClientSessionState>
-): string | null {
-  if (!activeRuntimeId || selectedStoredSessionId !== storedSessionId) {
-    return null
-  }
-
-  const mappedRuntimeId = runtimeIdByStoredSessionId.get(storedSessionId)
-  const runtimeState = sessionStateByRuntimeId.get(activeRuntimeId)
-
-  return mappedRuntimeId === activeRuntimeId && runtimeState?.storedSessionId === storedSessionId
-    ? activeRuntimeId
-    : null
-}
-
 export function useSessionActions({
   activeSessionId,
   activeSessionIdRef,
@@ -273,11 +203,11 @@ export function useSessionActions({
   creatingSessionRef,
   ensureSessionState,
   getRouteToken,
-  getRoutedStoredSessionId = () => null,
+  getRoutedStoredSessionId,
   navigate,
   onFreshDraftRouteIntent,
   requestGateway,
-  resetViewSync = () => {},
+  resetViewSync,
   runtimeIdByStoredSessionIdRef,
   selectedStoredSessionId,
   selectedStoredSessionIdRef,
@@ -351,11 +281,6 @@ export function useSessionActions({
 
   const startFreshSessionDraft = useCallback(
     (options: boolean | FreshSessionDraftOptions = false) => {
-      // A resume may still be waiting on stored-session lookup or a profile
-      // switch. Invalidate it before clearing the view so a late result cannot
-      // re-select the old session and make New Session appear to need two clicks.
-      resumeRequestRef.current += 1
-
       const draftOptions = typeof options === 'boolean' ? { replaceRoute: options } : options
       const preserveRoute = draftOptions.preserveRoute ?? false
       const replaceRoute = draftOptions.replaceRoute ?? false
@@ -404,6 +329,7 @@ export function useSessionActions({
         output: 0,
         total: 0
       })
+      setSessionStartedAt(null)
       setTurnStartedAt(null)
       // The composer's model/effort/fast is sticky UI state (persisted in
       // localStorage) — a new chat FOLLOWS your last pick instead of snapping
@@ -508,6 +434,7 @@ export function useSessionActions({
         setNewChatWorkspaceTarget(undefined)
         setActiveSessionId(created.session_id)
         setSelectedStoredSessionId(stored)
+        setSessionStartedAt(Date.now())
         const yoloArmed = $yoloActive.get()
         const runtimeInfo = applyRuntimeInfo(created.info)
 
@@ -729,15 +656,11 @@ export function useSessionActions({
       const storedForProfile = await resolveStoredSession(storedSessionId)
       const sessionProfile = storedForProfile?.profile
 
-      if (!isCurrentResume()) {
+      if (resumeRequestRef.current !== requestId) {
         return
       }
 
       await ensureGatewayProfile(sessionProfile)
-
-      if (!isCurrentResume()) {
-        return
-      }
 
       // Re-check after the profile-resolve / gateway-swap awaits above: the
       // cache may have changed, and takeWarmCache re-validates belongs-to and
@@ -803,6 +726,7 @@ export function useSessionActions({
           // un-owned for the life of the session (#71254).
           setWorkspaceCwdOwner(storedSessionId)
           setCurrentBranch(cachedViewState.branch)
+          setSessionStartedAt(Date.now())
 
           try {
             let activated: SessionResumeResponse | null = null
@@ -952,6 +876,7 @@ export function useSessionActions({
       clearNotifications()
       setSelectedStoredSessionId(storedSessionId)
       selectedStoredSessionIdRef.current = storedSessionId
+      setSessionStartedAt(Date.now())
 
       const stored =
         $sessions.get().find(session => sessionMatchesStoredId(session, storedSessionId)) ?? storedForProfile
@@ -1117,7 +1042,7 @@ export function useSessionActions({
           state => ({
             ...state,
             ...(runtimeInfo ?? {}),
-            messages: restoredInflight.messages,
+            messages: messagesForView,
             busy: resumedRunning,
             awaitingResponse: resumedRunning && !recoveredInFlightTail,
             adoptedRunningTurn: state.adoptedRunningTurn || resumedRunning,
@@ -1288,22 +1213,24 @@ export function useSessionActions({
         const routedSessionId = branched.stored_session_id ?? branched.session_id
         const preview = branchMessages.map(({ content }) => content).find(Boolean) ?? null
         // Draft until submit: nest under the parent at the parent's recency so it
-        // doesn't bubble to the top until a real message lands and the backend
-        // persists it. The selected row survives refreshes (sessionsToKeep).
+        // doesn't bubble to the top until a real message lands (backend persists
+        // + auto-names it then). The selected row survives refreshes (sessionsToKeep).
+        const rows = $sessions.get()
+        const parent = parentStoredId ? rows.find(session => sessionMatchesStoredId(session, parentStoredId)) : null
+
+        const siblings = parentStoredId
+          ? rows.filter(session => session.parent_session_id?.trim() === parentStoredId).length
+          : 0
+
         setFreshDraftReady(false)
         upsertOptimisticSession(
           branched,
           routedSessionId,
-          branchTitle,
+          copy.branchTitle(siblings + 1).toLowerCase(),
           preview,
           parentStoredId,
           parent ? parent.last_active || parent.started_at : undefined
         )
-
-        if (inheritParentPin) {
-          pinSessionFamily(routedSessionId)
-        }
-
         ensureSessionState(branched.session_id, routedSessionId)
         updateSessionState(
           branched.session_id,
@@ -1434,320 +1361,17 @@ export function useSessionActions({
     [copy, forkBranch]
   )
 
-  const mergeBranchIntoParent = useCallback(
-    async (storedSessionId: string, sessionProfile?: string | null): Promise<MergeBranchResponse> => {
-      clearNotifications()
-
-      const child = $sessions.get().find(session => sessionMatchesStoredId(session, storedSessionId))
-      const parentId = child?.parent_session_id?.trim()
-
-      if (!child || !parentId) {
-        throw new Error('Only a branch session can be merged into its parent.')
-      }
-
-      const currentRuntimeForBranch = () =>
-        activeRuntimeForStoredSession(
-          storedSessionId,
-          selectedStoredSessionIdRef.current,
-          activeSessionIdRef.current,
-          runtimeIdByStoredSessionIdRef.current,
-          sessionStateByRuntimeIdRef.current
-        )
-
-      const resumedRuntimeForBranch = () => {
-        const runtimeId = runtimeIdByStoredSessionIdRef.current.get(storedSessionId)
-        const state = runtimeId ? sessionStateByRuntimeIdRef.current.get(runtimeId) : undefined
-
-        return runtimeId && state?.storedSessionId === storedSessionId ? runtimeId : null
-      }
-
-      const waitForResumedRuntime = async () => {
-        const deadline = Date.now() + MERGE_RUNTIME_MAPPING_WAIT_MS
-
-        while (Date.now() < deadline) {
-          const runtimeId = currentRuntimeForBranch() ?? resumedRuntimeForBranch()
-
-          if (runtimeId) {
-            return runtimeId
-          }
-
-          await new Promise(resolve => window.setTimeout(resolve, MERGE_RUNTIME_MAPPING_POLL_MS))
-        }
-
-        return currentRuntimeForBranch() ?? resumedRuntimeForBranch()
-      }
-
-      let runtimeSessionId = currentRuntimeForBranch()
-
-      if (!runtimeSessionId) {
-        navigate(sessionRoute(storedSessionId))
-        await resumeSession(storedSessionId, true)
-        // resumeSession writes the durable-id -> runtime-id mapping before
-        // React has necessarily committed activeSessionIdRef. Read the
-        // validated cache mapping as a fallback; requiring the active ref here
-        // made batch recall report every child as failed after a cold resume.
-        runtimeSessionId = currentRuntimeForBranch() ?? resumedRuntimeForBranch()
-
-        // Navigating to the child also activates use-route-resume. That second
-        // resume can supersede the first request before its React refs commit;
-        // wait briefly for the replacement resume to publish the validated map.
-        if (!runtimeSessionId) {
-          runtimeSessionId = await waitForResumedRuntime()
-        }
-      } else {
-        await ensureGatewayProfile(sessionProfile ?? child.profile)
-      }
-
-      if (!runtimeSessionId) {
-        throw new Error('Could not resume the branch for its merge review.')
-      }
-
-      const result = await requestGateway<MergeBranchResponse>(
-        'session.merge_branch',
-        {
-          runtime_session_id: runtimeSessionId,
-          session_id: storedSessionId
-        },
-        PROMPT_SUBMIT_REQUEST_TIMEOUT_MS
-      )
-
-      if (result.deleted) {
-        setSessions(prev => prev.filter(session => !sessionMatchesStoredId(session, storedSessionId)))
-        tombstoneSessions([storedSessionId, child.id, child._lineage_root_id])
-        clearUnreadSessionIds([storedSessionId, child.id, child._lineage_root_id])
-        setSessionsTotal(prev => Math.max(0, prev - 1))
-        $pinnedSessionIds.set(
-          $pinnedSessionIds.get().filter(id => id !== storedSessionId && id !== sessionPinId(child))
-        )
-      } else if (result.queued) {
-        setSessions(prev =>
-          prev.map(session =>
-            sessionMatchesStoredId(session, storedSessionId)
-              ? { ...session, branch_merge_status: 'waiting_for_parent' }
-              : session
-          )
-        )
-      }
-      clearQueuedPrompts(storedSessionId)
-      broadcastSessionsChanged()
-
-      setActiveSessionId(null)
-      activeSessionIdRef.current = null
-      setSelectedStoredSessionId(result.parent_session_id)
-      selectedStoredSessionIdRef.current = result.parent_session_id
-      setMessages([])
-      navigate(sessionRoute(result.parent_session_id), { replace: true })
-
-      return result
-    },
-    [
-      activeSessionIdRef,
-      navigate,
-      requestGateway,
-      resumeSession,
-      runtimeIdByStoredSessionIdRef,
-      selectedStoredSessionIdRef,
-      sessionStateByRuntimeIdRef
-    ]
-  )
-
-  const resumeBranchForMerge = useCallback(
-    async (child: SessionInfo): Promise<string> => {
-      const profile = child.profile?.trim() || null
-
-      await ensureGatewayProfile(profile)
-
-      const resumed = await requestGateway<SessionResumeResponse>('session.resume', {
-        session_id: child.id,
-        cols: 96,
-        source: 'desktop',
-        ...(profile ? { profile } : {})
-      })
-
-      if (!resumed.session_id) {
-        throw new Error('Could not resume the branch for its merge review.')
-      }
-
-      const runtimeInfo = applyRuntimeInfo(resumed.info)
-      const running = Boolean(resumed.running)
-
-      updateSessionState(
-        resumed.session_id,
-        state => ({
-          ...state,
-          ...(runtimeInfo ?? {}),
-          messages: toChatMessages(resumed.messages),
-          busy: running,
-          awaitingResponse: running,
-          reviewActivity: 'branch-merge'
-        }),
-        child.id
-      )
-
-      return resumed.session_id
-    },
-    [requestGateway, updateSessionState]
-  )
-
-  const mergeAllChildrenIntoParent = useCallback(
-    async (parentSessionId: string): Promise<void> => {
-      const orderedChildren = descendantBranchMergeOrder($sessions.get(), parentSessionId)
-
-      if (!orderedChildren.length) {
-        return
-      }
-
-      const blockedAncestors = new Set<string>()
-      const failures: string[] = []
-      const parentById = new Map(orderedChildren.map(child => [child.id, child.parent_session_id?.trim() ?? '']))
-
-      const blockAncestors = (child: SessionInfo) => {
-        let ancestorId = child.parent_session_id?.trim() ?? ''
-
-        while (ancestorId && ancestorId !== parentSessionId) {
-          blockedAncestors.add(ancestorId)
-          ancestorId = parentById.get(ancestorId) ?? ''
-        }
-      }
-
-      const levels = new Map<number, SessionInfo[]>()
-
-      for (const child of orderedChildren) {
-        let depth = 1
-        let ancestorId = child.parent_session_id?.trim() ?? ''
-
-        while (ancestorId && ancestorId !== parentSessionId) {
-          depth += 1
-          ancestorId = parentById.get(ancestorId) ?? ''
-        }
-
-        levels.set(depth, [...(levels.get(depth) ?? []), child])
-      }
-
-      // Reviews for siblings can run concurrently, but ancestors wait for the
-      // deeper level to finish so their summary includes all descendant work.
-      for (const depth of [...levels.keys()].sort((left, right) => right - left)) {
-        const candidates = (levels.get(depth) ?? []).filter(child => !blockedAncestors.has(child.id))
-
-        const results = await Promise.allSettled(
-          candidates.map(async child => {
-            const runtimeSessionId = await resumeBranchForMerge(child)
-            const result = await requestGateway<MergeBranchResponse>(
-              'session.merge_branch',
-              {
-                runtime_session_id: runtimeSessionId,
-                session_id: child.id
-              },
-              PROMPT_SUBMIT_REQUEST_TIMEOUT_MS
-            )
-
-            return { child, result, runtimeSessionId }
-          })
-        )
-
-        for (const [index, settled] of results.entries()) {
-          if (settled.status === 'rejected') {
-            const child = candidates[index]
-            const title = child.title?.trim() || child.preview?.trim() || child.id
-            const detail = settled.reason instanceof Error ? settled.reason.message : String(settled.reason)
-            failures.push(`${title}: ${detail}`)
-            blockAncestors(child)
-            continue
-          }
-
-          const { child, result, runtimeSessionId } = settled.value
-          const deletedIds = new Set(result.deleted_ids ?? (result.deleted ? [result.deleted] : []))
-
-          if (deletedIds.size) {
-            const removedRows = $sessions
-              .get()
-              .filter(session => [...deletedIds].some(id => sessionMatchesStoredId(session, id)))
-            const removedPinIds = new Set(
-              [...deletedIds, ...removedRows.map(session => sessionPinId(session))]
-            )
-
-            setSessions(prev => prev.filter(session => ![...deletedIds].some(id => sessionMatchesStoredId(session, id))))
-            tombstoneSessions([
-              ...deletedIds,
-              ...removedRows.flatMap(session => [session.id, session._lineage_root_id])
-            ])
-            clearUnreadSessionIds([
-              ...deletedIds,
-              ...removedRows.flatMap(session => [session.id, session._lineage_root_id])
-            ])
-            setSessionsTotal(prev => Math.max(0, prev - removedRows.length))
-            $pinnedSessionIds.set($pinnedSessionIds.get().filter(id => !removedPinIds.has(id)))
-
-            for (const deletedId of deletedIds) {
-              const deletedRuntimeId = runtimeIdByStoredSessionIdRef.current.get(deletedId)
-
-              if (deletedRuntimeId) {
-                runtimeIdByStoredSessionIdRef.current.delete(deletedId)
-                sessionStateByRuntimeIdRef.current.delete(deletedRuntimeId)
-                dropSessionState(deletedRuntimeId)
-              }
-            }
-          } else if (result.queued) {
-            setSessions(prev =>
-              prev.map(session =>
-                sessionMatchesStoredId(session, child.id)
-                  ? { ...session, branch_merge_status: 'waiting_for_parent' }
-                  : session
-              )
-            )
-          }
-
-          clearQueuedPrompts(child.id)
-          for (const deletedId of deletedIds) {
-            clearQueuedPrompts(deletedId)
-          }
-          clearQueuedPrompts(runtimeSessionId)
-
-          if (result.queued && result.parent_session_id !== parentSessionId) {
-            blockAncestors(child)
-          }
-        }
-      }
-
-      broadcastSessionsChanged()
-
-      if (selectedStoredSessionIdRef.current !== parentSessionId) {
-        setActiveSessionId(null)
-        activeSessionIdRef.current = null
-        setSelectedStoredSessionId(parentSessionId)
-        selectedStoredSessionIdRef.current = parentSessionId
-        setMessages([])
-        navigate(sessionRoute(parentSessionId), { replace: true })
-      }
-
-      if (failures.length) {
-        notifyError(
-          new Error(`${t.sidebar.row.mergeChildrenFailed}: ${failures.join('; ')}`),
-          t.sidebar.row.mergeChildrenFailed
-        )
-      } else if (blockedAncestors.size) {
-        notify({ kind: 'warning', message: t.sidebar.row.mergeChildrenDeferred })
-      }
-    },
-    [
-      activeSessionIdRef,
-      navigate,
-      requestGateway,
-      resumeBranchForMerge,
-      runtimeIdByStoredSessionIdRef,
-      selectedStoredSessionIdRef,
-      sessionStateByRuntimeIdRef,
-      t.sidebar.row.mergeChildrenDeferred,
-      t.sidebar.row.mergeChildrenFailed
-    ]
-  )
-
   const removeSession = useCallback(
     async (storedSessionId: string) => {
       clearNotifications()
 
       const removed = $sessions.get().find(session => sessionMatchesStoredId(session, storedSessionId))
+      const wasSelected = selectedStoredSessionId === storedSessionId
+      const closingRuntimeId = wasSelected ? activeSessionId : null
+      const previousMessages = $messages.get()
       const previousPinned = $pinnedSessionIds.get()
+      // Pins are keyed on the durable lineage-root id; the stored id may be the
+      // live tip after compression. Drop both so the pin can't linger.
       const removedPinId = removed ? sessionPinId(removed) : storedSessionId
       const removedIds = [storedSessionId, removed?.id, removed?._lineage_root_id]
 
@@ -1767,50 +1391,20 @@ export function useSessionActions({
       }
 
       try {
-        const currentRuntimeForDelete = () =>
-          activeRuntimeForStoredSession(
-            storedSessionId,
-            selectedStoredSessionIdRef.current,
-            activeSessionIdRef.current,
-            runtimeIdByStoredSessionIdRef.current,
-            sessionStateByRuntimeIdRef.current
-          )
-
-        let runtimeSessionId = currentRuntimeForDelete()
-
-        if (!runtimeSessionId) {
-          navigate(sessionRoute(storedSessionId))
-          await resumeSession(storedSessionId, true)
-          runtimeSessionId = currentRuntimeForDelete()
-        } else {
-          await ensureGatewayProfile(removed?.profile)
+        if (closingRuntimeId) {
+          await requestGateway('session.close', { session_id: closingRuntimeId }).catch(() => undefined)
         }
 
-        if (!runtimeSessionId) {
-          throw new Error('Could not resume the session for its delete review.')
-        }
-
-        const result = await requestGateway<ReviewDeleteResponse>(
-          'session.review_delete',
-          {
-            runtime_session_id: runtimeSessionId,
-            session_id: storedSessionId
-          },
-          PROMPT_SUBMIT_REQUEST_TIMEOUT_MS
-        )
-        if (result.deleted !== storedSessionId) {
-          throw new Error('Delete review completed without deleting the requested session.')
-        }
-
-        setSessions(prev => prev.filter(session => !sessionMatchesStoredId(session, storedSessionId)))
-        tombstoneSessions([storedSessionId, removed?.id, removed?._lineage_root_id])
-        clearUnreadSessionIds([storedSessionId, removed?.id, removed?._lineage_root_id])
-        setSessionsTotal(prev => Math.max(0, prev - 1))
-        $pinnedSessionIds.set(previousPinned.filter(id => id !== storedSessionId && id !== removedPinId))
+        await deleteSession(storedSessionId, removed?.profile)
         clearQueuedPrompts(storedSessionId)
-        clearQueuedPrompts(runtimeSessionId)
 
-        // A tiled copy of this session must not outlive it.
+        if (closingRuntimeId) {
+          clearQueuedPrompts(closingRuntimeId)
+        }
+
+        // A tiled copy of this session must not outlive it: collapse the pane
+        // and evict its mirrored runtime state so nothing submits to (or renders)
+        // a deleted session.
         const tiledRuntimeId = runtimeIdByStoredSessionIdRef.current.get(storedSessionId)
         closeSessionTile(storedSessionId)
 
@@ -1819,8 +1413,6 @@ export function useSessionActions({
           sessionStateByRuntimeIdRef.current.delete(tiledRuntimeId)
           dropSessionState(tiledRuntimeId)
         }
-        broadcastSessionsChanged()
-        startFreshSessionDraft(true)
       } catch (err) {
         if (removed) {
           setSessions(prev => [removed, ...prev])
@@ -1857,12 +1449,13 @@ export function useSessionActions({
       }
     },
     [
+      activeSessionId,
       activeSessionIdRef,
       copy,
       navigate,
       requestGateway,
       runtimeIdByStoredSessionIdRef,
-      resumeSession,
+      selectedStoredSessionId,
       selectedStoredSessionIdRef,
       sessionStateByRuntimeIdRef,
       startFreshSessionDraft
@@ -1926,8 +1519,6 @@ export function useSessionActions({
     closeSettings,
     createBackendSessionForSend,
     openNewSessionTile,
-    mergeAllChildrenIntoParent,
-    mergeBranchIntoParent,
     openSettings,
     removeSession,
     resumeSession,

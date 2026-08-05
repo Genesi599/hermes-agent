@@ -99,7 +99,6 @@ function Harness({
   onUpdateState,
   onReady,
   onSeedState,
-  onUpdateStoredSessionId,
   openMemoryGraph,
   refreshSessions,
   requestGateway,
@@ -122,7 +121,6 @@ function Harness({
   ) => void
   onReady: (handle: HarnessHandle) => void
   onSeedState?: (state: Record<string, unknown>) => void
-  onUpdateStoredSessionId?: (storedSessionId?: null | string) => void
   openMemoryGraph?: () => void
   refreshSessions: () => Promise<void>
   requestGateway: <T>(method: string, params?: Record<string, unknown>, timeoutMs?: number) => Promise<T>
@@ -175,9 +173,6 @@ function Harness({
       stateRef.current = next as never
       onSeedState?.(next)
       onUpdateState?.(sessionId, storedSessionId, next)
-      if (storedSessionId) {
-        onUpdateStoredSessionId?.(storedSessionId)
-      }
 
       return next as never
     }
@@ -3326,94 +3321,6 @@ describe('usePromptActions sleep/wake session recovery', () => {
     )
   })
 
-  it('waits for a replacement same-route resume to publish its runtime binding before submit', async () => {
-    const activeSessionIdRef: MutableRefObject<string | null> = { current: 'rt-stale' }
-    const selectedStoredSessionIdRef: MutableRefObject<string | null> = { current: STORED_SESSION_ID }
-    let boundRuntimeId: string | null = null
-    const calls: { method: string; params?: Record<string, unknown> }[] = []
-
-    const requestGateway = vi.fn(async (method: string, params?: Record<string, unknown>) => {
-      calls.push({ method, params })
-
-      return {} as never
-    })
-    const resumeStoredSession = vi.fn(async () => {
-      // The submit-triggered resume was superseded by use-route-resume. It
-      // resolves without a binding; the replacement publishes one shortly
-      // afterwards while the selected stored Session and route stay unchanged.
-      window.setTimeout(() => {
-        activeSessionIdRef.current = RECOVERED_SESSION_ID
-        boundRuntimeId = RECOVERED_SESSION_ID
-      }, 10)
-    })
-
-    let handle: HarnessHandle | null = null
-    await actRender(
-      <Harness
-        activeSessionId="rt-stale"
-        activeSessionIdRef={activeSessionIdRef}
-        getRoutedStoredSessionId={() => STORED_SESSION_ID}
-        getRuntimeIdForStoredSession={() => boundRuntimeId}
-        onReady={h => (handle = h)}
-        refreshSessions={async () => undefined}
-        requestGateway={requestGateway}
-        resumeStoredSession={resumeStoredSession}
-        selectedStoredSessionIdRef={selectedStoredSessionIdRef}
-        storedSessionId={STORED_SESSION_ID}
-      />
-    )
-
-    expect(await handle!.submitText('keep this follow-up in the branch')).toBe(true)
-    expect(resumeStoredSession).toHaveBeenCalledWith(STORED_SESSION_ID)
-    expect(calls.find(c => c.method === 'prompt.submit')?.params).toEqual({
-      session_id: RECOVERED_SESSION_ID,
-      text: 'keep this follow-up in the branch'
-    })
-  })
-
-  it('directly resumes the routed stored session when replacement binding never arrives', async () => {
-    const activeSessionIdRef: MutableRefObject<string | null> = { current: 'rt-stale' }
-    const selectedStoredSessionIdRef: MutableRefObject<string | null> = { current: STORED_SESSION_ID }
-    const calls: { method: string; params?: Record<string, unknown> }[] = []
-
-    const requestGateway = vi.fn(async (method: string, params?: Record<string, unknown>) => {
-      calls.push({ method, params })
-
-      if (method === 'session.resume') {
-        return { session_id: RECOVERED_SESSION_ID } as never
-      }
-
-      return {} as never
-    })
-    const resumeStoredSession = vi.fn(async () => undefined)
-
-    let handle: HarnessHandle | null = null
-    await actRender(
-      <Harness
-        activeSessionId="rt-stale"
-        activeSessionIdRef={activeSessionIdRef}
-        getRoutedStoredSessionId={() => STORED_SESSION_ID}
-        getRuntimeIdForStoredSession={() => null}
-        onReady={h => (handle = h)}
-        refreshSessions={async () => undefined}
-        requestGateway={requestGateway}
-        resumeStoredSession={resumeStoredSession}
-        selectedStoredSessionIdRef={selectedStoredSessionIdRef}
-        storedSessionId={STORED_SESSION_ID}
-      />
-    )
-
-    expect(await handle!.submitText('resume this branch directly')).toBe(true)
-    expect(calls.find(c => c.method === 'session.resume')?.params).toEqual({
-      session_id: STORED_SESSION_ID,
-      source: 'desktop'
-    })
-    expect(calls.find(c => c.method === 'prompt.submit')?.params).toEqual({
-      session_id: RECOVERED_SESSION_ID,
-      text: 'resume this branch directly'
-    })
-  })
-
   it('lets the durable route replace a stale selected session and runtime before submit', async () => {
     const activeSessionIdRef: MutableRefObject<string | null> = { current: 'rt-wrong-profile' }
     const selectedStoredSessionIdRef: MutableRefObject<string | null> = { current: 'stored-wrong-profile' }
@@ -3578,51 +3485,6 @@ describe('usePromptActions sleep/wake session recovery', () => {
     expect(ok).toBe(true)
     expect(createBackendSessionForSend).toHaveBeenCalledTimes(1)
     expect(calls).not.toContain('session.resume')
-  })
-
-  it('submits the first message after session creation rebases its own route and stored-session changes', async () => {
-    const storedSessionId = 'stored-new-chat'
-    const activeSessionIdRef: MutableRefObject<string | null> = { current: null }
-    const selectedStoredSessionIdRef: MutableRefObject<string | null> = { current: null }
-    const updateStoredSessionIds: Array<null | string | undefined> = []
-    let routeToken = 'new-chat-route'
-
-    const createBackendSessionForSend = vi.fn(async () => {
-      activeSessionIdRef.current = RUNTIME_SESSION_ID
-      selectedStoredSessionIdRef.current = storedSessionId
-      routeToken = 'stored-session-route'
-
-      return RUNTIME_SESSION_ID
-    })
-    const requestGateway = vi.fn(async () => ({}) as never)
-    let handle: HarnessHandle | null = null
-
-    render(
-      <Harness
-        activeSessionId={null}
-        activeSessionIdRef={activeSessionIdRef}
-        createBackendSessionForSend={createBackendSessionForSend}
-        getRouteToken={() => routeToken}
-        onReady={h => (handle = h)}
-        onUpdateStoredSessionId={id => updateStoredSessionIds.push(id)}
-        refreshSessions={async () => undefined}
-        requestGateway={requestGateway}
-        selectedStoredSessionIdRef={selectedStoredSessionIdRef}
-        storedSessionId={null}
-      />
-    )
-
-    expect(await handle!.submitText('first message must stay submitted')).toBe(true)
-    expect(requestGateway).toHaveBeenCalledWith(
-      'prompt.submit',
-      {
-        session_id: RUNTIME_SESSION_ID,
-        text: 'first message must stay submitted'
-      },
-      1_800_000
-    )
-    expect(updateStoredSessionIds).not.toContain(null)
-    expect(updateStoredSessionIds).toContain(storedSessionId)
   })
 })
 

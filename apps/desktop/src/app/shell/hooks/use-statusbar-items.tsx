@@ -27,6 +27,8 @@ import {
   $currentCwd,
   $currentUsage,
   $selectedStoredSessionId,
+  $sessions,
+  $sessionStartedAt,
   $turnStartedAt,
   idsShareLineage,
   sessionMatchesStoredId,
@@ -96,6 +98,7 @@ export function useStatusbarItems({
   const primaryCwd = useStore($currentCwd)
   const primaryUsage = useStore($currentUsage)
   const gatewayRestarting = useStore($gatewayRestarting)
+  const primarySessionStartedAt = useStore($sessionStartedAt)
   const primaryTurnStartedAt = useStore($turnStartedAt)
 
   // The indicator must speak the same scope as the Spawn-tree panel it opens:
@@ -579,6 +582,7 @@ export function useStatusbarItems({
       currentUsage,
       publishContextUsage,
       requestGateway,
+      sessionStartedAt,
       gatewayState,
       terminalShowing,
       turnStartedAt

@@ -57,7 +57,6 @@ import { requestComposerInsert } from './composer/focus'
 import { droppedFileInlineRefs } from './composer/inline-refs'
 import { useComposerScope } from './composer/scope'
 import type { ChatBarState } from './composer/types'
-import { ExperienceReviewStatus } from './experience-review-status'
 import { type DroppedFile, partitionDroppedFiles } from './hooks/use-composer-actions'
 import { type DragKind, useFileDropZone } from './hooks/use-file-drop-zone'
 import { ProfileTag } from './profile-tag'
@@ -129,9 +128,9 @@ function ChatHeader({
   // (tip) id — resolve through the loaded row so the menu reflects the pin
   // state after auto-compression rotates the id.
   const selectedIsPinned = activeStoredSession
-    ? isSessionFamilyPinned(sessionPinId(activeStoredSession), sessions, pinnedSessionIds)
+    ? pinnedSessionIds.includes(sessionPinId(activeStoredSession))
     : selectedSessionId
-      ? isSessionFamilyPinned(selectedSessionId, sessions, pinnedSessionIds)
+      ? pinnedSessionIds.includes(selectedSessionId)
       : false
 
   // Secondary windows (new-session scratch, subagent watch, cmd-click pop-out)
@@ -144,26 +143,24 @@ function ChatHeader({
   return (
     <header className={cn(titlebarHeaderBaseClass, isRoutedSessionView && titlebarHeaderShadowClass)}>
       <div
-        className={cn(titlebarHeaderTitleClass, 'flex items-center gap-2')}
+        className={cn(titlebarHeaderTitleClass, showProfileTag && 'flex items-center')}
         style={{
           maxWidth:
             'calc(100vw - var(--titlebar-content-inset,0px) - var(--titlebar-tools-right) - var(--titlebar-tools-width) - 1.5rem)'
         }}
       >
         {showProfileTag && <ProfileTag className="pointer-events-auto mr-1.5" profile={activeStoredSession?.profile} />}
-        <div className="min-w-0">
-          <SessionActionsMenu
-            align="start"
-            onDelete={selectedSessionId ? onDeleteSelectedSession : undefined}
-            onPin={selectedSessionId ? onToggleSelectedPin : undefined}
-            pinned={selectedIsPinned}
-            sessionId={selectedSessionId || activeSessionId || ''}
-            sideOffset={8}
-            title={title}
-          >
-            <TitleMenuTrigger>{title}</TitleMenuTrigger>
-          </SessionActionsMenu>
-        </div>
+        <SessionActionsMenu
+          align="start"
+          onDelete={selectedSessionId ? onDeleteSelectedSession : undefined}
+          onPin={selectedSessionId ? onToggleSelectedPin : undefined}
+          pinned={selectedIsPinned}
+          sessionId={selectedSessionId || activeSessionId || ''}
+          sideOffset={8}
+          title={title}
+        >
+          <TitleMenuTrigger>{title}</TitleMenuTrigger>
+        </SessionActionsMenu>
       </div>
     </header>
   )
@@ -534,12 +531,6 @@ export const ChatView = memo(function ChatView({
           selectedSessionId={selectedSessionId}
         />
       )}
-      <div
-        className="flex h-8 shrink-0 items-center justify-end border-b border-(--ui-stroke-tertiary) bg-(--ui-chat-surface-background) px-3"
-        data-testid="experience-review-bar"
-      >
-        <ExperienceReviewStatus />
-      </div>
 
       {/* Mounted for the primary AND every tile, each scoped to its own session
           so a tiled/background session's blocking prompt surfaces instead of
@@ -616,7 +607,6 @@ export const ChatView = memo(function ChatView({
         {showChatBar && (
           <Suspense fallback={<ChatBarFallback />}>
             <ChatBar
-              allowDraftWhileDisabled={false}
               busy={busy}
               cwd={currentCwd}
               disabled={!gatewayOpen}

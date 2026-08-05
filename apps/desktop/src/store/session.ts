@@ -2,16 +2,11 @@ import type { ConnectionState } from '@hermes/shared'
 import { atom, computed } from 'nanostores'
 
 import { lastVisibleMessageIsUser } from '@/app/chat/thread-loading'
-import type { ClientSessionState, ContextSuggestion } from '@/app/types'
+import type { ContextSuggestion } from '@/app/types'
 import type { HermesConnection } from '@/global'
 import type { ChatMessage } from '@/lib/chat-messages'
-import {
-  persistBoolean,
-  persistString,
-  storedBoolean,
-  storedString
-} from '@/lib/storage'
-import type { ExperienceReviewInfo, SessionInfo, UsageStats } from '@/types/hermes'
+import { persistBoolean, persistString, storedBoolean, storedString } from '@/lib/storage'
+import type { SessionInfo, UsageStats } from '@/types/hermes'
 
 type Updater<T> = T | ((current: T) => T)
 export type ComposerModelSource = '' | 'default' | 'manual'
@@ -438,11 +433,6 @@ export function mergeSessionPage(
     session =>
       !incomingIds.has(session.id) &&
       !incomingLineageKeys.has(session._lineage_root_id ?? session.id) &&
-      // A queued branch is allowed to survive a page boundary while it still
-      // exists in the backend, but once the backend drains the queue it
-      // deletes the child. Do not let the generic working/settled keep-set
-      // resurrect that terminal row when the next snapshot omits it.
-      session.branch_merge_status !== 'waiting_for_parent' &&
       (keep.has(session.id) || (session._lineage_root_id != null && keep.has(session._lineage_root_id)))
   )
 
@@ -545,15 +535,6 @@ export interface ActiveSessionStoredIdRotation {
 // foreground route.
 export const $activeSessionStoredIdRotation = atom<ActiveSessionStoredIdRotation | null>(null)
 export const $messages = atom<ChatMessage[]>([])
-export const $experienceReview = atom<ExperienceReviewInfo>({
-  batch: 0,
-  pending: false,
-  phase: 'counting',
-  threshold: 20,
-  user_count: 0
-})
-export const $reviewActivity = atom<ClientSessionState['reviewActivity']>(null)
-export const $reviewActivityBySessionId = atom<Record<string, NonNullable<ClientSessionState['reviewActivity']>>>({})
 
 // Streaming-stable derivations of $messages. During a token stream the array
 // is replaced ~30×/s; components that only care about coarse facts (is the
@@ -585,13 +566,6 @@ export const $resumeFailedSessionId = atom<string | null>(null)
 export const $resumeExhaustedSessionId = atom<string | null>(null)
 export const $currentModel = atom(storedString(COMPOSER_MODEL_KEY) ?? '')
 export const $currentProvider = atom(storedString(COMPOSER_PROVIDER_KEY) ?? '')
-export interface PendingModelSelection {
-  model: string
-  provider: string
-  sessionId: string
-}
-
-export const $pendingModelSelection = atom<PendingModelSelection | null>(null)
 export const $currentReasoningEffort = atom(storedString(COMPOSER_EFFORT_KEY) ?? '')
 export const $currentServiceTier = atom('')
 export const $currentFastMode = atom(storedBoolean(COMPOSER_FAST_KEY, false))
@@ -637,6 +611,7 @@ export const $currentUsage = atom<UsageStats>({
   output: 0,
   total: 0
 })
+export const $sessionStartedAt = atom<number | null>(null)
 export const $turnStartedAt = atom<number | null>(null)
 export const $introPersonality = atom('')
 export const $currentPersonality = atom('')
@@ -706,36 +681,14 @@ export function clearUnreadSessionIds(sessionIds: Array<string | null | undefine
 export const setSelectedStoredSessionId = (next: Updater<string | null>) => {
   updateAtom($selectedStoredSessionId, next)
   // Opening a session clears its unread state — the user is now looking at it.
-  clearSessionUnread($selectedStoredSessionId.get())
+  const id = $selectedStoredSessionId.get()
+
+  if (id && $unreadFinishedSessionIds.get().includes(id)) {
+    $unreadFinishedSessionIds.set($unreadFinishedSessionIds.get().filter(x => x !== id))
+  }
 }
 
 export const setMessages = (next: Updater<ChatMessage[]>) => updateAtom($messages, next)
-export const setExperienceReview = (next: Updater<ExperienceReviewInfo>) => updateAtom($experienceReview, next)
-export const setReviewActivity = (next: Updater<ClientSessionState['reviewActivity']>) =>
-  updateAtom($reviewActivity, next)
-export function setSessionReviewActivity(
-  sessionId: string | null | undefined,
-  activity: ClientSessionState['reviewActivity']
-) {
-  if (!sessionId) {
-    return
-  }
-
-  updateAtom($reviewActivityBySessionId, current => {
-    if (activity) {
-      return current[sessionId] === activity ? current : { ...current, [sessionId]: activity }
-    }
-
-    if (!(sessionId in current)) {
-      return current
-    }
-
-    const next = { ...current }
-    delete next[sessionId]
-
-    return next
-  })
-}
 export const setFreshDraftReady = (next: Updater<boolean>) => updateAtom($freshDraftReady, next)
 export const setResumeFailedSessionId = (next: Updater<string | null>) => updateAtom($resumeFailedSessionId, next)
 export const setResumeExhaustedSessionId = (next: Updater<string | null>) => updateAtom($resumeExhaustedSessionId, next)
@@ -779,17 +732,6 @@ export const getComposerSelectionGeneration = (): number => composerSelectionGen
 export const markComposerSelectionManual = (): void => {
   composerSelectionGeneration += 1
   setCurrentModelSource('manual')
-}
-
-export const setPendingModelSelection = (next: Updater<PendingModelSelection | null>) =>
-  updateAtom($pendingModelSelection, next)
-
-export const clearPendingModelSelectionIfApplied = (sessionId: string, model: string, provider: string) => {
-  const pending = $pendingModelSelection.get()
-
-  if (pending?.sessionId === sessionId && pending.model === model && pending.provider === provider) {
-    $pendingModelSelection.set(null)
-  }
 }
 
 export const setCurrentReasoningEffort = (next: Updater<string>) => {
@@ -903,6 +845,7 @@ export const workspaceCwdForNewSession = (): string => {
 
 export const setCurrentBranch = (next: Updater<string>) => updateAtom($currentBranch, next)
 export const setCurrentUsage = (next: Updater<UsageStats>) => updateAtom($currentUsage, next)
+export const setSessionStartedAt = (next: Updater<number | null>) => updateAtom($sessionStartedAt, next)
 export const setTurnStartedAt = (next: Updater<number | null>) => updateAtom($turnStartedAt, next)
 export const setIntroPersonality = (next: Updater<string>) => updateAtom($introPersonality, next)
 export const setCurrentPersonality = (next: Updater<string>) => updateAtom($currentPersonality, next)

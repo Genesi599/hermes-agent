@@ -14,24 +14,11 @@
 /**
  * Build the canonical headless backend argv (always `serve`).
  * @param {string} [profile] optional Hermes profile to pin via `--profile`.
- * @param {string} [port] explicit listen port; `0` lets the OS choose one.
  */
-export function serveBackendArgs(profile?: string, port = '0') {
+export function serveBackendArgs(profile?: string) {
   const head = profile ? ['--profile', profile] : []
 
-  return [...head, 'serve', '--host', '127.0.0.1', '--port', port]
-}
-
-export function normalizeBackendPort(value: unknown): string {
-  const text = String(value ?? '').trim()
-
-  if (!/^\d+$/.test(text)) {
-    return '0'
-  }
-
-  const port = Number(text)
-
-  return Number.isInteger(port) && port >= 1 && port <= 65_535 ? String(port) : '0'
+  return [...head, 'serve', '--host', '127.0.0.1', '--port', '0']
 }
 
 /**

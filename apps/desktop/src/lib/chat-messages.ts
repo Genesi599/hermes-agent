@@ -8,8 +8,6 @@ import { normalize } from '@/lib/text'
 import { parseTodos } from '@/lib/todos'
 import type { MessageReaction, SessionMessage, UsageStats } from '@/types/hermes'
 
-export const INTERNAL_TURN_PREFIX = '[HERMES_INTERNAL_'
-
 export type ChatMessagePart = Exclude<ThreadMessageLike['content'], string>[number]
 
 export type ChatMessage = {
@@ -37,8 +35,6 @@ export type GatewayEventPayload = {
   text?: string
   rendered?: string
   status?: string
-  phase?: string
-  child_session_id?: string
   message?: string
   id?: string
   name?: string
@@ -69,8 +65,6 @@ export type GatewayEventPayload = {
   credential_warning?: string
   install_warning?: string
   personality?: string
-  experience_review?: ExperienceReviewInfo
-  internal_kind?: string | null
   usage?: Partial<UsageStats>
   // agent.terminal.output — live chunk for a read-only agent terminal tab
   process_id?: string
@@ -889,7 +883,7 @@ function storedToolMessagePart(toolMessage: SessionMessage, fallbackIndex: numbe
   }
 }
 
-export function withUniqueToolCallIds(messages: ChatMessage[]): ChatMessage[] {
+function withUniqueToolCallIds(messages: ChatMessage[]): ChatMessage[] {
   const seen = new Set<string>()
 
   return messages.map(message => {
@@ -915,15 +909,7 @@ export function withUniqueToolCallIds(messages: ChatMessage[]): ChatMessage[] {
       }
 
       changed = true
-      const uniqueIdBase = `${id}-${message.id}-${index}`
-      let uniqueId = uniqueIdBase
-      let suffix = 2
-
-      while (seen.has(uniqueId)) {
-        uniqueId = `${uniqueIdBase}-${suffix}`
-        suffix += 1
-      }
-
+      const uniqueId = `${id}-${message.id}-${index}`
       seen.add(uniqueId)
 
       return { ...part, toolCallId: uniqueId } as ChatMessagePart
@@ -982,14 +968,6 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
   }
 
   messages.forEach((message, index) => {
-    if (
-      message.role === 'user' &&
-      typeof message.content === 'string' &&
-      message.content.startsWith(INTERNAL_TURN_PREFIX)
-    ) {
-      return
-    }
-
     if (message.role === 'tool') {
       const updatedPendingToolParts = applyStoredToolResultToParts(pendingToolParts, message)
 

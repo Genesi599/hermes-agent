@@ -668,40 +668,16 @@ export function setSidebarResizing(resizing: boolean) {
 }
 
 export function pinSession(sessionId: string, index?: number) {
-  pinSessions([sessionId], index)
-}
-
-export function pinSessions(sessionIds: Iterable<string>, index?: number) {
   const prev = $pinnedSessionIds.get()
-  let next = [...prev]
-  const requested = [...sessionIds].map(id => id.trim()).filter(Boolean)
-  const existingIndexes = requested.map(id => next.indexOf(id)).filter(existingIndex => existingIndex >= 0)
-  let insertionIndex = index ?? (existingIndexes.length > 0 ? Math.max(...existingIndexes) + 1 : next.length)
 
-  for (const sessionId of requested) {
-    if (next.includes(sessionId)) {
-      continue
-    }
-
-    next = insertUniqueId(next, sessionId, Math.min(insertionIndex, next.length))
-    insertionIndex += 1
-  }
-
-  setOrderIds($pinnedSessionIds, next)
+  setOrderIds($pinnedSessionIds, insertUniqueId(prev, sessionId, index ?? prev.filter(id => id !== sessionId).length))
 }
 
 export function unpinSession(sessionId: string) {
-  unpinSessions([sessionId])
-}
-
-export function unpinSessions(sessionIds: Iterable<string>) {
-  const prev = $pinnedSessionIds.get()
-  const removed = new Set([...sessionIds].map(id => id.trim()).filter(Boolean))
-  const next = prev.filter(id => !removed.has(id))
-
-  if (!arraysEqual(prev, next)) {
-    $pinnedSessionIds.set(next)
-  }
+  setOrderIds(
+    $pinnedSessionIds,
+    $pinnedSessionIds.get().filter(id => id !== sessionId)
+  )
 }
 
 // Apply a new pinned order from a drag. The dragged list only holds the pins

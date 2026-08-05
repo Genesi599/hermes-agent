@@ -67,7 +67,8 @@ import {
   setSidebarWorkspaceOrderIds,
   setSidebarWorkspaceParentOrderIds,
   SIDEBAR_SESSIONS_PAGE_SIZE,
-  toggleSidebarMessagingOpen
+  toggleSidebarMessagingOpen,
+  unpinSession
 } from '@/store/layout'
 import {
   $newChatProfile,
@@ -105,7 +106,6 @@ import {
 } from '@/store/pull-requests'
 import { openRouteTile } from '@/store/route-tiles'
 import {
-  $activeSessionId,
   $cronSessions,
   $currentCwd,
   $gatewayState,
@@ -277,8 +277,6 @@ interface ChatSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onLoadMoreMessaging?: (platform: string) => Promise<void> | void
   onResumeSession: (sessionId: string) => void
   onDeleteSession: (sessionId: string) => void
-  onMergeChildrenSession: (sessionId: string) => Promise<void> | void
-  onMergeSession: (sessionId: string, profile?: string) => Promise<void> | void
   onArchiveSession: (sessionId: string) => void
   onBranchSession: (sessionId: string) => void
   onNewSessionInWorkspace: (path: null | string) => void
@@ -295,8 +293,6 @@ export function ChatSidebar({
   onLoadMoreMessaging,
   onResumeSession,
   onDeleteSession,
-  onMergeChildrenSession,
-  onMergeSession,
   onArchiveSession,
   onBranchSession,
   onNewSessionInWorkspace,
@@ -359,8 +355,6 @@ export function ChatSidebar({
   // The sidebar highlight tracks the FOCUSED session — the interacted tile's
   // tab, else the main selection — so it stays 1:1 with whatever tab is active.
   const selectedSessionId = useStore($focusedStoredSessionId)
-  const selectedStoredSessionId = useStore($selectedStoredSessionId)
-  const activeRuntimeSessionId = useStore($activeSessionId)
   const sessions = useStore($sessions)
   const cronSessions = useStore($cronSessions)
   const cronJobs = useStore($cronJobs)
@@ -370,7 +364,6 @@ export function ChatSidebar({
   const sessionsLoading = useStore($sessionsLoading)
   const sessionProfilesTruncated = useStore($sessionProfilesTruncated)
   const workingSessionIds = useStore($workingSessionIds)
-  const unreadFinishedSessionIds = useStore($unreadFinishedSessionIds)
   const profiles = useStore($profiles)
   const profileColors = useStore($profileColors)
   const profileScope = useStore($profileScope)
@@ -404,8 +397,6 @@ export function ChatSidebar({
   const [newSessionKbdFlash, setNewSessionKbdFlash] = useState(false)
   const [messagingLoadMorePending, setMessagingLoadMorePending] = useState<Record<string, boolean>>({})
   const [recentsLoadMorePending, setRecentsLoadMorePending] = useState(false)
-  const [runningOpen, setRunningOpen] = useState(true)
-  const [branchBatchOpen, setBranchBatchOpen] = useState(false)
   const messagingOpenIds = useStore($sidebarMessagingOpenIds)
   // Per-platform count of rows currently revealed (starts at NON_SESSION_INITIAL_ROWS).
   const [messagingVisible, setMessagingVisible] = useState<Record<string, number>>({})
@@ -518,42 +509,21 @@ export function ChatSidebar({
     [visibleSessions, cronSessions, messagingSessions]
   )
 
-  const expandedPinnedSessionIds = useMemo(
-    () => expandPinnedSessionFamilies([...cronSessions, ...visibleSessions], pinnedSessionIds),
-    [cronSessions, pinnedSessionIds, visibleSessions]
-  )
-
-  // Migrate old single-row pins and immediately include newly-created Branch
-  // children without moving the family's existing position in the pinned list.
-  useEffect(() => pinSessions(expandedPinnedSessionIds), [expandedPinnedSessionIds])
-
   const pinnedSessions = useMemo(() => {
     const seen = new Set<string>()
     const out: SessionInfo[] = []
 
-    for (const pinId of expandedPinnedSessionIds) {
+    for (const pinId of pinnedSessionIds) {
       const session = sessionByAnyId.get(pinId)
 
-      if (session && !activeFamilySessionIds.has(session.id) && !seen.has(session.id)) {
+      if (session && !seen.has(session.id)) {
         seen.add(session.id)
         out.push(session)
       }
     }
 
     return out
-  }, [activeFamilySessionIds, expandedPinnedSessionIds, sessionByAnyId])
-
-  const pinnedSessionPinIdSet = useMemo(() => new Set(expandedPinnedSessionIds), [expandedPinnedSessionIds])
-
-  const runningPinnedSessionIdSet = useMemo(
-    () =>
-      new Set(
-        runningSessions
-          .filter(session => pinnedSessionPinIdSet.has(sessionPinId(session)))
-          .map(session => session.id)
-      ),
-    [pinnedSessionPinIdSet, runningSessions]
-  )
+  }, [pinnedSessionIds, sessionByAnyId])
 
   // Every id a pin is reachable under: the raw stored ids, plus BOTH identities
   // of each session we resolved one to. A pin is stored on the durable lineage
@@ -991,8 +961,8 @@ export function ChatSidebar({
   // backend now seeds each project folder as an (empty) repo, so the overlay
   // always has a lane to place a new in-project session into.
   const enteredProjectContent = useMemo(
-    () => (enteredProject ? overlayLiveLanes(enteredProject, agentSessions, recentsRemovedSessionIds) : undefined),
-    [agentSessions, enteredProject, recentsRemovedSessionIds]
+    () => (enteredProject ? overlayLiveLanes(enteredProject, agentSessions, removedSessionIds) : undefined),
+    [enteredProject, agentSessions, removedSessionIds]
   )
 
   const scopedRepoPaths = useMemo(
@@ -1551,40 +1521,14 @@ export function ChatSidebar({
                 onArchiveSession={onArchiveSession}
                 onBranchSession={onBranchSession}
                 onDeleteSession={onDeleteSession}
-                onMergeChildrenSession={onMergeChildrenSession}
-                onMergeSession={onMergeSession}
                 onResumeSession={onResumeSession}
                 onToggle={() => undefined}
-                onTogglePin={pinSessionFamily}
+                onTogglePin={pinSession}
                 open
                 pinned={false}
                 rootClassName="min-h-32 flex-1 overflow-hidden p-0"
                 sessions={searchResults}
                 showProfileTags={showAllProfiles}
-              />
-            )}
-
-            {!trimmedQuery && runningSessions.length > 0 && (
-              <SidebarSessionsSection
-                activeSessionId={activeSidebarSessionId}
-                contentClassName={cn('flex max-h-56 flex-col gap-px rounded-lg pb-2 pt-1', GROUP_BODY)}
-                emptyState={null}
-                label={s.running}
-                onArchiveSession={onArchiveSession}
-                onBranchSession={onBranchSession}
-                onDeleteSession={onDeleteSession}
-                onMergeChildrenSession={onMergeChildrenSession}
-                onMergeSession={onMergeSession}
-                onResumeSession={onResumeSession}
-                onToggle={() => setRunningOpen(!runningOpen)}
-                onTogglePin={toggleSessionFamilyPin}
-                open={runningOpen}
-                pinned={false}
-                pinnedSessionIdSet={runningPinnedSessionIdSet}
-                rootClassName="shrink-0 p-0 pb-1"
-                sessions={runningSessions}
-                showProfileTags={showAllProfiles}
-                workingSessionIdSet={workingSessionIdSet}
               />
             )}
 
@@ -1598,12 +1542,10 @@ export function ChatSidebar({
                 onArchiveSession={onArchiveSession}
                 onBranchSession={onBranchSession}
                 onDeleteSession={onDeleteSession}
-                onMergeChildrenSession={onMergeChildrenSession}
-                onMergeSession={onMergeSession}
                 onReorderSessions={reorderPinned}
                 onResumeSession={onResumeSession}
                 onToggle={() => setSidebarPinsOpen(!pinsOpen)}
-                onTogglePin={unpinSessionFamily}
+                onTogglePin={unpinSession}
                 open={pinsOpen}
                 pinned
                 rootClassName="shrink-0 p-0 pb-1"
@@ -1695,22 +1637,6 @@ export function ChatSidebar({
                     </div>
                   ) : (
                     <div className="flex shrink-0 items-center gap-0.5">
-                      {selectedStoredSessionId && activeRuntimeSessionId ? (
-                        <Tip label={s.branchBatch.title}>
-                          <Button
-                            aria-label={s.branchBatch.title}
-                            className={HEADER_ACTION_BTN}
-                            onClick={event => {
-                              event.stopPropagation()
-                              setBranchBatchOpen(true)
-                            }}
-                            size="icon-xs"
-                            variant="ghost"
-                          >
-                            <Codicon name="type-hierarchy-sub" size="0.75rem" />
-                          </Button>
-                        </Tip>
-                      ) : null}
                       {!showAllProfiles ? (
                         <Tip label={agentsGrouped ? s.projects.newButton : s.nav['new-session']}>
                           <Button
@@ -1762,7 +1688,7 @@ export function ChatSidebar({
                 onReorderSessions={showAllProfiles ? undefined : reorderSessions}
                 onResumeSession={onResumeSession}
                 onToggle={() => setSidebarRecentsOpen(!agentsOpen)}
-                onTogglePin={pinSessionFamily}
+                onTogglePin={pinSession}
                 open={agentsOpen}
                 pinned={false}
                 projectBackRow={
@@ -1773,7 +1699,7 @@ export function ChatSidebar({
                 projectOverviewPreviews={overviewPreviews}
                 projectRepoWorktrees={inProject ? scopedRepoWorktrees : undefined}
                 projectsLoading={worktreeGroupingActive ? projectTreeLoading : false}
-                removedSessionIds={inProject ? recentsRemovedSessionIds : undefined}
+                removedSessionIds={inProject ? removedSessionIds : undefined}
                 rootClassName={cn(
                   'min-h-32 flex-1 overflow-hidden p-0',
                   !recentsVirtualizes && 'compact:min-h-0 compact:flex-none compact:overflow-visible'
@@ -1819,7 +1745,7 @@ export function ChatSidebar({
                     onDeleteSession={onDeleteSession}
                     onResumeSession={onResumeSession}
                     onToggle={() => toggleSidebarMessagingOpen(group.sourceId)}
-                    onTogglePin={pinSessionFamily}
+                    onTogglePin={pinSession}
                     open={messagingOpenIds.includes(group.sourceId)}
                     pinned={false}
                     rootClassName="shrink-0 p-0"
