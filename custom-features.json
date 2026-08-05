@@ -1,92 +1,438 @@
 {
   "schema_version": 1,
-  "baseline_commit": "3ef6bbd201263d354fd83ec55b3c306ded2eb72a",
-  "guard_paths": [
-    "custom-features.json",
-    "scripts/Verify-HermesCustomFeatures.ps1"
-  ],
+  "baseline_commit": "46d277505d89a15cd27e66711421603a6978f4eb",
+  "guard_paths": ["custom-features.json", "scripts/Verify-HermesCustomFeatures.ps1"],
   "tracked_patches": [
-    {"source_commit":"76fe833b20","patch_id":"260a04aedb376338d3990a0482a7fe28775f1d27","feature":"cross-device-session"},
-    {"source_commit":"8eef345f3c","patch_id":"14ac5d6b5aa934293df92c5a90d364a35b2a9f53","feature":"cross-device-session"},
-    {"source_commit":"561838ad4c","patch_id":"00355c34fd0b75e60436e0d7a8812b41dfd22d8d","feature":"branch-merge"},
-    {"source_commit":"92b912083b","patch_id":"0cf609023e3425535e7246cb9d967eb6fc1458f9","feature":"cross-device-session"},
-    {"source_commit":"6580422821","patch_id":"e64eec7fe0fc17364b8dc40c80460948a073dc40","feature":"branch-merge"},
-    {"source_commit":"59112e8bf4","patch_id":"003f8140e7c044dc6153d1b25447ee9fd7f67bd2","feature":"session-identity"},
-    {"source_commit":"46458913bd","patch_id":"9cb27ec0edf23127c29369bd5843d154390ba55a","feature":"session-identity"},
-    {"source_commit":"782d1dcf9b","patch_id":"ee9974ce4ac27b945dfcf673c6124223dc560cc9","feature":"session-identity"},
-    {"source_commit":"8ef26104ae","patch_id":"4f5a120c0239207ebe403464f72f6f8410c261d9","feature":"session-identity"},
-    {"source_commit":"a2289fa57e","patch_id":"eafb5fb9d7f9710d143eb2b374768e088b2c848b","feature":"runtime-status"},
-    {"source_commit":"c9e338e3e2","patch_id":"69c5e9b249d67f71fe87e53a0f879504a1945ec1","feature":"runtime-status"},
-    {"source_commit":"ec7f5bee64","patch_id":"8ee1804b2a2364fb7956340cf2576d82a4fd9496","feature":"model-switch"},
-    {"source_commit":"72b904fae6","patch_id":"d7f0c670c0f278104548c28fcb824854b9c60a32","feature":"model-switch"},
-    {"source_commit":"59d9b2fd30","patch_id":"1c245deffcd9024b6a0d71843c23761b13cf9f1f","feature":"runtime-status"},
-    {"source_commit":"f4fd684571","patch_id":"fb121c18cfc8a67a9d1c5bf7694033e888e96923","feature":"session-identity"},
-    {"source_commit":"5227f6bc27","patch_id":"5afb82e04e3ed9a68eeb710362a6463b01cabb15","feature":"runtime-status"},
-    {"source_commit":"be99c6b029","patch_id":"7047ddfa349c8efc6b3de58ecb375e9e7d4b9ab3","feature":"experience-review"},
-    {"source_commit":"7003eae129","patch_id":"72585b95c29738d3e23681ff801a6d23743bf4fb","feature":"runtime-status"},
-    {"source_commit":"4185ecad9f","patch_id":"dc36e4f9304cc8de596396a3f6ec0905a45829f9","feature":"desktop-ui"},
-    {"source_commit":"321e5837f5","patch_id":"a37f053508dfa9bea0764c5b26bb94122ffb8008","feature":"desktop-ui"},
-    {"source_commit":"c645100d63","patch_id":"f9db6208ebf8c28e96ccb170e5797fc27f972121","feature":"runtime-status"},
-    {"source_commit":"7a504a7a5c","patch_id":"0524c61ea6b987d39127a634031886cd1862b554","feature":"desktop-ui"},
-    {"source_commit":"d4dc959ec6","patch_id":"d1605656e2cfbd8474caff8faceace338abf8416","feature":"branch-context"},
-    {"source_commit":"9d54121097","patch_id":"d25434bbf5f85daf5a054f70b2969ad0adadcc5d","feature":"desktop-ui"},
-    {"source_commit":"2d47e82409","patch_id":"a5c18ed19f33a377752135356f61f81f916e039e","feature":"model-switch"},
-    {"source_commit":"ae1b355606","patch_id":"1a4fd7444ceacd488a35423d6d234e343cd26d82","feature":"experience-review"},
-    {"source_commit":"b2c1fd9e43","patch_id":"48e3aa31606f6526db769d9c33fd592a0733af51","feature":"branch-merge"},
-    {"source_commit":"19481f719f","patch_id":"c841583fc46b32ae39dbde3b7be339d9b1990470","feature":"experience-review"},
-    {"source_commit":"e8c76a4bf7","patch_id":"3df41716be23c9f131c37fc389f03cc2bf615553","feature":"desktop-ui"},
-    {"source_commit":"4dd478c728","patch_id":"8f7217a05810011da825d7fcfdac8c71642c7106","feature":"desktop-ui"},
-    {"source_commit":"9e486c2227","patch_id":"55fa75c283af1be8755727a392177dff4535678f","feature":"desktop-ui"},
-    {"source_commit":"2c357c4315","patch_id":"c8cd3161ba0a9f3e0f8f6e80e8425e26b0bd043c","feature":"transient-retry"},
-    {"source_commit":"d5b0348f0f","patch_id":"11b2feafa3c03f0a322ea2ed8bc6e4da9ecb4157","feature":"desktop-ui"},
-    {"source_commit":"355398d406","patch_id":"d8720477915bae07f4869eecacb65dd7547ce7ff","feature":"experience-review"},
-    {"source_commit":"22a2e06506","patch_id":"54343be4e5bcfb28346188eed5cc7b2a73bf97cc","feature":"experience-review"},
-    {"source_commit":"cc2d077cff","patch_id":"6015f713a65fee470fa0d6f1dcb7723eb14677b1","feature":"windows-deploy"},
-    {"source_commit":"c095260f9e","patch_id":"7c321cf9e3a5211412e5e467dce4e577467bd82f","feature":"windows-deploy"},
-    {"source_commit":"a1eed1d17c","patch_id":"ef217e8e94f5cfce025b0337d76406f995384049","feature":"session-identity"},
-    {"source_commit":"356806b0be","patch_id":"e397fbb3484da7777c943ddfcb497bb0225a414b","feature":"branch-merge"},
-    {"source_commit":"55722e186d","patch_id":"6b6186bffd87d1d63705f7ced10f7fb1fd6187c8","feature":"branch-merge"},
-    {"source_commit":"429786fcbe","patch_id":"faaad7d5d03a099cb07e5a1d5467a1576097d552","feature":"branch-merge"},
-    {"source_commit":"a0fd763ebf","patch_id":"c3a7bcdde2fb6ec9c2fdca39402444e3c46f33f1","feature":"branch-merge"},
-    {"source_commit":"2d9ee60b3d","patch_id":"95733a0d90fed75d95b512f845a10d5e401d5081","feature":"branch-merge"},
-    {"source_commit":"51652b5be8","patch_id":"ad7ea37911fd005675b60141df8c9111ea55e39a","feature":"branch-context"},
-    {"source_commit":"354b9476d0","patch_id":"2a6657654fb85d97342a33bfbc7efe0326dc7662","feature":"runtime-status"},
-    {"source_commit":"be3099a47a","patch_id":"b45b750cb812b1cc53745a3b09450244bb2648e8","feature":"session-identity"},
-    {"source_commit":"424ca75dc7","patch_id":"a7c0bd23ba04923b9876526d3c6a392633d5eb1b","feature":"transient-retry"},
-    {"source_commit":"bc5369a5a8","patch_id":"dfa3dcfd31e03695519965a8040f8c23a7a3e0c9","feature":"desktop-ui"},
-    {"source_commit":"4a5a953a5d","patch_id":"e3f48027ec631a06ab72d85b784016be4796cf10","feature":"experience-review"},
-    {"source_commit":"818aae12ae","patch_id":"c70c0d2387ae0727b19a36cb29e06885523f83f6","feature":"experience-review"},
-    {"source_commit":"4bf551cf2e","patch_id":"51928c68c1e9ec66805199a658677db9e13b4223","feature":"transient-retry"},
-    {"source_commit":"87981e97c2","patch_id":"bfe58fd90731092feb8063f04283557c16ff6ff7","feature":"desktop-ui"},
-    {"source_commit":"1fb51a075a","patch_id":"8fb2287f996effb6e7e8e4ba13cd8f4596a05305","feature":"desktop-ui"},
-    {"source_commit":"35bf88d311","patch_id":"1f01034d8704342a591af1fb013b070fb65962c6","feature":"desktop-ui"},
-    {"source_commit":"eb8fb34dc9","patch_id":"4b7526c341961078944648b11a3eeaa55ab1fbba","feature":"desktop-ui"},
-    {"source_commit":"c1b3e5eea1","patch_id":"c28f9fb41f781e8b8a83c8a07e1e45179f95d37e","feature":"desktop-ui"},
-    {"source_commit":"eb20648368","patch_id":"74c84c7d37d4cb8e3ad6e87f0203301062ad3009","feature":"desktop-ui"},
-    {"source_commit":"87be48ec19","patch_id":"637f7ec8ac820207a3078c2c54da9a6e599a4d96","feature":"desktop-ui"},
-    {"source_commit":"bddda86718","patch_id":"7e9f9bf73485a64b47129671c2f3ffd93b2b6799","feature":"session-identity"},
-    {"source_commit":"535f2526a8","patch_id":"ce192d85110217d24a4f35bb59bd95c7e87c2fd0","feature":"model-switch"},
-    {"source_commit":"546784e038","patch_id":"fe39a518c3cf7d287563a630550e1cbdb5fd5fb0","feature":"model-switch"},
-    {"source_commit":"060d325a12","patch_id":"6ccafd198483978d77d3be3e4fb7586bbebbebd6","feature":"conversation-branches"},
-    {"source_commit":"e6e379f0b6","patch_id":"fc501ffb0295317b1086b76fc77c9704a20a6427","feature":"shared-core-memory"}
+    {
+      "source_commit": "b661b77fff",
+      "patch_id": "2a45b442d2a78d0d152d421d040e4c7fe61a1fde",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "bc0bece882",
+      "patch_id": "6394153a42dcc293ad824d55aff0ea8cacfd42b6",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "02ce977f21",
+      "patch_id": "bdba2621c169938264f300a614756202b0e08c43",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "c43496adfe",
+      "patch_id": "e59ad786087ecc5530385e0e96ab2881087f26a3",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "ea12834de3",
+      "patch_id": "eaeab5950412dff967e722419974ec6a7a7b32e7",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "7ea5d76869",
+      "patch_id": "af989f521f5cf298ed7625e7a5d66b58e0f22011",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "4747106e42",
+      "patch_id": "1dc6add99092570b3d4f68cabea6a44899696407",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "01ba32ff1a",
+      "patch_id": "daabbb1c3ca0f3e872346235f83aab39f5355a2b",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "5968dc2245",
+      "patch_id": "2a645d57c9c287224e78fceda1c58a0175e1e38a",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "1c49236fd8",
+      "patch_id": "a6a417ba706bc147597fd3e5f179872de8a9d7ee",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "1ab3f4e024",
+      "patch_id": "859b72d2c7c495ebc0210d63bd5cc850bdf24a4c",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "2bc1ff2a94",
+      "patch_id": "871539bfe849a15f2df5e2df061a73e776eb6a42",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "cdb49aeba9",
+      "patch_id": "1352bb40cf917c2a0a4cc931824bcdd1c45b64f3",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "b0036ae1e6",
+      "patch_id": "16b6563729b80072d0a6137fc196830e8ff55ee4",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "caff5a8589",
+      "patch_id": "909b1e917fc508136c1d4210e6a04963a3e9f82c",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "cc9aca72ca",
+      "patch_id": "1bd44239829c8791110e42a28ac00139a172e4f6",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "4f50e8616b",
+      "patch_id": "e0feba26d069e33558ff40d297f5ed41ca19ea00",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "cf82577b70",
+      "patch_id": "65790e4b7538bde4d17b4207437c58675813f229",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "0e8a43045c",
+      "patch_id": "872cadf58f5b86bd518cdc6dab35d0e144e276a0",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "f6dc7eb5de",
+      "patch_id": "81ee81b94535fe336803f5330d033bbf2830aad4",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "2cfa08cdeb",
+      "patch_id": "483a8e7d835fe867f93322c1cd2eb420e9950e87",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "d839fab7d6",
+      "patch_id": "09b90ef5620d668d5c8cacfd0c74048e0b0d4d5b",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "b17d6b9b23",
+      "patch_id": "fb2e4b02e0f9cdb6f7d825390c549b76b70a992a",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "078680b785",
+      "patch_id": "163d453ec93f67fbee69104bb1a35344264e6c8d",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "953eeda844",
+      "patch_id": "b608f66156cc0ef70d112c6c70e993dcf28b6a3d",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "83f4da0907",
+      "patch_id": "c188a8bcd852caade514b42bc2ee146ebd68c5cd",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "01ba7361e4",
+      "patch_id": "2c646240efb4081375eaf4f7d58a6242d5abab9b",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "aaa9f8ff11",
+      "patch_id": "a045d4dc50fbcd3b19a9db94a9ece3a0530416b3",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "2528548da4",
+      "patch_id": "6600c000a5afc459bea10b54c00fa0589eac73c0",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "cef754cb36",
+      "patch_id": "a9b0b055577a08d4bb134243800f78eebcd403f0",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "63f98126a2",
+      "patch_id": "8c21645dba053ea683ed9b5ba7d80caf8a079324",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "6f41288a6d",
+      "patch_id": "79c29b588b8e230a9b9115e2d88332ecd32ed6ba",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "bd29af49ba",
+      "patch_id": "8234cee28a6cab9219e548e445d02361b9e1b93b",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "d7d8de4bae",
+      "patch_id": "74c521db458b79505603b0189b235661ef79701b",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "fc617c6540",
+      "patch_id": "03357ec189c3a73885131a024fa2c379a9cec96a",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "9cedbcf6d3",
+      "patch_id": "0fa1348d33a41f56106cf56a9f120db3d4f98896",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "d88e08df6d",
+      "patch_id": "bda579077e0a6364fd1ad0c068f4369db7004a80",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "9ed9093764",
+      "patch_id": "bfe58fd90731092feb8063f04283557c16ff6ff7",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "971bd6268c",
+      "patch_id": "07ecceb2abda8f5d5e411986cb4080cd63e728bc",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "54f9207b82",
+      "patch_id": "e46f4401eb112aaa8a0b18bd29016c9c77910c55",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "6fa4b6426c",
+      "patch_id": "b6aa774f4b382bfa2b39a855c1b207084f098ccf",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "7e7d131715",
+      "patch_id": "c28f9fb41f781e8b8a83c8a07e1e45179f95d37e",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "7d37dc181d",
+      "patch_id": "3eb4212e212479258eb1fd7bd133da93809bd2c9",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "5dd10bbfcb",
+      "patch_id": "1c255c7436d0bd5c193c15436b05207952ff5f9b",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "7a24b0f9be",
+      "patch_id": "0e44bb4685aa9dd75262b916f32f362dfca417c5",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "7be9d74d20",
+      "patch_id": "49b6737d90855c9b0c33ab46490766b89c4adbd9",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "16a4458abc",
+      "patch_id": "1cf2a667dd604021fd9733c81743f260bd73b7a5",
+      "feature": "v2026.8.3-port"
+    }
   ],
   "features": [
-    {"id":"cross-device-session","label":"Desktop/mobile Session and message sync","commits":["76fe833b20","8eef345f3c","92b912083b"],"source_paths":["hermes_state.py","tui_gateway/server.py","apps/desktop/src/store/session.ts"],"test_paths":["tests/hermes_state/test_session_live_status.py","tests/test_tui_gateway_server.py"]},
-    {"id":"session-identity","label":"stored/runtime identity and send recovery","commits":["59112e8bf4","46458913bd","782d1dcf9b","8ef26104ae","a1eed1d17c","be3099a47a","bddda86718"],"source_paths":["tui_gateway/server.py","apps/desktop/src/app/session/hooks/use-session-actions/index.ts","apps/desktop/src/app/session/hooks/use-session-actions/utils.ts"],"test_paths":["tests/cli/test_branch_command.py","apps/desktop/src/app/session/hooks/use-session-actions/utils.test.ts"]},
-    {"id":"branch-context","label":"branch context isolation","commits":["d4dc959ec6","51652b5be8"],"source_paths":["apps/desktop/src/app/session/hooks/use-session-actions/index.ts"],"test_paths":["tests/cli/test_branch_command.py"]},
-    {"id":"branch-merge","label":"parallel review and serial branch merge","commits":["561838ad4c","6580422821","b2c1fd9e43","356806b0be","55722e186d","429786fcbe","a0fd763ebf","2d9ee60b3d"],"source_paths":["apps/desktop/src/app/chat/sidebar/session-actions-menu.tsx","tui_gateway/server.py"],"test_paths":["tests/test_background_review_session_isolation.py"]},
-    {"id":"experience-review","label":"20-user-message review and visible progress","commits":["be99c6b029","ae1b355606","19481f719f","355398d406","22a2e06506","4a5a953a5d","818aae12ae"],"source_paths":["tui_gateway/server.py","apps/desktop/src/app/session/hooks/use-message-stream/gateway-event.ts"],"test_paths":["tests/test_background_review_session_isolation.py"]},
-    {"id":"runtime-status","label":"runtime recovery and status reconciliation","commits":["a2289fa57e","c9e338e3e2","59d9b2fd30","5227f6bc27","7003eae129","c645100d63","354b9476d0"],"source_paths":["tui_gateway/server.py","hermes_state.py"],"test_paths":["tests/hermes_state/test_session_live_status.py"]},
-    {"id":"model-switch","label":"queued and all-session model switching","commits":["ec7f5bee64","72b904fae6","2d47e82409","535f2526a8","546784e038"],"source_paths":["tui_gateway/server.py","hermes_cli/model_switch.py","apps/desktop/src/app/session/hooks/use-session-actions/index.ts"],"test_paths":["tests/test_tui_gateway_server.py","tests/hermes_cli/test_user_providers_model_switch.py"]},
-    {"id":"transient-retry","label":"continuous upstream and incomplete-response retry","commits":["2c357c4315","424ca75dc7","4bf551cf2e"],"source_paths":["agent/conversation_loop.py"],"test_paths":["tests/run_agent/test_transient_retry_forever.py","tests/run_agent/test_run_agent_codex_responses.py"]},
-    {"id":"desktop-ui","label":"sidebar, running family, unread badge, pinned family, and composer behavior","commits":["4185ecad9f","321e5837f5","7a504a7a5c","9d54121097","e8c76a4bf7","4dd478c728","9e486c2227","d5b0348f0f","bc5369a5a8","87981e97c2","1fb51a075a","35bf88d311","eb8fb34dc9","c1b3e5eea1","eb20648368","87be48ec19"],"source_paths":["apps/desktop/src/app/chat/sidebar/index.tsx","apps/desktop/src/app/chat/sidebar/session-row.tsx","apps/desktop/src/app/chat/sidebar/sessions-section.tsx","apps/desktop/src/app/chat/sidebar/virtual-session-list.tsx","apps/desktop/src/app/shell/hooks/use-taskbar-unread-badge.ts","apps/desktop/src/store/session.ts","apps/desktop/src/store/session-color.ts","apps/desktop/src/store/session-pins.ts"],"test_paths":["apps/desktop/src/app/chat/sidebar/session-row-branch-geometry.test.tsx","apps/desktop/src/app/session/hooks/use-message-stream/utils.test.ts","apps/desktop/src/app/shell/hooks/use-taskbar-unread-badge.test.ts","apps/desktop/src/store/session-color.test.ts","apps/desktop/src/store/session-pins.test.ts"]},
-    {"id":"windows-deploy","label":"Windows deployment and EPIPE protection","commits":["cc2d077cff","c095260f9e"],"source_paths":["apps/desktop/electron"],"test_paths":["apps/desktop/electron"]},
-    {"id":"conversation-branches","label":"durable visible batch Conversation Branch management","commits":["060d325a12"],"source_paths":["hermes_state.py","tui_gateway/conversation_branches.py","tools/conversation_branches_tool.py","tui_gateway/server.py","apps/desktop/src/app/chat/sidebar/conversation-branch-dialog.tsx","apps/desktop/src/app/chat/sidebar/session-actions-menu.tsx"],"test_paths":["tests/tui_gateway/test_conversation_branches.py","tests/tui_gateway/test_conversation_branch_gateway.py","tests/tui_gateway/test_conversation_branch_e2e.py","apps/desktop/src/app/chat/sidebar/conversation-branch-dialog.test.tsx"]},
-    {"id":"shared-core-memory","label":"reload AI-Agent-Hub core memory after compression","commits":["e6e379f0b6"],"source_paths":["agent/shared_core_memory.py","agent/conversation_compression.py","agent/system_prompt.py"],"test_paths":["tests/agent/test_shared_core_memory.py","tests/agent/test_system_prompt.py","tests/run_agent/test_413_compression.py"]}
+    {
+      "id": "cross-device-session",
+      "label": "Desktop/mobile Session and message sync",
+      "commits": ["76fe833b20", "8eef345f3c", "92b912083b"],
+      "source_paths": ["hermes_state.py", "tui_gateway/server.py", "apps/desktop/src/store/session.ts"],
+      "test_paths": ["tests/hermes_state/test_session_live_status.py", "tests/test_tui_gateway_server.py"]
+    },
+    {
+      "id": "session-identity",
+      "label": "stored/runtime identity and send recovery",
+      "commits": ["59112e8bf4", "46458913bd", "782d1dcf9b", "8ef26104ae", "a1eed1d17c", "be3099a47a", "bddda86718"],
+      "source_paths": [
+        "tui_gateway/server.py",
+        "apps/desktop/src/app/session/hooks/use-session-actions/index.ts",
+        "apps/desktop/src/app/session/hooks/use-session-actions/utils.ts"
+      ],
+      "test_paths": [
+        "tests/cli/test_branch_command.py",
+        "apps/desktop/src/app/session/hooks/use-session-actions/utils.test.ts"
+      ]
+    },
+    {
+      "id": "branch-context",
+      "label": "branch context isolation",
+      "commits": ["d4dc959ec6", "51652b5be8"],
+      "source_paths": ["apps/desktop/src/app/session/hooks/use-session-actions/index.ts"],
+      "test_paths": ["tests/cli/test_branch_command.py"]
+    },
+    {
+      "id": "branch-merge",
+      "label": "parallel review and serial branch merge",
+      "commits": [
+        "561838ad4c",
+        "6580422821",
+        "b2c1fd9e43",
+        "356806b0be",
+        "55722e186d",
+        "429786fcbe",
+        "a0fd763ebf",
+        "2d9ee60b3d"
+      ],
+      "source_paths": ["apps/desktop/src/app/chat/sidebar/session-actions-menu.tsx", "tui_gateway/server.py"],
+      "test_paths": ["tests/test_background_review_session_isolation.py"]
+    },
+    {
+      "id": "experience-review",
+      "label": "20-user-message review and visible progress",
+      "commits": ["be99c6b029", "ae1b355606", "19481f719f", "355398d406", "22a2e06506", "4a5a953a5d", "818aae12ae"],
+      "source_paths": [
+        "tui_gateway/server.py",
+        "apps/desktop/src/app/session/hooks/use-message-stream/gateway-event.ts"
+      ],
+      "test_paths": ["tests/test_background_review_session_isolation.py"]
+    },
+    {
+      "id": "runtime-status",
+      "label": "runtime recovery and status reconciliation",
+      "commits": ["a2289fa57e", "c9e338e3e2", "59d9b2fd30", "5227f6bc27", "7003eae129", "c645100d63", "354b9476d0"],
+      "source_paths": ["tui_gateway/server.py", "hermes_state.py"],
+      "test_paths": ["tests/hermes_state/test_session_live_status.py"]
+    },
+    {
+      "id": "model-switch",
+      "label": "queued and all-session model switching",
+      "commits": ["ec7f5bee64", "72b904fae6", "2d47e82409", "535f2526a8", "546784e038"],
+      "source_paths": [
+        "tui_gateway/server.py",
+        "hermes_cli/model_switch.py",
+        "apps/desktop/src/app/session/hooks/use-session-actions/index.ts"
+      ],
+      "test_paths": ["tests/test_tui_gateway_server.py", "tests/hermes_cli/test_user_providers_model_switch.py"]
+    },
+    {
+      "id": "transient-retry",
+      "label": "continuous upstream and incomplete-response retry",
+      "commits": ["2c357c4315", "424ca75dc7", "4bf551cf2e"],
+      "source_paths": ["agent/conversation_loop.py"],
+      "test_paths": [
+        "tests/run_agent/test_transient_retry_forever.py",
+        "tests/run_agent/test_run_agent_codex_responses.py"
+      ]
+    },
+    {
+      "id": "desktop-ui",
+      "label": "sidebar, running family, unread badge, pinned family, and composer behavior",
+      "commits": [
+        "4185ecad9f",
+        "321e5837f5",
+        "7a504a7a5c",
+        "9d54121097",
+        "e8c76a4bf7",
+        "4dd478c728",
+        "9e486c2227",
+        "d5b0348f0f",
+        "bc5369a5a8",
+        "87981e97c2",
+        "1fb51a075a",
+        "35bf88d311",
+        "eb8fb34dc9",
+        "c1b3e5eea1",
+        "eb20648368",
+        "87be48ec19"
+      ],
+      "source_paths": [
+        "apps/desktop/src/app/chat/sidebar/index.tsx",
+        "apps/desktop/src/app/chat/sidebar/session-row.tsx",
+        "apps/desktop/src/app/chat/sidebar/sessions-section.tsx",
+        "apps/desktop/src/app/chat/sidebar/virtual-session-list.tsx",
+        "apps/desktop/src/app/shell/hooks/use-taskbar-unread-badge.ts",
+        "apps/desktop/src/store/session.ts",
+        "apps/desktop/src/store/session-color.ts",
+        "apps/desktop/src/store/session-pins.ts"
+      ],
+      "test_paths": [
+        "apps/desktop/src/app/chat/sidebar/session-row.test.tsx",
+        "apps/desktop/src/app/session/hooks/use-message-stream/utils.test.ts",
+        "apps/desktop/src/app/shell/hooks/use-taskbar-unread-badge.test.ts",
+        "apps/desktop/src/store/session-color.test.ts",
+        "apps/desktop/src/store/session-pins.test.ts"
+      ]
+    },
+    {
+      "id": "windows-deploy",
+      "label": "Windows deployment and EPIPE protection",
+      "commits": ["cc2d077cff", "c095260f9e"],
+      "source_paths": ["apps/desktop/electron"],
+      "test_paths": ["apps/desktop/electron"]
+    },
+    {
+      "id": "conversation-branches",
+      "label": "durable visible batch Conversation Branch management",
+      "commits": ["060d325a12"],
+      "source_paths": [
+        "hermes_state.py",
+        "tui_gateway/conversation_branches.py",
+        "tools/conversation_branches_tool.py",
+        "tui_gateway/server.py",
+        "apps/desktop/src/app/chat/sidebar/conversation-branch-dialog.tsx",
+        "apps/desktop/src/app/chat/sidebar/session-actions-menu.tsx"
+      ],
+      "test_paths": [
+        "tests/tui_gateway/test_conversation_branches.py",
+        "tests/tui_gateway/test_conversation_branch_gateway.py",
+        "tests/tui_gateway/test_conversation_branch_e2e.py",
+        "apps/desktop/src/app/chat/sidebar/conversation-branch-dialog.test.tsx"
+      ]
+    },
+    {
+      "id": "shared-core-memory",
+      "label": "reload AI-Agent-Hub core memory after compression",
+      "commits": ["e6e379f0b6"],
+      "source_paths": ["agent/shared_core_memory.py", "agent/conversation_compression.py", "agent/system_prompt.py"],
+      "test_paths": [
+        "tests/agent/test_shared_core_memory.py",
+        "tests/agent/test_system_prompt.py",
+        "tests/run_agent/test_413_compression.py"
+      ]
+    }
   ],
   "smoke_tests": [
-    {"id":"python-retry","cwd":".","command":"uv","args":["run","--frozen","pytest","tests/run_agent/test_transient_retry_forever.py","-q"]},
-    {"id":"codex-incomplete","cwd":".","command":"uv","args":["run","--frozen","pytest","tests/run_agent/test_run_agent_codex_responses.py","-q","-k","incomplete"]},
-    {"id":"desktop-stream-utils","cwd":"apps/desktop","command":"npm","args":["exec","--","vitest","run","src/app/session/hooks/use-message-stream/utils.test.ts","--environment","jsdom"]}
+    {
+      "id": "python-retry",
+      "cwd": ".",
+      "command": "uv",
+      "args": ["run", "--frozen", "pytest", "tests/run_agent/test_transient_retry_forever.py", "-q"]
+    },
+    {
+      "id": "codex-incomplete",
+      "cwd": ".",
+      "command": "uv",
+      "args": [
+        "run",
+        "--frozen",
+        "pytest",
+        "tests/run_agent/test_run_agent_codex_responses.py",
+        "-q",
+        "-k",
+        "incomplete"
+      ]
+    },
+    {
+      "id": "desktop-stream-utils",
+      "cwd": "apps/desktop",
+      "command": "npm",
+      "args": [
+        "exec",
+        "--",
+        "vitest",
+        "run",
+        "src/app/session/hooks/use-message-stream/utils.test.ts",
+        "--environment",
+        "jsdom"
+      ]
+    }
   ]
 }
