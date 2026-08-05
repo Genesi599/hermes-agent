@@ -277,6 +277,11 @@
       "source_commit": "c6eb13088e",
       "patch_id": "85b2344b539f4ba4856626fd8d3f8dc4f9495ada",
       "feature": "runtime-status"
+    },
+    {
+      "source_commit": "d29cca702e",
+      "patch_id": "d4216b86db4d329cacd578ef4f689b5975d6e1f5",
+      "feature": "branch-merge"
     }
   ],
   "features": [
@@ -322,7 +327,21 @@
         "2d9ee60b3d"
       ],
       "source_paths": ["apps/desktop/src/app/chat/sidebar/session-actions-menu.tsx", "tui_gateway/server.py"],
-      "test_paths": ["tests/test_background_review_session_isolation.py"]
+      "test_paths": ["tests/test_background_review_session_isolation.py"],
+      "required_patterns": [
+        {
+          "path": "apps/desktop/src/app/session/hooks/use-session-actions/index.ts",
+          "pattern": "mergeAllChildrenIntoParent"
+        },
+        {
+          "path": "apps/desktop/src/app/chat/sidebar/session-actions-menu.tsx",
+          "pattern": "mergeChildrenCount"
+        },
+        {
+          "path": "tui_gateway/methods_review.py",
+          "pattern": "session.merge_branch"
+        }
+      ]
     },
     {
       "id": "experience-review",
@@ -435,6 +454,20 @@
         "tests/tui_gateway/test_conversation_branch_gateway.py",
         "tests/tui_gateway/test_conversation_branch_e2e.py",
         "apps/desktop/src/app/chat/sidebar/conversation-branch-dialog.test.tsx"
+      ],
+      "required_patterns": [
+        {
+          "path": "tools/conversation_branches_tool.py",
+          "pattern": "registry.register("
+        },
+        {
+          "path": "apps/desktop/src/app/chat/sidebar/session-actions-menu.tsx",
+          "pattern": "onCreateBranches"
+        },
+        {
+          "path": "apps/desktop/src/app/chat/sidebar/index.tsx",
+          "pattern": "ConversationBranchDialog"
+        }
       ]
     },
     {
