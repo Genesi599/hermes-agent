@@ -19,7 +19,7 @@ import { handoffOriginSource, sessionSourceLabel } from '@/lib/session-source'
 import { coarseElapsed } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { $attentionSessionIds } from '@/store/session-states'
-import { $reviewActivityBySessionId, $sessions } from '@/store/session'
+import { $reviewActivityBySessionId } from '@/store/session'
 import { $sessionColorById } from '@/store/session-color'
 
 import { SessionStatusDot } from '../session-status-dot'
