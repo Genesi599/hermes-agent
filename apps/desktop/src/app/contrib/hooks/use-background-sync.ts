@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react'
 import { useEffect } from 'react'
 
+import { finalizeInterruptedMessages } from '@/app/session/hooks/use-prompt-actions/rewind'
 import { createClientSessionState } from '@/lib/chat-runtime'
 import { $changeEventsAvailable, $cronChangeTick, $sessionsChangeTick } from '@/store/live-sync'
 import { $onBattery, batteryPollInterval } from '@/store/power'
@@ -103,11 +104,21 @@ export function rehydrateLiveSessionStatuses(
       existing.busy !== working ||
       existing.needsInput !== needsInput
     ) {
+      const settled = existing?.busy && !working
+
       publishSessionState(runtimeSessionId, {
         ...(existing ?? createClientSessionState(storedSessionId)),
         busy: working,
         needsInput,
-        storedSessionId
+        storedSessionId,
+        ...(settled
+          ? {
+              awaitingResponse: false,
+              messages: finalizeInterruptedMessages(existing.messages, existing.streamId),
+              streamId: null,
+              turnStartedAt: null
+            }
+          : {})
       })
     }
 
@@ -150,6 +161,7 @@ export function rehydrateLiveSessionStatuses(
           awaitingResponse: false,
           busy: false,
           needsInput: false,
+          messages: finalizeInterruptedMessages(existing.messages, existing.streamId),
           streamId: null,
           turnStartedAt: null
         })

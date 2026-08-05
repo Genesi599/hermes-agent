@@ -125,4 +125,18 @@ describe('turn end without message.complete (session.info running=false)', () =>
     expect(state?.messages.every(message => !message.pending)).toBe(true)
     expect(state?.streamId).toBeNull()
   })
+
+  it('settles a turn with no assistant payload when running=false arrives', async () => {
+    await mountHarness()
+
+    emit({ session_id: SID, type: 'message.start', payload: {} })
+    expect(states.get(SID)?.awaitingResponse).toBe(true)
+
+    emit({ payload: { running: false }, session_id: SID, type: 'session.info' })
+
+    const state = states.get(SID)
+    expect(state?.busy).toBe(false)
+    expect(state?.awaitingResponse).toBe(false)
+    expect(state?.streamId).toBeNull()
+  })
 })

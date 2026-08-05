@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   $attentionSessionIds,
+  $sessionStates,
   $stalledSessionIds,
   $workingSessionIds,
   clearAllSessionStates,
@@ -71,5 +72,23 @@ describe('rehydrateLiveSessionStatuses', () => {
     expect($workingSessionIds.get()).toEqual([])
     expect($attentionSessionIds.get()).toEqual([])
     expect($stalledSessionIds.get()).toEqual([])
+  })
+
+  it('settles a pending runtime when the live snapshot turns idle', () => {
+    rehydrateLiveSessionStatuses({
+      sessions: [{ id: 'runtime-finished', session_key: 'finished-session', status: 'working' }]
+    })
+
+    const state = $sessionStates.get()['runtime-finished']
+    expect(state?.busy).toBe(true)
+
+    rehydrateLiveSessionStatuses({
+      sessions: [{ id: 'runtime-finished', session_key: 'finished-session', status: 'idle' }]
+    })
+
+    const settled = $sessionStates.get()['runtime-finished']
+    expect(settled?.busy).toBe(false)
+    expect(settled?.awaitingResponse).toBe(false)
+    expect(settled?.streamId).toBeNull()
   })
 })
