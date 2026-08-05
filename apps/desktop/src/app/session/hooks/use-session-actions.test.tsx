@@ -1085,7 +1085,7 @@ describe('resumeSession failure recovery', () => {
             branch: '',
             busy: false,
             cwd: '',
-            experienceReview: { batch: 0, pending: false, phase: 'idle', threshold: 20, user_count: 0 },
+            experienceReview: { batch: 0, pending: false, phase: 'counting', threshold: 20, user_count: 0 },
             fast: false,
             interimBoundaryPending: false,
             interrupted: false,
