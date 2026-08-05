@@ -57,6 +57,7 @@ import {
   setWorkspaceCwdOwner,
   setYoloActive
 } from '@/store/session'
+import { isSessionFamilyPinned, pinSessionFamily } from '@/store/session-pins'
 import {
   $sessionTiles,
   closeSessionTile,
@@ -66,7 +67,6 @@ import {
   publishSessionState,
   type TileDock
 } from '@/store/session-states'
-import { isSessionFamilyPinned, pinSessionFamily } from '@/store/session-pins'
 import { broadcastSessionsChanged } from '@/store/session-sync'
 import { isWatchWindow } from '@/store/windows'
 import type { SessionCreateResponse, SessionMessage, SessionResumeResponse, UsageStats } from '@/types/hermes'
@@ -1415,6 +1415,7 @@ export function useSessionActions({
             )
           )
         }
+
         clearQueuedPrompts(storedSessionId)
         broadcastSessionsChanged()
 
