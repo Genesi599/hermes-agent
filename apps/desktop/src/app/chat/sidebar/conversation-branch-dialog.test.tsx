@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { atom } from 'nanostores'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ConversationBranchDialog } from './conversation-branch-dialog'
@@ -8,6 +9,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/store/gateway', () => ({
+  $gateway: atom(null),
   activeGateway: () => ({ request: mocks.request })
 }))
 
