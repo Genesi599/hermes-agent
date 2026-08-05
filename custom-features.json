@@ -262,6 +262,11 @@
       "source_commit": "42ac6056fd",
       "patch_id": "3ac858855911a114e3e9208e22c2aed0a1d95b36",
       "feature": "transient-retry"
+    },
+    {
+      "source_commit": "6a46de585a",
+      "patch_id": "ab8898e089d57a1796b999e46cbe647be9c2e15c",
+      "feature": "runtime-status"
     }
   ],
   "features": [
@@ -322,15 +327,17 @@
     {
       "id": "runtime-status",
       "label": "runtime recovery and status reconciliation",
-      "commits": ["a2289fa57e", "c9e338e3e2", "59d9b2fd30", "5227f6bc27", "7003eae129", "c645100d63", "354b9476d0", "cabb4b5929", "6911929477"],
+      "commits": ["a2289fa57e", "c9e338e3e2", "59d9b2fd30", "5227f6bc27", "7003eae129", "c645100d63", "354b9476d0", "cabb4b5929", "6911929477", "6a46de585a"],
       "source_paths": [
         "tui_gateway/server.py",
         "hermes_state.py",
-        "apps/desktop/src/app/session/hooks/use-session-actions/utils.ts"
+        "apps/desktop/src/app/session/hooks/use-session-actions/utils.ts",
+        "apps/desktop/src/components/assistant-ui/thread/status.tsx"
       ],
       "test_paths": [
         "tests/hermes_state/test_session_live_status.py",
-        "apps/desktop/src/app/session/hooks/use-session-actions/utils.test.ts"
+        "apps/desktop/src/app/session/hooks/use-session-actions/utils.test.ts",
+        "apps/desktop/src/components/assistant-ui/thread/status.test.tsx"
       ]
     },
     {
