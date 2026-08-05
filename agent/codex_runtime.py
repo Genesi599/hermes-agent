@@ -1321,15 +1321,8 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
     # Accumulate streamed text so callers / compat shims can read it.
     agent._codex_streamed_text_parts: list = []
 
-    def _on_text_delta(text: str) -> None:
-        agent._codex_streamed_text_parts.append(text)
-        agent._fire_stream_delta(text)
-
-    def _on_reasoning_delta(text: str) -> None:
-        agent._fire_reasoning_delta(text)
-
-    def _on_commentary_message(text: str) -> None:
-        agent._fire_streamed_codex_commentary(text)
+    emitted_reasoning_text = ""
+    emitted_commentary: set[str] = set()
 
     def _on_event(event: Any) -> None:
         # TTFB watchdog and activity touch — runs once per SSE event.
@@ -1342,6 +1335,33 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
 
         intercepted_events = []
         writer_token = {"value": None}
+        text_replay_filter = _RetryReplayFilter(
+            "".join(agent._codex_streamed_text_parts) if attempt > 0 else ""
+        )
+        reasoning_replay_filter = _RetryReplayFilter(
+            emitted_reasoning_text if attempt > 0 else ""
+        )
+
+        def _on_text_delta(text: str) -> None:
+            unseen = text_replay_filter.feed(text)
+            if not unseen:
+                return
+            agent._codex_streamed_text_parts.append(unseen)
+            agent._fire_stream_delta(unseen)
+
+        def _on_reasoning_delta(text: str) -> None:
+            nonlocal emitted_reasoning_text
+            unseen = reasoning_replay_filter.feed(text)
+            if not unseen:
+                return
+            emitted_reasoning_text += unseen
+            agent._fire_reasoning_delta(unseen)
+
+        def _on_commentary_message(text: str) -> None:
+            if attempt > 0 and text in emitted_commentary:
+                return
+            emitted_commentary.add(text)
+            agent._fire_streamed_codex_commentary(text)
 
         def _open_codex_stream(next_api_kwargs: dict[str, Any]):
             stream_kwargs = dict(next_api_kwargs)

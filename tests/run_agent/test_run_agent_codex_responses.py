@@ -676,6 +676,108 @@ def test_run_codex_stream_returns_terminal_response_when_post_terminal_drain_fai
     )
 
 
+def test_run_codex_stream_deduplicates_prefix_after_midstream_retry(monkeypatch):
+    import httpx
+
+    agent = _build_agent(monkeypatch)
+    streamed = []
+    reasoning_streamed = []
+    agent.stream_delta_callback = streamed.append
+    agent.reasoning_callback = reasoning_streamed.append
+
+    class _DroppingStream(_FakeCreateStream):
+        def __iter__(self):
+            yield from super().__iter__()
+            raise httpx.RemoteProtocolError("connection dropped before terminal")
+
+    completed_item = SimpleNamespace(
+        type="message",
+        status="completed",
+        content=[SimpleNamespace(type="output_text", text="Repeat me, then continue.")],
+    )
+    attempts = [
+        _DroppingStream([
+            SimpleNamespace(type="response.reasoning_text.delta", delta="Need inspect. "),
+            SimpleNamespace(type="response.output_text.delta", delta="Repeat me, "),
+        ]),
+        _FakeCreateStream([
+            SimpleNamespace(type="response.reasoning_text.delta", delta="Need "),
+            SimpleNamespace(type="response.reasoning_text.delta", delta="inspect. Continue. "),
+            SimpleNamespace(type="response.output_text.delta", delta="Repeat "),
+            SimpleNamespace(type="response.output_text.delta", delta="me, then "),
+            SimpleNamespace(type="response.output_text.delta", delta="continue."),
+            SimpleNamespace(type="response.output_item.done", item=completed_item),
+            SimpleNamespace(
+                type="response.completed",
+                response=SimpleNamespace(status="completed"),
+            ),
+        ]),
+    ]
+
+    agent.client = SimpleNamespace(
+        responses=SimpleNamespace(create=lambda **_kwargs: attempts.pop(0)),
+    )
+
+    response = agent._run_codex_stream(_codex_request_kwargs())
+
+    assert "".join(streamed) == "Repeat me, then continue."
+    assert "".join(reasoning_streamed) == "Need inspect. Continue. "
+    assert "".join(agent._codex_streamed_text_parts) == "Repeat me, then continue."
+    assert response.output_text == "Repeat me, then continue."
+
+
+def test_run_codex_stream_deduplicates_commentary_after_midstream_retry(monkeypatch):
+    import httpx
+
+    agent = _build_agent(monkeypatch)
+    delivered = []
+    agent.interim_assistant_callback = (
+        lambda text, *, already_streamed=False: delivered.append(text)
+    )
+    commentary = "I will inspect the repository now."
+    commentary_item = SimpleNamespace(
+        type="message",
+        phase="commentary",
+        status="completed",
+        content=[SimpleNamespace(type="output_text", text=commentary)],
+    )
+
+    class _DroppingStream(_FakeCreateStream):
+        def __iter__(self):
+            yield from super().__iter__()
+            raise httpx.RemoteProtocolError("connection dropped before terminal")
+
+    attempts = [
+        _DroppingStream([
+            SimpleNamespace(
+                type="response.output_item.added",
+                item=SimpleNamespace(type="message", phase="commentary"),
+            ),
+            SimpleNamespace(type="response.output_text.delta", delta=commentary),
+            SimpleNamespace(type="response.output_item.done", item=commentary_item),
+        ]),
+        _FakeCreateStream([
+            SimpleNamespace(
+                type="response.output_item.added",
+                item=SimpleNamespace(type="message", phase="commentary"),
+            ),
+            SimpleNamespace(type="response.output_text.delta", delta=commentary),
+            SimpleNamespace(type="response.output_item.done", item=commentary_item),
+            SimpleNamespace(
+                type="response.completed",
+                response=SimpleNamespace(status="completed"),
+            ),
+        ]),
+    ]
+    agent.client = SimpleNamespace(
+        responses=SimpleNamespace(create=lambda **_kwargs: attempts.pop(0)),
+    )
+
+    agent._run_codex_stream(_codex_request_kwargs())
+
+    assert delivered == [commentary]
+
+
 def test_run_conversation_codex_plain_text(monkeypatch):
     agent = _build_agent(monkeypatch)
     monkeypatch.setattr(agent, "_interruptible_api_call", lambda api_kwargs: _codex_message_response("OK"))
