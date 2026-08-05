@@ -71,6 +71,13 @@ def _(rid, params: dict) -> dict:
     sid = params.get("session_id", "")
     raw_text = params.get("text", "")
     text = sanitize_user_prompt_text(raw_text) if isinstance(raw_text, str) else raw_text
+    if isinstance(text, str) and text.startswith("/"):
+        slash_exec = _methods.get("slash.exec")
+        if slash_exec is not None:
+            return slash_exec(
+                rid,
+                {"session_id": sid, "command": text[1:].strip()},
+            )
     # Typed bare stop phrase while backend voice mode is active ends the
     # voice chat instead of sending "stop" to the agent — the typed twin of
     # the spoken stop phrase (PR #73106), applied at the ONE server-side
@@ -111,6 +118,12 @@ def _(rid, params: dict) -> dict:
     session, err = _sess_nowait(params, rid)
     if err:
         return err
+    try:
+        pending_merge = getattr(_get_db(), "get_pending_branch_merge", None)
+        if callable(pending_merge) and pending_merge(str(session.get("session_key") or "")):
+            return _err(rid, 4041, "branch merge is queued; new messages are blocked until it completes")
+    except Exception:
+        pass
     if (limit_message := _ensure_active_session_slot(sid, session)) is not None:
         return _err(rid, 4090, limit_message)
     # Which desktop window this message was typed into. Rewritten on every

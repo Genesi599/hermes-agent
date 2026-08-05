@@ -163,6 +163,12 @@ try:
     _TUI_PROCESS_START_TIME = get_process_start_time(os.getpid()) or 0
 except Exception:
     _TUI_PROCESS_START_TIME = 0
+
+
+def _durable_turn_owner(sid: str) -> str:
+    return f"tui:{os.getpid()}:{_TUI_PROCESS_START_TIME}:{sid}"
+
+
 try:
     _slash_timeout = float(os.environ.get("HERMES_TUI_SLASH_TIMEOUT_S") or "45")
 except (ValueError, TypeError):
@@ -6327,6 +6333,8 @@ def _submit_branch_prompt(
     db = _get_db()
     if db is None:
         return
+    if not callable(getattr(db, "get_session", None)):
+        return
     db.update_branch_run(batch_id, client_key, status="running", started_at=time.time())
     with session["history_lock"]:
         session["running"] = True
@@ -6457,6 +6465,8 @@ def _drain_pending_branch_batches(parent_session_id: str) -> None:
 
     db = _get_db()
     if db is None:
+        return
+    if not callable(getattr(db, "get_session", None)):
         return
     parent = db.get_session(parent_session_id)
     if not parent:
@@ -8565,6 +8575,7 @@ def _lazy_resume_info(
     model: str = "",
     provider: str = "",
     profile: str | None = None,
+    session: dict | None = None,
 ) -> dict:
     """session.info for a not-yet-built session (the shape session.create
     returns). tools/skills land later when the deferred build emits session.info."""
@@ -8783,12 +8794,12 @@ def _find_live_session_by_key(session_key: str) -> tuple[str, dict] | None:
 def _fallback_session_info(session: dict) -> dict:
     agent = session.get("agent")
     if agent is not None:
-        return _session_info(agent)
+        return _session_info(agent, session)
     # The SESSION's own workspace, not the gateway's launch directory. Reporting
     # `_default_session_cwd()` here told a lazily-resumed session's client that
     # its workspace was wherever the gateway process happened to start, so the
     # desktop Files pane painted the wrong project even after the renderer
-    # rebound correctly (#71254). `branch` is always emitted ("" outside a git
+    # rebounded correctly (#71254). `branch` is always emitted ("" outside a git
     # repo) so a client can clear a stale label instead of retaining it — the
     # same contract `_lazy_session_info` above already follows.
     cwd = _session_cwd(session)
@@ -10423,6 +10434,80 @@ def _plan_goal_compression_recovery(
         "Run /compress, then /goal resume to continue.",
     )
 
+def _apply_pending_branch_merges_unlocked(
+    parent_id: str,
+    *,
+    claim_already_held: bool = False,
+    safe_live_sid: str = "",
+) -> list[str]:
+    """Inject reviewed branch summaries and delete children at an idle boundary."""
+    db = _get_db()
+    lister = getattr(db, "list_pending_branch_merges", None)
+    if db is None or lister is None or not parent_id:
+        return []
+    owner = ""
+    if not claim_already_held:
+        with _sessions_lock:
+            if any(s.get("session_key") == parent_id and s.get("running") for s in _sessions.values()):
+                return []
+        owner = _durable_turn_owner(f"branch-merge:{parent_id}")
+        claimer = getattr(db, "try_claim_session_live_status", None)
+        if claimer is not None and not claimer(parent_id, owner):
+            return []
+    deleted_ids: list[str] = []
+    try:
+        for child in lister(parent_id):
+            child_id = str(child.get("id") or "").strip()
+            merged_content = str(child.get("branch_merge_summary") or "").strip()
+            if not child_id or not merged_content:
+                continue
+            marker = f"branch-merge:{child_id}"
+            parent_messages = db.get_messages(parent_id)
+            if not any(m.get("platform_message_id") == marker for m in parent_messages):
+                db.append_message(
+                    session_id=parent_id,
+                    role="assistant",
+                    content=merged_content,
+                    platform_message_id=marker,
+                    effect_disposition="branch_merge",
+                )
+            with _sessions_lock:
+                parent_runtimes = [(sid, s) for sid, s in _sessions.items() if s.get("session_key") == parent_id]
+                child_runtimes = [sid for sid, s in _sessions.items() if s.get("session_key") == child_id]
+            for parent_sid, runtime in parent_runtimes:
+                with runtime["history_lock"]:
+                    if runtime.get("running") and parent_sid != safe_live_sid:
+                        runtime["_refresh_external_history"] = True
+                        continue
+                    history = runtime.setdefault("history", [])
+                    if not any(m.get("platform_message_id") == marker for m in history if isinstance(m, dict)):
+                        history.append({"role": "assistant", "content": merged_content, "platform_message_id": marker, "effect_disposition": "branch_merge"})
+                        runtime["history_version"] = int(runtime.get("history_version", 0)) + 1
+            for child_sid in child_runtimes:
+                _close_session_by_id(child_sid, end_reason="branch_merged")
+            if db.delete_session(child_id, sessions_dir=get_hermes_home() / "sessions"):
+                deleted_ids.append(child_id)
+                for parent_sid, _ in parent_runtimes:
+                    _emit("branch_merge.status", parent_sid, {"phase": "complete", "text": "分支复盘已注入父对话，子对话已删除。", "child_session_id": child_id})
+    except Exception:
+        logger.warning("pending branch merge apply failed for parent %s", parent_id, exc_info=True)
+    finally:
+        if owner:
+            releaser = getattr(db, "release_session_live_status", None)
+            if releaser is not None:
+                try:
+                    releaser(parent_id, owner)
+                except Exception:
+                    logger.debug("failed to release branch merge slot", exc_info=True)
+    return deleted_ids
+
+
+def _apply_pending_branch_merges(parent_id: str, *, claim_already_held: bool = False, safe_live_sid: str = "") -> list[str]:
+    with _branch_merge_apply_locks_guard:
+        lock = _branch_merge_apply_locks.setdefault(parent_id, threading.Lock())
+    with lock:
+        return _apply_pending_branch_merges_unlocked(parent_id, claim_already_held=claim_already_held, safe_live_sid=safe_live_sid)
+
 
 def _run_prompt_submit(
     rid,
@@ -10435,7 +10520,30 @@ def _run_prompt_submit(
     image_paths: list[str] | None = None,
     queued_prompt_generation: int | None = None,
     internal_kind: str | None = None,
+    completion_callback: Optional[Callable[[str, str], None]] = None,
 ) -> None:
+    if not _try_claim_durable_session_turn(sid, session):
+        if completion_callback is not None:
+            with session["history_lock"]:
+                session["running"] = False
+            completion_callback("error", "session is busy in another runtime")
+            return
+        with session["history_lock"]:
+            session["running"] = False
+            _enqueue_prompt(
+                session,
+                text,
+                session.get("transport"),
+                image_paths=image_paths,
+            )
+        _schedule_queued_prompt_retry(rid, sid, session)
+        return
+    _apply_pending_branch_merges(
+        str(session.get("session_key") or ""),
+        claim_already_held=True,
+        safe_live_sid=sid,
+    )
+    _refresh_session_history_from_db(session)
     with session["history_lock"]:
         if (
             queued_prompt_generation is not None
@@ -10459,7 +10567,11 @@ def _run_prompt_submit(
                 agent.clear_interrupt()
             except Exception:
                 pass
-    _emit("message.start", sid)
+    _emit(
+        "message.start",
+        sid,
+        {"internal_kind": internal_kind} if internal_kind is not None else None,
+    )
 
     def run():
         # The conversation runs on a fresh thread, so ContextVars from the RPC
@@ -10474,9 +10586,15 @@ def _run_prompt_submit(
         secret_token = None
         goal_followup = None  # set by the post-turn goal hook below
         experience_review_followup = None
+        completion_status = "error"
+        completion_text = "internal turn did not complete"
         is_experience_review = (
             internal_kind == "experience_review" or _is_experience_review_prompt(text)
         )
+        is_destructive_review = internal_kind in {
+            "branch_merge_review",
+            "delete_review",
+        }
         result = None  # turn outcome; read after the finally for leftover /steer
         tts_queue = None  # streaming-TTS feed for this turn (voice mode)
         thinking_started = False  # ambient thinking sound armed for this turn
@@ -11265,9 +11383,62 @@ def _run_prompt_submit(
             _retire_turn_marker(session, marker_key)
             session.pop("_auto_continue_scheduled", None)
             _emit_settled_session_info(sid, session, agent)
+            _release_durable_session_turn(sid, session)
+            _drain_pending_branch_batches(str(session.get("session_key") or ""))
 
             if apply_queued_model:
                 _apply_queued_model_switch(sid, session)
+
+        if completion_callback is not None:
+            try:
+                completion_callback(completion_status, completion_text)
+            except Exception:
+                logger.warning("prompt completion callback failed", exc_info=True)
+
+        if is_destructive_review:
+            return
+
+        if experience_review_followup:
+            with session["history_lock"]:
+                if not session.get("running"):
+                    session["running"] = True
+                    session["_experience_review_running"] = True
+                else:
+                    experience_review_followup = None
+            if experience_review_followup:
+                try:
+                    review_info = _experience_review_info(session)
+                    _emit(
+                        "experience_review.status",
+                        sid,
+                        {
+                            "phase": "reviewing",
+                            "text": (
+                                f"复盘计数已达到 {_EXPERIENCE_REVIEW_USER_TURNS}/"
+                                f"{_EXPERIENCE_REVIEW_USER_TURNS}，开始第 "
+                                f"{int(review_info.get('batch') or 0) + 1} 批复盘。"
+                            ),
+                        },
+                    )
+                    _emit_settled_session_info(sid, session, agent)
+                    _run_prompt_submit(
+                        rid,
+                        sid,
+                        session,
+                        experience_review_followup,
+                        internal_kind="experience_review",
+                    )
+                    return
+                except Exception as review_exc:
+                    logger.warning(
+                        "experience review dispatch failed: %s",
+                        review_exc,
+                        exc_info=True,
+                    )
+                    with session["history_lock"]:
+                        session["running"] = False
+                        session["_experience_review_running"] = False
+                    _emit_settled_session_info(sid, session, agent)
 
         # A user prompt that arrived mid-turn (interrupt + queue) wins over
         # every auto follow-up below — drain it first and skip them this cycle;

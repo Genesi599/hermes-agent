@@ -259,6 +259,13 @@ CREATE TABLE IF NOT EXISTS sessions (
     archived INTEGER NOT NULL DEFAULT 0,
     pinned INTEGER NOT NULL DEFAULT 0,
     last_read_at REAL,
+    live_status TEXT,
+    live_status_updated_at REAL,
+    live_status_owner TEXT,
+    experience_review_user_count INTEGER NOT NULL DEFAULT 0,
+    experience_review_batch INTEGER NOT NULL DEFAULT 0,
+    experience_review_pending INTEGER NOT NULL DEFAULT 0,
+    experience_review_completed_at REAL,
     FOREIGN KEY (parent_session_id) REFERENCES sessions(id),
     FOREIGN KEY (system_prompt_hash) REFERENCES system_prompts(hash)
 );
@@ -352,6 +359,51 @@ CREATE TABLE IF NOT EXISTS async_delegations (
     delivery_claimed_at REAL
 );
 
+CREATE TABLE IF NOT EXISTS branch_merge_queue (
+    child_session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    parent_session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    summary TEXT NOT NULL,
+    requested_at REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS branch_batches (
+    batch_id TEXT PRIMARY KEY,
+    profile_name TEXT NOT NULL DEFAULT '',
+    parent_session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    request_id TEXT NOT NULL,
+    state TEXT NOT NULL,
+    max_parallel INTEGER NOT NULL,
+    requested_checkpoint_message_id INTEGER,
+    checkpoint_message_id INTEGER,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    UNIQUE(profile_name, parent_session_id, request_id)
+);
+
+CREATE TABLE IF NOT EXISTS branch_runs (
+    batch_id TEXT NOT NULL REFERENCES branch_batches(batch_id) ON DELETE CASCADE,
+    client_branch_key TEXT NOT NULL,
+    branch_session_id TEXT,
+    runtime_session_id TEXT,
+    title TEXT NOT NULL,
+    initial_prompt TEXT NOT NULL,
+    auto_start INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL,
+    cwd TEXT,
+    workspace_mode TEXT NOT NULL DEFAULT 'shared',
+    output_dir TEXT,
+    model TEXT,
+    provider TEXT,
+    toolsets_json TEXT,
+    error TEXT,
+    artifact_manifest TEXT,
+    result_summary TEXT,
+    started_at REAL,
+    completed_at REAL,
+    updated_at REAL NOT NULL,
+    PRIMARY KEY (batch_id, client_branch_key)
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_source ON sessions(source);
 CREATE INDEX IF NOT EXISTS idx_sessions_source_id ON sessions(source, id);
 CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id);
@@ -371,6 +423,12 @@ CREATE INDEX IF NOT EXISTS idx_session_model_usage_session ON session_model_usag
 CREATE INDEX IF NOT EXISTS idx_session_model_usage_model ON session_model_usage(model);
 CREATE INDEX IF NOT EXISTS idx_async_delegations_delivery
     ON async_delegations(delivery_state, completed_at);
+CREATE INDEX IF NOT EXISTS idx_branch_merge_queue_parent
+    ON branch_merge_queue(parent_session_id, requested_at);
+CREATE INDEX IF NOT EXISTS idx_branch_batches_parent
+    ON branch_batches(parent_session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_branch_runs_status
+    ON branch_runs(batch_id, status, updated_at);
 """
 
 

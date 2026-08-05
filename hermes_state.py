@@ -332,6 +332,46 @@ def _delete_delegate_children(conn, parent_ids: List[str]) -> List[str]:
 
 T = TypeVar("T")
 
+SESSION_LIVE_STATUS_STALE_SECONDS = 10 * 60
+
+_TUI_LIVE_STATUS_OWNER_RE = re.compile(r"^tui:(\d+):(\d+):")
+
+
+def _tui_live_status_owner_process_alive(owner: str) -> Optional[bool]:
+    """Return process liveness for a process-aware TUI status lease."""
+    match = _TUI_LIVE_STATUS_OWNER_RE.match(str(owner or ""))
+    if match is None:
+        return None
+    pid = int(match.group(1))
+    expected_start = int(match.group(2))
+    try:
+        from gateway.status import _pid_exists, get_process_start_time
+
+        if not _pid_exists(pid):
+            return False
+        current_start = get_process_start_time(pid)
+    except Exception:
+        return None
+    if expected_start and current_start is not None:
+        return current_start == expected_start
+    return True
+
+
+def session_live_status_is_working(
+    row: Dict[str, Any], now: Optional[float] = None
+) -> bool:
+    """Project one durable lease into the cross-client working indicator."""
+    if row.get("live_status") != "working":
+        return False
+    owner_alive = _tui_live_status_owner_process_alive(
+        str(row.get("live_status_owner") or "")
+    )
+    if owner_alive is False:
+        return False
+    updated_at = float(row.get("live_status_updated_at") or 0)
+    current_time = time.time() if now is None else now
+    return current_time - updated_at <= SESSION_LIVE_STATUS_STALE_SECONDS
+
 DEFAULT_DB_PATH = get_hermes_home() / "state.db"
 
 # How long SessionDB stops attempting read-only opens after one fails, before
@@ -7575,6 +7615,7 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
         compact_rows: bool = False,
         include_pinned: bool = False,
         session_key: str = None,
+        include_named_empty: bool = False,
     ) -> List[Dict[str, Any]]:
         """List sessions with preview (first user message) and last active timestamp.
 

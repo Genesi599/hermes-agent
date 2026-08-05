@@ -409,7 +409,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     if active_profile == "default":
         post_workspace_parts.append(
             "Active Hermes profile: default. Other profiles (if any) live "
-            "under " + str(get_hermes_home()) + "/profiles/<name>/. Each profile has its own "
+            "under " + get_hermes_home().as_posix() + "/profiles/<name>/. Each profile has its own "
             "skills/, plugins/, cron/, and memories/ that affect a different "
             "session than this one. Do not modify another profile's "
             "skills/plugins/cron/memories unless the user explicitly directs "
