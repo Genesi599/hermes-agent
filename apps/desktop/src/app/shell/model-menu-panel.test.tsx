@@ -84,7 +84,6 @@ describe('ModelMenuPanel MoA presets', () => {
     expect(onSelectModel).toHaveBeenCalledWith({
       model: 'BeastMode',
       provider: 'moa',
-      scope: 'current',
       sessionId: 'runtime-1'
     })
   })
@@ -128,7 +127,6 @@ describe('ModelMenuPanel MoA presets', () => {
     expect(onSelectModel).toHaveBeenCalledWith({
       model: 'BeastMode',
       provider: 'moa',
-      scope: 'current',
       sessionId: null
     })
   })
@@ -136,8 +134,8 @@ describe('ModelMenuPanel MoA presets', () => {
   it('can apply a model selection to every conversation from the live composer menu', async () => {
     const { onSelectModel } = renderPanel()
 
-    fireEvent.click(await findByText(document.body, 'All conversations'))
-    fireEvent.click(await findByText(document.body, 'MoA: BeastMode'))
+    fireEvent.click(await screen.findByText('All conversations'))
+    fireEvent.click(await screen.findByText('MoA: BeastMode'))
 
     expect(onSelectModel).toHaveBeenCalledWith({
       model: 'BeastMode',
