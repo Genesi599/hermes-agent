@@ -244,7 +244,7 @@ describe('useModelControls', () => {
     expect(requestGateway).not.toHaveBeenCalledWith('slash.exec', expect.anything())
   })
 
-  it('keeps a mid-turn pick painted and skips the refetch that would repaint the old model', async () => {
+  it('keeps the live model painted and records a deferred mid-turn pick', async () => {
     // The gateway queues a switch made during a turn and applies it at the next
     // turn start. Invalidating now would answer with the still-running model
     // and overwrite the user's choice in the pill.
@@ -257,8 +257,13 @@ describe('useModelControls', () => {
 
     await expect(controls.selectModel({ model: 'grok-4.5', provider: 'xai' })).resolves.toBe(true)
 
-    expect($currentModel.get()).toBe('grok-4.5')
-    expect($currentProvider.get()).toBe('xai')
+    expect($currentModel.get()).toBe('')
+    expect($currentProvider.get()).toBe('')
+    expect($pendingModelSelection.get()).toEqual({
+      model: 'grok-4.5',
+      provider: 'xai',
+      sessionId: 'session-1'
+    })
     expect(invalidate).not.toHaveBeenCalled()
     expect(notifyError).not.toHaveBeenCalled()
   })
