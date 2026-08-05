@@ -171,6 +171,7 @@ interface GatewayEventDeps {
   activeGatewayProfile: string
   activeSessionIdRef: MutableRefObject<string | null>
   compactedTurnRef: MutableRefObject<Set<string>>
+  completedTurnRef: MutableRefObject<Set<string>>
   lastCwdInfoSessionRef: MutableRefObject<string | null>
   nativeSubagentSessionsRef: MutableRefObject<Set<string>>
   appendAssistantDelta: (sessionId: string, delta: string) => void
@@ -209,6 +210,7 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
     activeGatewayProfile,
     activeSessionIdRef,
     compactedTurnRef,
+    completedTurnRef,
     lastCwdInfoSessionRef,
     nativeSubagentSessionsRef,
     completeAssistantMessage,
@@ -501,6 +503,10 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
               }
 
               if (busy) {
+                if (completedTurnRef.current.has(sessionId)) {
+                  return state
+                }
+
                 // Don't re-arm busy from a stale session.info if the user
                 // just clicked Stop (interrupted=true). The backend's
                 // cooperative interrupt may not have propagated yet, so
@@ -516,6 +522,8 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
                   turnStartedAt: state.turnStartedAt ?? Date.now()
                 }
               }
+
+              completedTurnRef.current.delete(sessionId)
 
               if (state.awaitingResponse && !state.sawAssistantPayload) {
                 return state
@@ -572,6 +580,7 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
         }
 
         flushQueuedDeltas(sessionId)
+        completedTurnRef.current.delete(sessionId)
         pruneFinishedSessionSubagents(sessionId)
         setSessionCompacting(sessionId, false)
         compactedTurnRef.current.delete(sessionId)
@@ -766,6 +775,7 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
             : undefined
 
         completeAssistantMessage(sessionId, finalText, payload?.response_previewed, failure)
+        completedTurnRef.current.add(sessionId)
 
         // Structured billing wall forwarded by the gateway (out of credits /
         // payment required) — cache it + raise a billing-specific toast.

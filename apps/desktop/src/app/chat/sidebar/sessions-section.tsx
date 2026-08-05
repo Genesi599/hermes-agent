@@ -99,6 +99,7 @@ interface SidebarSessionsSectionProps {
   onTogglePin: (sessionId: string) => void
   onNewSessionInWorkspace?: (path: null | string) => void
   pinned: boolean
+  isSessionPinned?: (session: SessionInfo) => boolean
   rootClassName?: string
   contentClassName?: string
   emptyState: React.ReactNode
@@ -167,6 +168,7 @@ export function SidebarSessionsSection({
   onTogglePin,
   onNewSessionInWorkspace,
   pinned,
+  isSessionPinned,
   rootClassName,
   contentClassName,
   emptyState,
@@ -231,7 +233,7 @@ export function SidebarSessionsSection({
     (session: SessionInfo, draggable: boolean, branchStem?: string) => {
       const rowProps = {
         branchStem,
-        isPinned: pinned,
+        isPinned: isSessionPinned?.(session) ?? pinned,
         isSelected: session.id === activeSessionId,
         isWorking: workingSessionIdSet.has(session.id),
         onArchive: () => onArchiveSession(session.id),
@@ -261,6 +263,7 @@ export function SidebarSessionsSection({
       onResumeSession,
       onTogglePin,
       pinned,
+      isSessionPinned,
       showProfileTags,
       workingSessionIdSet
     ]
