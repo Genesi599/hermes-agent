@@ -27,6 +27,7 @@ from typing import Any, List, NamedTuple, Optional
 
 from hermes_cli.providers import (
     ProviderDef,
+    TRANSPORT_TO_API_MODE,
     custom_provider_aliases,
     custom_provider_slug,
     determine_api_mode,
