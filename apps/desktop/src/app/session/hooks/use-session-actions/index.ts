@@ -1350,12 +1350,6 @@ export function useSessionActions({
         const { messages } = await getAllSessionMessages(storedSessionId, profile)
         const branchMessages = branchMessagesAtStableBoundary(toChatMessages(messages), stored?.status === 'working')
 
-        if (!branchMessages.length) {
-          notify({ kind: 'warning', title: copy.nothingToBranch, message: copy.branchNoText })
-
-          return false
-        }
-
         return await forkBranch(branchMessages, null, stored?.id ?? storedSessionId, stored?.cwd?.trim(), profile)
       } catch (err) {
         notifyError(err, copy.branchFailed)
