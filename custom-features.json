@@ -267,6 +267,11 @@
       "source_commit": "6a46de585a",
       "patch_id": "ab8898e089d57a1796b999e46cbe647be9c2e15c",
       "feature": "runtime-status"
+    },
+    {
+      "source_commit": "c589d827d0",
+      "patch_id": "910259c4c8a419e16f1e8bf50650bd12990e6d5a",
+      "feature": "transient-retry"
     }
   ],
   "features": [
@@ -354,8 +359,8 @@
     {
       "id": "transient-retry",
       "label": "continuous upstream and incomplete-response retry",
-      "commits": ["2c357c4315", "424ca75dc7", "4bf551cf2e", "42ac6056fd"],
-      "source_paths": ["agent/conversation_loop.py"],
+      "commits": ["2c357c4315", "424ca75dc7", "4bf551cf2e", "42ac6056fd", "c589d827d0"],
+      "source_paths": ["agent/conversation_loop.py", "agent/codex_runtime.py"],
       "test_paths": [
         "tests/run_agent/test_transient_retry_forever.py",
         "tests/run_agent/test_run_agent_codex_responses.py"
