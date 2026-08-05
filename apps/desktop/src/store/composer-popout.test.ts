@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   $composerPopoutZones,
   clampPopoutPosition,
+  COMPOSER_POPOUT_ENABLED,
   getComposerPopoutZone,
   POPOUT_WIDTH_REM,
   type PopoutBounds,
@@ -83,13 +84,11 @@ describe('pop-out state is scoped to a layout zone', () => {
     $composerPopoutZones.set({})
   })
 
-  it('floats one zone without touching its neighbor', () => {
+  it('keeps every zone docked when pop-out is disabled', () => {
+    expect(COMPOSER_POPOUT_ENABLED).toBe(false)
     setComposerPoppedOut(LEFT_ZONE, true)
 
-    // Tabs in the left zone float; the right split stays docked. This is the
-    // whole point of keying by zone: popping out on the left must not fling a
-    // composer out of every other pane.
-    expect(getComposerPopoutZone(LEFT_ZONE).poppedOut).toBe(true)
+    expect(getComposerPopoutZone(LEFT_ZONE).poppedOut).toBe(false)
     expect(getComposerPopoutZone(RIGHT_ZONE).poppedOut).toBe(false)
   })
 

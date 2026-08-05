@@ -9,6 +9,10 @@ const POPOUT_STORAGE_KEY = 'hermes.desktop.composerPopout.zones.v1'
 const LEGACY_ENABLED_KEY = 'hermes.desktop.composerPopout.enabled'
 const LEGACY_POSITION_KEY = 'hermes.desktop.composerPopout.position'
 
+// Personal build: keep the composer docked; retain the zone implementation so
+// upstream layout changes remain easy to merge.
+export const COMPOSER_POPOUT_ENABLED = false
+
 /** Where the floating composer's bottom-right corner sits, measured as an inset
  *  from the viewport's bottom/right edges. Anchoring to the bottom-right keeps
  *  the box visually pinned to its default corner as the window resizes and as
@@ -219,7 +223,7 @@ function patchZone(groupId: string, patch: Partial<PopoutZoneState>) {
 }
 
 export function setComposerPoppedOut(groupId: string, value: boolean) {
-  patchZone(groupId, { poppedOut: value })
+  patchZone(groupId, { poppedOut: COMPOSER_POPOUT_ENABLED && value })
   persistZones()
 }
 

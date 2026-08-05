@@ -6,6 +6,7 @@ import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { triggerHaptic } from '@/lib/haptics'
 import {
   $composerPopoutZone,
+  COMPOSER_POPOUT_ENABLED,
   clampPopoutPosition,
   getComposerPopoutZone,
   popoutBoundsElement,
@@ -124,7 +125,7 @@ export function useComposerPopout({ composerRef }: UseComposerPopoutOptions) {
   const popoutAllowed = !isSecondaryWindow()
   const groupId = usePaneGroup()
   const zone = useStore(useMemo(() => $composerPopoutZone(groupId), [groupId]))
-  const poppedOut = zone.poppedOut && popoutAllowed
+  const poppedOut = COMPOSER_POPOUT_ENABLED && zone.poppedOut && popoutAllowed
 
   const handleComposerPopOut = useCallback(() => {
     triggerHaptic('open')
