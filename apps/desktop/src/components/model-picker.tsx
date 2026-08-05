@@ -70,7 +70,7 @@ export function ModelPickerDialog({
   const [applyScope, setApplyScope] = useState<ModelApplyScope>('current')
 
   useEffect(() => {
-    if (!open) setApplyScope('current')
+    if (!open) {setApplyScope('current')}
   }, [open])
 
   const modelOptions = useQuery({

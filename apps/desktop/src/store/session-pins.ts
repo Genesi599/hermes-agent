@@ -137,7 +137,7 @@ export function expandSessionFamilyMemberIds(
   const familyIds = new Set<string>()
 
   for (const sessionId of sessionIds) {
-    for (const familyId of sessionFamilyPinIds(sessions, sessionId)) familyIds.add(familyId)
+    for (const familyId of sessionFamilyPinIds(sessions, sessionId)) {familyIds.add(familyId)}
   }
 
   return new Set(sessions.filter(session => familyIds.has(sessionPinId(session))).map(session => session.id))
