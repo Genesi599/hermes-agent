@@ -89,6 +89,29 @@ function Assert-FeaturePaths {
     }
 }
 
+function Assert-FeaturePatterns {
+    foreach ($feature in @($manifest.features)) {
+        $requiredPatterns = if ($feature.PSObject.Properties.Name -contains 'required_patterns') {
+            @($feature.required_patterns)
+        }
+        else {
+            @()
+        }
+        foreach ($required in $requiredPatterns) {
+            $relativePath = $required.path.ToString()
+            $pattern = $required.pattern.ToString()
+            $fullPath = Join-Path $repoRoot $relativePath
+            if (-not (Test-Path -LiteralPath $fullPath)) {
+                throw "Feature '$($feature.id)' pattern path is missing: $relativePath"
+            }
+            $matched = Select-String -LiteralPath $fullPath -SimpleMatch -Quiet -Pattern $pattern
+            if (-not $matched) {
+                throw "Feature '$($feature.id)' implementation marker is missing: $relativePath -> $pattern"
+            }
+        }
+    }
+}
+
 function Invoke-SmokeTests {
     foreach ($test in @($manifest.smoke_tests)) {
         $cwd = Join-Path $repoRoot $test.cwd
@@ -123,6 +146,7 @@ if (($AfterBase -and -not $BeforeBase) -or ($BeforeBase -and -not $AfterBase)) {
 
 Assert-Ancestor $candidateBase $candidateHead 'candidate base'
 Assert-FeaturePaths
+Assert-FeaturePatterns
 
 $expectedPatches = @($manifest.tracked_patches)
 if ($expectedPatches.Count -eq 0) {
