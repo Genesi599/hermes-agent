@@ -293,6 +293,7 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
           : null
 
       const targetIsCurrentView = (): boolean => targetStartedInCurrentView && !sessionDriftReason()
+      const sessionContextDrifted = (): boolean => Boolean(sessionDriftReason())
 
       const waitForRoutedRuntimeBinding = async (storedSessionId: string): Promise<null | string> => {
         const validatedBinding = () => {

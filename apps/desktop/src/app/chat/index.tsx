@@ -607,7 +607,6 @@ export const ChatView = memo(function ChatView({
         {showChatBar && (
           <Suspense fallback={<ChatBarFallback />}>
             <ChatBar
-              allowDraftWhileDisabled={resumingSession}
               busy={busy}
               cwd={currentCwd}
               disabled={!gatewayOpen}
