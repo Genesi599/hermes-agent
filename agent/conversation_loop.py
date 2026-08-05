@@ -860,10 +860,10 @@ def _get_continuation_prompt(is_partial_stub: bool, dropped_tools: Optional[List
 # failed, so the model (observed: grok-4.20 on xai-oauth) deterministically
 # repeats the reasoning-only response until the retry budget is exhausted.
 _CODEX_INCOMPLETE_NUDGE = (
-    "[System: Your previous response contained only internal reasoning and "
-    "never produced a visible answer or tool call. Do not keep thinking. "
-    "Produce your final answer as plain text now (or make the tool call "
-    "you were planning).]"
+    "[System: Your previous response did not produce a final answer or tool "
+    "call. Do not repeat or restate your plan/progress. Execute the required "
+    "tool call now, or produce the final answer as plain text if no tool is "
+    "needed.]"
 )
 
 
@@ -6301,6 +6301,7 @@ def run_conversation(
                 interim_has_reasoning = bool(interim_msg.get("reasoning", "").strip()) if isinstance(interim_msg.get("reasoning"), str) else False
                 interim_has_codex_reasoning = bool(interim_msg.get("codex_reasoning_items"))
                 interim_has_codex_message_items = bool(interim_msg.get("codex_message_items"))
+                current_interim_visible = ""
 
                 if (
                     interim_has_content
@@ -6309,6 +6310,18 @@ def run_conversation(
                     or interim_has_codex_message_items
                 ):
                     last_msg = messages[-1] if messages else None
+                    # The previous incomplete continuation may already have
+                    # appended our internal user-role execution nudge. Skip
+                    # over that scaffold when comparing visible commentary,
+                    # otherwise identical provider progress is stored twice
+                    # merely because the nudge sits between the responses.
+                    if (
+                        isinstance(last_msg, dict)
+                        and last_msg.get("role") == "user"
+                        and last_msg.get("content") == _CODEX_INCOMPLETE_NUDGE
+                        and len(messages) >= 2
+                    ):
+                        last_msg = messages[-2]
                     # Duplicate detection: compare only visible content
                     # (content + reasoning).  Opaque provider state
                     # (encrypted reasoning items, message item ids/phases)
@@ -6383,7 +6396,12 @@ def run_conversation(
                         or interim_has_codex_reasoning
                         or interim_has_codex_message_items
                     )
-                    if not interim_replayable:
+                    # Commentary-only Responses are replayable, but replaying
+                    # them unchanged lets a degraded model emit another plan
+                    # acknowledgment forever. They need the same explicit
+                    # execution nudge as non-replayable reasoning-only turns.
+                    commentary_only = bool(current_interim_visible) and not interim_has_content
+                    if not interim_replayable or commentary_only:
                         _last_msg = messages[-1] if messages else None
                         _already_nudged = (
                             isinstance(_last_msg, dict)
@@ -6421,7 +6439,14 @@ def run_conversation(
                     agent._session_messages = messages
                     continue
 
-                if getattr(agent, "_retry_transient_forever", False):
+                # Continuous retry is for transient transport/provider
+                # failures and opaque reasoning-only stalls. Visible
+                # commentary with no final/tool is a semantic protocol loop:
+                # resetting the counter here floods the transcript with near-
+                # duplicate plans while doing no work. Stop after the bounded
+                # continuation ladder instead.
+                commentary_only = bool(current_interim_visible) and not interim_has_content
+                if getattr(agent, "_retry_transient_forever", False) and not commentary_only:
                     agent._codex_incomplete_retries = 0
                     agent._emit_status(
                         "Codex response remained incomplete after 3 continuation attempts. "
@@ -6431,7 +6456,11 @@ def run_conversation(
                     continue
 
                 agent._codex_incomplete_retries = 0
-                incomplete_error = "Codex response remained incomplete after 3 continuation attempts"
+                incomplete_error = (
+                    "Codex repeatedly returned progress commentary without a final answer or tool call"
+                    if commentary_only
+                    else "Codex response remained incomplete after 3 continuation attempts"
+                )
                 messages.append({"role": "assistant", "content": incomplete_error})
                 agent._persist_session(messages, conversation_history)
                 return {

@@ -1550,6 +1550,49 @@ def test_normalize_codex_response_does_not_fallback_to_output_text_for_commentar
     assert assistant_message.codex_message_items[0]["phase"] == "commentary"
 
 
+def test_commentary_only_continuation_injects_execution_nudge(monkeypatch):
+    agent = _build_agent(monkeypatch)
+    requests = []
+    responses = [
+        _codex_commentary_message_response("I'll inspect the repository first."),
+        _codex_message_response("Verified final answer."),
+    ]
+
+    def _fake_api_call(api_kwargs):
+        requests.append(api_kwargs)
+        return responses.pop(0)
+
+    monkeypatch.setattr(agent, "_interruptible_api_call", _fake_api_call)
+
+    result = agent.run_conversation("inspect the repository")
+
+    assert result["completed"] is True
+    assert result["final_response"] == "Verified final answer."
+    assert len(requests) == 2
+    assert "Do not repeat or restate your plan/progress" in str(requests[1]["input"])
+
+
+def test_commentary_only_does_not_use_transient_retry_forever(monkeypatch):
+    agent = _build_agent(monkeypatch)
+    agent._retry_transient_forever = True
+    calls = 0
+
+    def _commentary_loop(_api_kwargs):
+        nonlocal calls
+        calls += 1
+        return _codex_commentary_message_response(f"I'll inspect it now ({calls}).")
+
+    monkeypatch.setattr(agent, "_interruptible_api_call", _commentary_loop)
+
+    result = agent.run_conversation("inspect the repository")
+
+    assert calls == 3
+    assert result["completed"] is False
+    assert result["error"] == (
+        "Codex repeatedly returned progress commentary without a final answer or tool call"
+    )
+
+
 
 
 
