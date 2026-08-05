@@ -140,7 +140,10 @@ $candidatePatches = @(Get-RangePatches $candidateBase $candidateHead)
 $candidateIds = @{}
 foreach ($entry in $candidatePatches) {
     if ($candidateIds.ContainsKey($entry.PatchId)) {
-        throw "Duplicate candidate patch-id: $($entry.PatchId) ($($entry.Commit))"
+        # A reconciliation merge can retain both the old custom branch and its
+        # module-by-module port as parents. Identical patch-ids mean the feature
+        # survived on both histories; count that patch once for preservation.
+        continue
     }
     $candidateIds[$entry.PatchId] = $entry
 }
