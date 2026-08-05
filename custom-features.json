@@ -252,6 +252,11 @@
       "source_commit": "cabb4b5929",
       "patch_id": "4b79bf740fef3e68680e87720dec3ab6b7010103",
       "feature": "runtime-status-and-sidebar"
+    },
+    {
+      "source_commit": "6911929477",
+      "patch_id": "e6ea4fad9132e83a1549db55c0c6a388fd8634ed",
+      "feature": "runtime-status"
     }
   ],
   "features": [
@@ -312,9 +317,16 @@
     {
       "id": "runtime-status",
       "label": "runtime recovery and status reconciliation",
-      "commits": ["a2289fa57e", "c9e338e3e2", "59d9b2fd30", "5227f6bc27", "7003eae129", "c645100d63", "354b9476d0", "cabb4b5929"],
-      "source_paths": ["tui_gateway/server.py", "hermes_state.py"],
-      "test_paths": ["tests/hermes_state/test_session_live_status.py"]
+      "commits": ["a2289fa57e", "c9e338e3e2", "59d9b2fd30", "5227f6bc27", "7003eae129", "c645100d63", "354b9476d0", "cabb4b5929", "6911929477"],
+      "source_paths": [
+        "tui_gateway/server.py",
+        "hermes_state.py",
+        "apps/desktop/src/app/session/hooks/use-session-actions/utils.ts"
+      ],
+      "test_paths": [
+        "tests/hermes_state/test_session_live_status.py",
+        "apps/desktop/src/app/session/hooks/use-session-actions/utils.test.ts"
+      ]
     },
     {
       "id": "model-switch",
