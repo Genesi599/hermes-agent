@@ -587,10 +587,6 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
 
               completedTurnRef.current.delete(sessionId)
 
-              if (state.awaitingResponse && !state.sawAssistantPayload) {
-                return state
-              }
-
               return {
                 ...state,
                 awaitingResponse: false,
