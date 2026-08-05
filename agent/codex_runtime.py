@@ -27,6 +27,43 @@ from agent.stream_single_writer import claim_stream_writer, stream_writer_is_cur
 logger = logging.getLogger(__name__)
 
 
+class _RetryReplayFilter:
+    """Suppress the prefix replayed by a replacement Responses stream.
+
+    A physical retry starts the model response from byte zero, after the first
+    stream may already have delivered text to Desktop. Buffer until the new
+    stream catches up with that visible prefix, then emit only the unseen tail.
+    Chunk boundaries may differ between attempts, so matching is character-
+    based rather than event-based.
+    """
+
+    def __init__(self, visible_prefix: str):
+        self._prefix = visible_prefix or ""
+        self._seen = ""
+        self._resolved = not self._prefix
+
+    def feed(self, delta: str) -> str:
+        if not delta:
+            return ""
+        if self._resolved:
+            return delta
+
+        self._seen += delta
+        common = 0
+        limit = min(len(self._seen), len(self._prefix))
+        while common < limit and self._seen[common] == self._prefix[common]:
+            common += 1
+
+        if common < limit:
+            self._resolved = True
+            return self._seen[common:]
+        if len(self._seen) <= len(self._prefix):
+            return ""
+
+        self._resolved = True
+        return self._seen[len(self._prefix):]
+
+
 def _coerce_usage_int(value: Any) -> int:
     if isinstance(value, bool):
         return 0
@@ -1246,15 +1283,8 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
     # Accumulate streamed text so callers / compat shims can read it.
     agent._codex_streamed_text_parts: list = []
 
-    def _on_text_delta(text: str) -> None:
-        agent._codex_streamed_text_parts.append(text)
-        agent._fire_stream_delta(text)
-
-    def _on_reasoning_delta(text: str) -> None:
-        agent._fire_reasoning_delta(text)
-
-    def _on_commentary_message(text: str) -> None:
-        agent._fire_streamed_codex_commentary(text)
+    emitted_reasoning_text = ""
+    emitted_commentary: set[str] = set()
 
     def _on_event(event: Any) -> None:
         # TTFB watchdog and activity touch — runs once per SSE event.
@@ -1267,6 +1297,33 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
 
         intercepted_events = []
         writer_token = {"value": None}
+        text_replay_filter = _RetryReplayFilter(
+            "".join(agent._codex_streamed_text_parts) if attempt > 0 else ""
+        )
+        reasoning_replay_filter = _RetryReplayFilter(
+            emitted_reasoning_text if attempt > 0 else ""
+        )
+
+        def _on_text_delta(text: str) -> None:
+            unseen = text_replay_filter.feed(text)
+            if not unseen:
+                return
+            agent._codex_streamed_text_parts.append(unseen)
+            agent._fire_stream_delta(unseen)
+
+        def _on_reasoning_delta(text: str) -> None:
+            nonlocal emitted_reasoning_text
+            unseen = reasoning_replay_filter.feed(text)
+            if not unseen:
+                return
+            emitted_reasoning_text += unseen
+            agent._fire_reasoning_delta(unseen)
+
+        def _on_commentary_message(text: str) -> None:
+            if attempt > 0 and text in emitted_commentary:
+                return
+            emitted_commentary.add(text)
+            agent._fire_streamed_codex_commentary(text)
 
         def _open_codex_stream(next_api_kwargs: dict[str, Any]):
             stream_kwargs = dict(next_api_kwargs)
