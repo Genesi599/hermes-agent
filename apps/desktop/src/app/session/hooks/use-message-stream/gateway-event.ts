@@ -47,7 +47,6 @@ import {
   $currentModel,
   $currentProvider,
   clearPendingModelSelectionIfApplied,
-  noteSessionActivity,
   sessionMatchesStoredId,
   setCurrentBranch,
   setCurrentCwd,
