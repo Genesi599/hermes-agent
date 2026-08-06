@@ -6,6 +6,7 @@ import { StatusbarControls, type StatusbarItem } from '@/app/shell/statusbar-con
 import {
   $statusbarHiddenIds,
   $statusbarVisible,
+  migrateLegacyContextVisibility,
   STATUSBAR_HIDDEN_BY_DEFAULT,
   toggleStatusbarVisible
 } from '@/store/statusbar-prefs'
@@ -103,7 +104,7 @@ describe('statusbar item visibility', () => {
     expect(screen.getByText('Plugin thing')).toBeTruthy()
   })
 
-  it('starts the per-turn session readouts hidden and restores them from the menu', async () => {
+  it('keeps context usage visible while the per-turn timers start hidden', async () => {
     const statusbar = bar([
       item('running-timer', 'Turn timer', { variant: 'text' }),
       item('context-usage', 'Context meter', { variant: 'menu' }),
@@ -111,9 +112,11 @@ describe('statusbar item visibility', () => {
       item('gateway-health', 'Gateway')
     ])
 
-    for (const label of ['Turn timer', 'Context meter', 'Session timer']) {
+    for (const label of ['Turn timer', 'Session timer']) {
       expect(screen.queryByText(label)).toBeNull()
     }
+
+    expect(screen.getByText('Context meter')).toBeTruthy()
 
     openContextMenu(statusbar)
 
@@ -122,6 +125,17 @@ describe('statusbar item visibility', () => {
 
     expect($statusbarHiddenIds.get()).not.toContain('session-timer')
     expect(within(statusbar).getByText('Session timer')).toBeTruthy()
+  })
+
+  it('migrates the old default hidden set without overriding custom choices', () => {
+    expect(migrateLegacyContextVisibility(['agents', 'context-usage', 'session-timer'])).toEqual([
+      'agents',
+      'session-timer'
+    ])
+    expect(migrateLegacyContextVisibility(['context-usage', 'plugin-thing'])).toEqual([
+      'context-usage',
+      'plugin-thing'
+    ])
   })
 })
 
