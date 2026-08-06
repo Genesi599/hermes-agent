@@ -726,6 +726,84 @@ def test_run_codex_stream_deduplicates_prefix_after_midstream_retry(monkeypatch)
     assert response.output_text == "Repeat me, then continue."
 
 
+def test_run_codex_stream_reconnects_after_reasoning_phrase_loop(monkeypatch):
+    agent = _build_agent(monkeypatch)
+    reasoning_streamed = []
+    streamed = []
+    agent.reasoning_callback = reasoning_streamed.append
+    agent.stream_delta_callback = streamed.append
+    repeated = "Planning parallel memory file reads and portable path resolution. "
+    completed_item = SimpleNamespace(
+        type="message",
+        status="completed",
+        content=[SimpleNamespace(type="output_text", text="Hi!")],
+    )
+    attempts = [
+        _FakeCreateStream(
+            [
+                SimpleNamespace(
+                    type="response.reasoning_text.delta",
+                    delta=repeated,
+                )
+                for _ in range(30)
+            ]
+        ),
+        _FakeCreateStream(
+            [
+                SimpleNamespace(type="response.output_text.delta", delta="Hi!"),
+                SimpleNamespace(type="response.output_item.done", item=completed_item),
+                SimpleNamespace(
+                    type="response.completed",
+                    response=SimpleNamespace(status="completed"),
+                ),
+            ]
+        ),
+    ]
+    calls = {"count": 0}
+
+    def _fake_create(**_kwargs):
+        calls["count"] += 1
+        return attempts.pop(0)
+
+    agent.client = SimpleNamespace(
+        responses=SimpleNamespace(create=_fake_create),
+    )
+
+    response = agent._run_codex_stream(_codex_request_kwargs())
+
+    assert calls["count"] == 2
+    assert response.status == "completed"
+    assert "".join(streamed) == "Hi!"
+    assert len("".join(reasoning_streamed)) < len(repeated) * 10
+
+
+def test_run_codex_stream_stops_after_two_reasoning_phrase_loops(monkeypatch):
+    from agent.codex_runtime import CodexReasoningLoopError
+
+    agent = _build_agent(monkeypatch)
+    repeated = "Planning parallel memory file reads and portable path resolution. "
+    attempts = [
+        _FakeCreateStream(
+            [
+                SimpleNamespace(
+                    type="response.reasoning_text.delta",
+                    delta=repeated,
+                )
+                for _ in range(30)
+            ]
+        )
+        for _ in range(2)
+    ]
+    agent.client = SimpleNamespace(
+        responses=SimpleNamespace(create=lambda **_kwargs: attempts.pop(0)),
+    )
+
+    with pytest.raises(CodexReasoningLoopError, match="repeated the same planning text"):
+        agent._run_codex_stream(_codex_request_kwargs())
+
+    assert attempts == []
+
+
 def test_run_codex_stream_deduplicates_commentary_after_midstream_retry(monkeypatch):
     import httpx
 

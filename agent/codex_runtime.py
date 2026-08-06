@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, List
@@ -26,6 +27,90 @@ from agent.stream_single_writer import claim_stream_writer, stream_writer_is_cur
 
 logger = logging.getLogger(__name__)
 
+
+class CodexReasoningLoopError(RuntimeError):
+    """The provider repeated reasoning text without making stream progress."""
+
+
+class _RepeatedReasoningGuard:
+    """Detect exact phrase loops inside one reasoning stream.
+
+    Some OpenAI-compatible Responses endpoints keep the connection active by
+    replaying the same planning sentence indefinitely. Event-based watchdogs
+    cannot catch that because bytes continue to arrive. Track overlapping
+    character windows instead: ordinary reasoning adds mostly new windows,
+    while a replay quickly produces a sustained run of already-seen windows.
+    """
+
+    _WINDOW = 32
+    _STRIDE = 8
+    _DUPLICATE_RUN_LIMIT = 12
+
+    def __init__(self) -> None:
+        self._text = ""
+        self._next_window = 0
+        self._seen: set[str] = set()
+        self._duplicate_run = 0
+        self.triggered = False
+
+    def feed(self, delta: str) -> bool:
+        if self.triggered or not isinstance(delta, str) or not delta:
+            return self.triggered
+        normalized = re.sub(r"\s+", " ", delta.lower())
+        if not normalized:
+            return False
+        self._text += normalized
+        while self._next_window + self._WINDOW <= len(self._text):
+            window = self._text[
+                self._next_window : self._next_window + self._WINDOW
+            ]
+            self._next_window += self._STRIDE
+            if window in self._seen:
+                self._duplicate_run += 1
+            else:
+                self._seen.add(window)
+                self._duplicate_run = max(0, self._duplicate_run - 2)
+            if self._duplicate_run >= self._DUPLICATE_RUN_LIMIT:
+                self.triggered = True
+                return True
+        return False
+
+
+class _RetryReplayFilter:
+    """Suppress the prefix replayed by a replacement Responses stream.
+
+    A physical retry starts the model response from byte zero, after the first
+    stream may already have delivered text to Desktop. Buffer until the new
+    stream catches up with that visible prefix, then emit only the unseen tail.
+    Chunk boundaries may differ between attempts, so matching is character-
+    based rather than event-based.
+    """
+
+    def __init__(self, visible_prefix: str):
+        self._prefix = visible_prefix or ""
+        self._seen = ""
+        self._resolved = not self._prefix
+
+    def feed(self, delta: str) -> str:
+        if not delta:
+            return ""
+        if self._resolved:
+            return delta
+
+        self._seen += delta
+        common = 0
+        limit = min(len(self._seen), len(self._prefix))
+        while common < limit and self._seen[common] == self._prefix[common]:
+            common += 1
+
+        if common < limit:
+            self._resolved = True
+            return self._seen[common:]
+        if len(self._seen) <= len(self._prefix):
+            return ""
+
+        self._resolved = True
+        return self._seen[len(self._prefix):]
 
 def _codex_request_failure_details(error: BaseException) -> tuple[int | None, str]:
     """Return the serialized request size and exception class chain.
