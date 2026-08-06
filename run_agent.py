@@ -6219,6 +6219,79 @@ class AIAgent:
             return ""
         return re.sub(r"\s+", " ", text).strip()
 
+    def _interim_text_is_redundant(self, text: str, *, plan_only: bool = False) -> bool:
+        """Detect a repeated progress plan without hiding final answers.
+
+        OpenAI-compatible Codex pools can replay a plan after a stream
+        reconnect or before each tool round with slightly different wording.
+        Exact-text deduplication misses those paraphrases and the desktop
+        renders one bubble per replay.  Keep this guard deliberately narrow:
+        it only applies to long, plan-like interim text and requires both
+        substantial token overlap and several shared action terms.
+        """
+        if not isinstance(text, str):
+            return False
+        normalized = self._normalize_interim_visible_text(text).lower()
+        if not normalized:
+            return False
+        if self._interim_text_was_delivered(text):
+            return True
+        # Keep the lower bound high enough to exclude short acknowledgements,
+        # while covering the compact Chinese plan sentences used by Codex.
+        if not plan_only or len(normalized) < 48:
+            return False
+
+        # Chinese plans have no whitespace-delimited words.  Mix ASCII word
+        # tokens with CJK bigrams so the same heuristic works for both the
+        # user's Chinese projects and English provider commentary.
+        features = set(re.findall(r"[a-z0-9_]+", normalized))
+        features.update(
+            normalized[index : index + 2]
+            for index in range(len(normalized) - 1)
+            if "\u4e00" <= normalized[index] <= "\u9fff"
+            and "\u4e00" <= normalized[index + 1] <= "\u9fff"
+        )
+        if not features:
+            return False
+
+        plan_markers = (
+            "候选", "基因", "细胞", "表达", "脚本", "注释", "口径", "作图",
+            "绘图", "验证", "报告", "数据", "candidate", "gene", "cell",
+            "plot", "script", "annotat", "verif", "report", "data", "inspect",
+            "check", "create", "generate", "plan",
+        )
+        marker_count = sum(1 for marker in plan_markers if marker in normalized)
+        if marker_count < 3:
+            return False
+
+        from difflib import SequenceMatcher
+
+        for prior in getattr(self, "_delivered_interim_text_samples", ()):
+            prior_normalized = self._normalize_interim_visible_text(prior).lower()
+            if len(prior_normalized) < 48:
+                continue
+            prior_features = set(re.findall(r"[a-z0-9_]+", prior_normalized))
+            prior_features.update(
+                prior_normalized[index : index + 2]
+                for index in range(len(prior_normalized) - 1)
+                if "\u4e00" <= prior_normalized[index] <= "\u9fff"
+                and "\u4e00" <= prior_normalized[index + 1] <= "\u9fff"
+            )
+            shared = features & prior_features
+            overlap = len(shared) / max(1, min(len(features), len(prior_features)))
+            sequence = SequenceMatcher(
+                None, normalized, prior_normalized, autojunk=False
+            ).ratio()
+            shared_markers = sum(
+                1 for marker in plan_markers
+                if marker in normalized and marker in prior_normalized
+            )
+            if sequence >= 0.72 or (
+                overlap >= 0.45 and shared_markers >= 3
+            ):
+                return True
+        return False
+
     def _interim_content_was_streamed(self, content: str) -> bool:
         visible_content = self._normalize_interim_visible_text(
             self._strip_think_blocks(content or "")
@@ -6324,7 +6397,13 @@ class AIAgent:
             if not isinstance(delivered, set):
                 delivered = set()
                 self._delivered_interim_texts = delivered
-            delivered.add(normalized)
+            if normalized not in delivered:
+                delivered.add(normalized)
+                samples = getattr(self, "_delivered_interim_text_samples", None)
+                if not isinstance(samples, list):
+                    samples = []
+                    self._delivered_interim_text_samples = samples
+                samples.append(normalized)
 
     def _fire_streamed_codex_commentary(self, text: str) -> None:
         """Deliver a completed live Codex commentary message immediately."""
@@ -6334,7 +6413,11 @@ class AIAgent:
         visible = self._strip_think_blocks(text).strip()
         if visible:
             visible = redact_sensitive_text(visible)
-        if not visible or visible == "(empty)" or self._interim_text_was_delivered(visible):
+        if (
+            not visible
+            or visible == "(empty)"
+            or self._interim_text_is_redundant(visible, plan_only=True)
+        ):
             return
         try:
             cb(visible, already_streamed=False)
@@ -6376,10 +6459,11 @@ class AIAgent:
             if commentary_parts
             else self._interim_assistant_visible_text(assistant_msg)
         )
+        plan_only = bool(assistant_msg.get("tool_calls")) or bool(commentary_parts)
         if (
             not visible
             or visible == "(empty)"
-            or self._interim_text_was_delivered(visible)
+            or self._interim_text_is_redundant(visible, plan_only=plan_only)
         ):
             return
         already_streamed = self._interim_content_was_streamed(visible)

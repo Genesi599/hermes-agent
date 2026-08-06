@@ -1727,6 +1727,83 @@ def test_interim_commentary_is_not_marked_already_streamed_without_callbacks(mon
     }
 
 
+def test_interim_plan_paraphrases_are_emitted_once(monkeypatch):
+    agent = _build_agent(monkeypatch)
+    observed = []
+    agent.interim_assistant_callback = (
+        lambda text, *, already_streamed=False: observed.append(text)
+    )
+    first = (
+        "我先按当前最终候选11个基因来定位现有细胞类型表达数据和小提琴图脚本，"
+        "确认网页报告使用的注释口径后直接作图并验证。"
+    )
+    paraphrase = (
+        "我按当前11个最终候选基因处理，先检查项目现有的小提琴图脚本、"
+        "表达数据和细胞类型注释，沿用报告口径绘图并完成验证。"
+    )
+
+    agent._emit_interim_assistant_message(
+        {"role": "assistant", "content": first, "tool_calls": [{"id": "call_1"}]}
+    )
+    agent._emit_interim_assistant_message(
+        {
+            "role": "assistant",
+            "content": paraphrase,
+            "tool_calls": [{"id": "call_2"}],
+        }
+    )
+
+    assert observed == [first]
+
+
+def test_interim_plan_dedup_keeps_distinct_progress(monkeypatch):
+    agent = _build_agent(monkeypatch)
+    observed = []
+    agent.interim_assistant_callback = (
+        lambda text, *, already_streamed=False: observed.append(text)
+    )
+    first = (
+        "我先按当前最终候选11个基因来定位现有细胞类型表达数据和小提琴图脚本，"
+        "确认网页报告使用的注释口径后直接作图并验证。"
+    )
+    next_step = (
+        "小提琴图已经生成，接下来逐一核对导出文件的尺寸、标签和颜色，"
+        "再把通过验证的图片写入报告并检查最终页面。"
+    )
+
+    for index, text in enumerate((first, next_step), start=1):
+        agent._emit_interim_assistant_message(
+            {
+                "role": "assistant",
+                "content": text,
+                "tool_calls": [{"id": f"call_{index}"}],
+            }
+        )
+
+    assert observed == [first, next_step]
+
+
+def test_interim_plan_dedup_does_not_hide_answer_text(monkeypatch):
+    agent = _build_agent(monkeypatch)
+    observed = []
+    agent.interim_assistant_callback = (
+        lambda text, *, already_streamed=False: observed.append(text)
+    )
+    first = (
+        "最终核对结果：11个候选基因的数据、注释口径、小提琴图脚本和网页报告"
+        "已经全部验证，当前输出可以交付。"
+    )
+    second = (
+        "最终结果确认：11个候选基因的数据、注释口径、小提琴图脚本及网页报告"
+        "均已完成验证，可以使用当前输出。"
+    )
+
+    agent._emit_interim_assistant_message({"role": "assistant", "content": first})
+    agent._emit_interim_assistant_message({"role": "assistant", "content": second})
+
+    assert observed == [first, second]
+
+
 
 
 def test_interim_content_was_streamed_matches_prefix_not_exact(monkeypatch):
