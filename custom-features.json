@@ -312,6 +312,11 @@
       "source_commit": "dd0841e85f",
       "patch_id": "4c1c77bee9b042b1d700c75ccbd4513fee8c0f0a",
       "feature": "transient-retry"
+    },
+    {
+      "source_commit": "65d658edf2",
+      "patch_id": "53ec0ac377e52d6fcb4ba1646803b2d4cd758838",
+      "feature": "desktop-ui"
     }
   ],
   "features": [
@@ -449,9 +454,11 @@
         "c1b3e5eea1",
         "eb20648368",
         "87be48ec19",
-        "cabb4b5929"
+        "cabb4b5929",
+        "65d658edf2"
       ],
       "source_paths": [
+        "apps/desktop/src/app/chat/sidebar/chrome.tsx",
         "apps/desktop/src/app/chat/sidebar/index.tsx",
         "apps/desktop/src/app/chat/sidebar/session-row.tsx",
         "apps/desktop/src/app/chat/sidebar/sessions-section.tsx",
@@ -462,11 +469,18 @@
         "apps/desktop/src/store/session-pins.ts"
       ],
       "test_paths": [
+        "apps/desktop/src/app/chat/sidebar/chrome.test.tsx",
         "apps/desktop/src/app/chat/sidebar/session-row.test.tsx",
         "apps/desktop/src/app/session/hooks/use-message-stream/utils.test.ts",
         "apps/desktop/src/app/shell/hooks/use-taskbar-unread-badge.test.ts",
         "apps/desktop/src/store/session-color.test.ts",
         "apps/desktop/src/store/session-pins.test.ts"
+      ],
+      "required_patterns": [
+        {
+          "path": "apps/desktop/src/app/chat/sidebar/chrome.tsx",
+          "pattern": "leading-5 text-(--ui-text-secondary)"
+        }
       ]
     },
     {
