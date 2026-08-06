@@ -322,15 +322,30 @@
       "source_commit": "f4268252f3",
       "patch_id": "2f231cada8f2405be6194bbedfdbf8561f141cd9",
       "feature": "desktop-ui"
+    },
+    {
+      "source_commit": "edd7d12d0d",
+      "patch_id": "40ac11cca111acd05f2dfbd94d37336d775ae8f3",
+      "feature": "cross-device-session"
     }
   ],
   "features": [
     {
       "id": "cross-device-session",
       "label": "Desktop/mobile Session and message sync",
-      "commits": ["76fe833b20", "8eef345f3c", "92b912083b"],
+      "commits": ["76fe833b20", "8eef345f3c", "92b912083b", "edd7d12d0d"],
       "source_paths": ["hermes_state.py", "tui_gateway/server.py", "apps/desktop/src/store/session.ts"],
-      "test_paths": ["tests/hermes_state/test_session_live_status.py", "tests/test_tui_gateway_server.py"]
+      "test_paths": [
+        "tests/hermes_state/test_session_live_status.py",
+        "tests/test_tui_gateway_server.py",
+        "tests/tui_gateway/test_protocol.py"
+      ],
+      "required_patterns": [
+        {
+          "path": "tui_gateway/server.py",
+          "pattern": "_record_durable_live_status"
+        }
+      ]
     },
     {
       "id": "session-identity",
