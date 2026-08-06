@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, List
@@ -25,6 +26,54 @@ from typing import Any, Callable, Dict, List
 from agent.stream_single_writer import claim_stream_writer, stream_writer_is_current
 
 logger = logging.getLogger(__name__)
+
+
+class CodexReasoningLoopError(RuntimeError):
+    """The provider repeated reasoning text without making stream progress."""
+
+
+class _RepeatedReasoningGuard:
+    """Detect exact phrase loops inside one reasoning stream.
+
+    Some OpenAI-compatible Responses endpoints keep the connection active by
+    replaying the same planning sentence indefinitely. Event-based watchdogs
+    cannot catch that because bytes continue to arrive. Track overlapping
+    character windows instead: ordinary reasoning adds mostly new windows,
+    while a replay quickly produces a sustained run of already-seen windows.
+    """
+
+    _WINDOW = 32
+    _STRIDE = 8
+    _DUPLICATE_RUN_LIMIT = 12
+
+    def __init__(self) -> None:
+        self._text = ""
+        self._next_window = 0
+        self._seen: set[str] = set()
+        self._duplicate_run = 0
+        self.triggered = False
+
+    def feed(self, delta: str) -> bool:
+        if self.triggered or not isinstance(delta, str) or not delta:
+            return self.triggered
+        normalized = re.sub(r"\s+", " ", delta.lower())
+        if not normalized:
+            return False
+        self._text += normalized
+        while self._next_window + self._WINDOW <= len(self._text):
+            window = self._text[
+                self._next_window : self._next_window + self._WINDOW
+            ]
+            self._next_window += self._STRIDE
+            if window in self._seen:
+                self._duplicate_run += 1
+            else:
+                self._seen.add(window)
+                self._duplicate_run = max(0, self._duplicate_run - 2)
+            if self._duplicate_run >= self._DUPLICATE_RUN_LIMIT:
+                self.triggered = True
+                return True
+        return False
 
 
 class _RetryReplayFilter:
@@ -1070,6 +1119,7 @@ def _consume_codex_event_stream(
     terminal_incomplete_details: Any = None
     terminal_error: Any = None
     saw_terminal = False
+    stopped_early = False
 
     for event in event_iter:
         if on_event is not None:
@@ -1084,6 +1134,7 @@ def _consume_codex_event_stream(
                 # stream consumption.
                 logger.debug("Codex stream on_event hook raised", exc_info=True)
         if interrupt_check is not None and interrupt_check():
+            stopped_early = True
             break
 
         event_type = _event_field(event, "type", "")
@@ -1245,7 +1296,7 @@ def _consume_codex_event_stream(
     # the call" from "stream completed with empty body".  This preserves the
     # signal the SDK's high-level helper used to raise as
     # ``RuntimeError("Didn't receive a `response.completed` event.")``.
-    if not saw_terminal and not output:
+    if not saw_terminal and not output and not stopped_early:
         raise RuntimeError(
             "Codex Responses stream did not emit a terminal response"
         )
@@ -1303,6 +1354,7 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
         reasoning_replay_filter = _RetryReplayFilter(
             emitted_reasoning_text if attempt > 0 else ""
         )
+        reasoning_loop_guard = _RepeatedReasoningGuard()
 
         def _on_text_delta(text: str) -> None:
             unseen = text_replay_filter.feed(text)
@@ -1313,6 +1365,8 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
 
         def _on_reasoning_delta(text: str) -> None:
             nonlocal emitted_reasoning_text
+            if reasoning_loop_guard.feed(text):
+                return
             unseen = reasoning_replay_filter.feed(text)
             if not unseen:
                 return
@@ -1401,7 +1455,7 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
             raise
 
         def _interrupt_or_superseded() -> bool:
-            return bool(agent._interrupt_requested)
+            return bool(agent._interrupt_requested or reasoning_loop_guard.triggered)
 
         try:
             try:
@@ -1422,6 +1476,18 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
                     on_event=_on_event,
                     interrupt_check=_interrupt_or_superseded,
                 )
+                if reasoning_loop_guard.triggered:
+                    if attempt < max_stream_retries:
+                        logger.warning(
+                            "Codex Responses reasoning stream repeated without "
+                            "progress; reconnecting once. %s",
+                            agent._client_log_context(),
+                        )
+                        continue
+                    raise CodexReasoningLoopError(
+                        "Codex reasoning stream repeated the same planning text "
+                        "without producing an answer or tool call"
+                    )
             except (_httpx.RemoteProtocolError, _httpx.ReadTimeout, _httpx.ConnectError, ConnectionError) as exc:
                 if attempt < max_stream_retries:
                     logger.debug(
