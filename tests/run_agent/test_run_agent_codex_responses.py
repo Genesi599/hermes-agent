@@ -791,6 +791,49 @@ def test_run_codex_stream_deduplicates_prefix_after_midstream_retry(monkeypatch)
     assert response.output_text == "Repeat me, then continue."
 
 
+def test_run_codex_stream_deduplicates_consecutive_reasoning_delta(monkeypatch):
+    agent = _build_agent(monkeypatch)
+    reasoning_streamed = []
+    agent.reasoning_callback = reasoning_streamed.append
+    repeated = "Planning parallel memory file reads. "
+    following = "Reading the selected core memory files. "
+    completed_item = SimpleNamespace(
+        type="message",
+        status="completed",
+        content=[SimpleNamespace(type="output_text", text="Hi!")],
+    )
+    events = [
+        SimpleNamespace(type="response.reasoning_text.delta", delta=repeated),
+        SimpleNamespace(type="response.reasoning_text.delta", delta=repeated),
+        SimpleNamespace(type="response.reasoning_text.delta", delta=following),
+        SimpleNamespace(type="response.output_text.delta", delta="Hi!"),
+        SimpleNamespace(type="response.output_item.done", item=completed_item),
+        SimpleNamespace(
+            type="response.completed",
+            response=SimpleNamespace(status="completed"),
+        ),
+    ]
+    agent.client = SimpleNamespace(
+        responses=SimpleNamespace(create=lambda **_kwargs: _FakeCreateStream(events)),
+    )
+
+    response = agent._run_codex_stream(_codex_request_kwargs())
+
+    assert "".join(reasoning_streamed) == repeated + following
+    assert response.output_text == "Hi!"
+
+
+def test_collapse_adjacent_reasoning_replay():
+    from agent.codex_runtime import _collapse_adjacent_reasoning_replay
+
+    repeated = "**Planning parallel Python file reads. **"
+    unique = "**Planning file chunking for full reads. **"
+
+    assert _collapse_adjacent_reasoning_replay(repeated + repeated + unique) == (
+        repeated + unique
+    )
+
+
 def test_run_codex_stream_reconnects_after_reasoning_phrase_loop(monkeypatch):
     agent = _build_agent(monkeypatch)
     reasoning_streamed = []

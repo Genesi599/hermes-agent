@@ -76,6 +76,30 @@ class _RepeatedReasoningGuard:
         return False
 
 
+class _ConsecutiveReasoningDeltaFilter:
+    """Drop an immediately replayed, sentence-sized reasoning delta."""
+
+    _MIN_LENGTH = 16
+
+    def __init__(self) -> None:
+        self._previous = ""
+
+    def feed(self, delta: str) -> str:
+        normalized = re.sub(r"\s+", " ", delta).strip()
+        is_duplicate = (
+            len(normalized) >= self._MIN_LENGTH
+            and normalized == self._previous
+        )
+        self._previous = normalized
+        return "" if is_duplicate else delta
+
+
+def _collapse_adjacent_reasoning_replay(text: str) -> str:
+    """Collapse adjacent duplicate Markdown reasoning blocks in one delta."""
+    pattern = re.compile(r"(?P<block>\*\*[^*\r\n]{16,}\*\*)(?:(?P=block))+")
+    return pattern.sub(lambda match: match.group("block"), text)
+
+
 def _uses_local_codex_pool(agent) -> bool:
     """Return whether this Responses call targets the local Codex key proxy.
 
@@ -1444,6 +1468,8 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
         reasoning_replay_filter = _RetryReplayFilter(
             emitted_reasoning_text if attempt > 0 else ""
         )
+        reasoning_loop_guard = _RepeatedReasoningGuard()
+        consecutive_reasoning_filter = _ConsecutiveReasoningDeltaFilter()
 
         def _on_text_delta(text: str) -> None:
             unseen = text_replay_filter.feed(text)
@@ -1454,7 +1480,13 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
 
         def _on_reasoning_delta(text: str) -> None:
             nonlocal emitted_reasoning_text
-            unseen = reasoning_replay_filter.feed(text)
+            if reasoning_loop_guard.feed(text):
+                return
+            deduplicated = consecutive_reasoning_filter.feed(text)
+            if not deduplicated:
+                return
+            deduplicated = _collapse_adjacent_reasoning_replay(deduplicated)
+            unseen = reasoning_replay_filter.feed(deduplicated)
             if not unseen:
                 return
             emitted_reasoning_text += unseen
