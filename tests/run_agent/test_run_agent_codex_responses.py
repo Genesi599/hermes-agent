@@ -263,6 +263,71 @@ def test_api_mode_uses_explicit_provider_when_codex(monkeypatch):
     assert agent._is_codex_backend() is False
 
 
+def test_local_codex_pool_bypasses_managed_relay(monkeypatch):
+    from agent.codex_runtime import _uses_local_codex_pool
+
+    agent = _build_agent(monkeypatch)
+    agent.provider = "custom"
+    agent.base_url = "http://127.0.0.1:8787/v1"
+    assert _uses_local_codex_pool(agent) is True
+
+    agent.base_url = "https://example.com/v1"
+    assert _uses_local_codex_pool(agent) is False
+
+
+def test_local_codex_pool_closes_stream_at_terminal_without_draining(monkeypatch):
+    agent = _build_agent(monkeypatch)
+    agent.provider = "custom"
+    agent.base_url = "http://127.0.0.1:8787/v1"
+    completed_item = SimpleNamespace(
+        type="message",
+        status="completed",
+        content=[SimpleNamespace(type="output_text", text="Hi!")],
+    )
+
+    class _KeepAliveAfterTerminal:
+        def __init__(self):
+            self.events = iter(
+                [
+                    SimpleNamespace(type="response.output_text.delta", delta="Hi!"),
+                    SimpleNamespace(
+                        type="response.output_item.done",
+                        item=completed_item,
+                    ),
+                    SimpleNamespace(
+                        type="response.completed",
+                        response=SimpleNamespace(status="completed"),
+                    ),
+                ]
+            )
+            self.closed = False
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            try:
+                return next(self.events)
+            except StopIteration as exc:
+                raise AssertionError(
+                    "local keep-alive stream must not be drained after terminal"
+                ) from exc
+
+        def close(self):
+            self.closed = True
+
+    raw_stream = _KeepAliveAfterTerminal()
+    agent.client = SimpleNamespace(
+        responses=SimpleNamespace(create=lambda **_kwargs: raw_stream),
+    )
+
+    response = agent._run_codex_stream(_codex_request_kwargs())
+
+    assert response.status == "completed"
+    assert response.output_text == "Hi!"
+    assert raw_stream.closed is True
+
+
 
 
 

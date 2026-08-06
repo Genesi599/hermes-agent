@@ -76,6 +76,24 @@ class _RepeatedReasoningGuard:
         return False
 
 
+def _uses_local_codex_pool(agent) -> bool:
+    """Return whether this Responses call targets the local Codex key proxy.
+
+    The proxy already owns provider routing and stream retries. Passing its SSE
+    stream through NeMo Relay can leave Relay waiting after the upstream
+    terminal frame and replay reasoning chunks indefinitely. Keep Relay for
+    every other endpoint and use the native stream path only for this local
+    loopback service.
+    """
+    base_url = str(getattr(agent, "base_url", "") or "").lower()
+    hostname = str(getattr(agent, "_base_url_hostname", "") or "").lower()
+    return (
+        getattr(agent, "provider", None) == "custom"
+        and hostname in {"127.0.0.1", "localhost", "::1"}
+        and ":8787" in base_url
+    )
+
+
 class _RetryReplayFilter:
     """Suppress the prefix replayed by a replacement Responses stream.
 
@@ -1477,6 +1495,7 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
             )
 
         try:
+            force_relay_passthrough = _uses_local_codex_pool(agent)
             event_stream = relay_llm.stream(
                 dict(api_kwargs),
                 _open_codex_stream,
@@ -1504,6 +1523,7 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
                     "retry_count": attempt,
                 },
                 defer_logical_completion=True,
+                force_passthrough=force_relay_passthrough,
             )
         except (
             _httpx.RemoteProtocolError,
@@ -1590,7 +1610,7 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
             # finalizer — must NOT discard it or trigger a new physical
             # request. Record it as a non-fatal finalization warning and
             # still return the already-completed, already-billed response.
-            if not agent._interrupt_requested:
+            if not agent._interrupt_requested and not force_relay_passthrough:
                 try:
                     for _ignored in event_stream:
                         pass

@@ -338,6 +338,7 @@ def stream(
     completed_response_predicate: Callable[[Any], bool] | None = None,
     metadata: dict[str, Any] | None = None,
     defer_logical_completion: bool = False,
+    force_passthrough: bool = False,
 ) -> "ManagedLlmStream":
     """Return a synchronous view of one Relay-managed provider stream."""
     return ManagedLlmStream(
@@ -354,6 +355,7 @@ def stream(
         completed_response_predicate=completed_response_predicate,
         metadata=metadata,
         defer_logical_completion=defer_logical_completion,
+        force_passthrough=force_passthrough,
     )
 
 
@@ -376,6 +378,7 @@ class ManagedLlmStream(Iterator[Any]):
         completed_response_predicate: Callable[[Any], bool] | None,
         metadata: dict[str, Any] | None,
         defer_logical_completion: bool,
+        force_passthrough: bool,
     ) -> None:
         self.final_response: Any = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -417,7 +420,8 @@ class ManagedLlmStream(Iterator[Any]):
 
         runtime, session, parent = relay_runtime.resolve_execution_context(session_id)
         if (
-            runtime is None
+            force_passthrough
+            or runtime is None
             or session is None
             or not runtime.managed_execution_enabled()
         ):
