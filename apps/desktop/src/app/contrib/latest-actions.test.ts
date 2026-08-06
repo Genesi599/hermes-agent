@@ -40,6 +40,8 @@ function makeSidebarActions(): SidebarActions {
     onLoadMoreMessaging: vi.fn(),
     onLoadMoreProfileSessions: vi.fn(),
     onLoadMoreSessions: vi.fn(),
+    onMergeChildrenSession: vi.fn(),
+    onMergeSession: vi.fn(),
     onManageCronJob: vi.fn(),
     onNavigate: vi.fn(),
     onNewSessionInWorkspace: vi.fn(),
@@ -101,11 +103,30 @@ describe('latestActions adapters', () => {
     const sidebar = makeSidebarActions()
     sidebar.onLoadMoreMessaging = undefined
     sidebar.onLoadMoreProfileSessions = undefined
+    sidebar.onMergeChildrenSession = undefined
+    sidebar.onMergeSession = undefined
 
     const adaptedSidebar = latestSidebarActions(sidebar)
 
     expect(adaptedSidebar.onLoadMoreMessaging).toBeUndefined()
     expect(adaptedSidebar.onLoadMoreProfileSessions).toBeUndefined()
+    expect(adaptedSidebar.onMergeChildrenSession).toBeUndefined()
+    expect(adaptedSidebar.onMergeSession).toBeUndefined()
+  })
+
+  it('forwards branch merge handlers through the sidebar surface adapter', async () => {
+    const mergeChildren = vi.fn()
+    const mergeBranch = vi.fn()
+    const actions = makeSidebarActions()
+    actions.onMergeChildrenSession = mergeChildren
+    actions.onMergeSession = mergeBranch
+
+    const adapted = latestSidebarActions(actions)
+
+    await adapted.onMergeChildrenSession?.('parent')
+    await adapted.onMergeSession?.('child', 'default')
+    expect(mergeChildren).toHaveBeenCalledWith('parent')
+    expect(mergeBranch).toHaveBeenCalledWith('child', 'default')
   })
 
   it('still late-binds a PRESENT optional handler to the latest closure', async () => {

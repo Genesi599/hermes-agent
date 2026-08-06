@@ -60,6 +60,8 @@ export function latestSidebarActions(actions: SidebarActions): SidebarActions {
     onArchiveSession: (...args) => actions.onArchiveSession(...args),
     onBranchSession: (...args) => actions.onBranchSession(...args),
     onDeleteSession: (...args) => actions.onDeleteSession(...args),
+    onMergeChildrenSession: latestOptional(() => actions.onMergeChildrenSession),
+    onMergeSession: latestOptional(() => actions.onMergeSession),
     onLoadMoreMessaging: latestOptional(() => actions.onLoadMoreMessaging),
     onLoadMoreProfileSessions: latestOptional(() => actions.onLoadMoreProfileSessions),
     onLoadMoreSessions: (...args) => actions.onLoadMoreSessions(...args),
