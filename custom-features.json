@@ -317,6 +317,11 @@
       "source_commit": "65d658edf2",
       "patch_id": "53ec0ac377e52d6fcb4ba1646803b2d4cd758838",
       "feature": "desktop-ui"
+    },
+    {
+      "source_commit": "f4268252f3",
+      "patch_id": "2f231cada8f2405be6194bbedfdbf8561f141cd9",
+      "feature": "desktop-ui"
     }
   ],
   "features": [
@@ -455,7 +460,8 @@
         "eb20648368",
         "87be48ec19",
         "cabb4b5929",
-        "65d658edf2"
+        "65d658edf2",
+        "f4268252f3"
       ],
       "source_paths": [
         "apps/desktop/src/app/chat/sidebar/chrome.tsx",
@@ -464,6 +470,7 @@
         "apps/desktop/src/app/chat/sidebar/sessions-section.tsx",
         "apps/desktop/src/app/chat/sidebar/virtual-session-list.tsx",
         "apps/desktop/src/app/shell/hooks/use-taskbar-unread-badge.ts",
+        "apps/desktop/src/store/statusbar-prefs.ts",
         "apps/desktop/src/store/session.ts",
         "apps/desktop/src/store/session-color.ts",
         "apps/desktop/src/store/session-pins.ts"
@@ -471,6 +478,7 @@
       "test_paths": [
         "apps/desktop/src/app/chat/sidebar/chrome.test.tsx",
         "apps/desktop/src/app/chat/sidebar/session-row.test.tsx",
+        "apps/desktop/src/app/shell/statusbar-visibility.test.tsx",
         "apps/desktop/src/app/session/hooks/use-message-stream/utils.test.ts",
         "apps/desktop/src/app/shell/hooks/use-taskbar-unread-badge.test.ts",
         "apps/desktop/src/store/session-color.test.ts",
@@ -480,6 +488,10 @@
         {
           "path": "apps/desktop/src/app/chat/sidebar/chrome.tsx",
           "pattern": "leading-5 text-(--ui-text-secondary)"
+        },
+        {
+          "path": "apps/desktop/src/store/statusbar-prefs.ts",
+          "pattern": "migrateLegacyContextVisibility"
         }
       ]
     },
