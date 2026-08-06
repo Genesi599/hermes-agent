@@ -832,6 +832,8 @@ def test_collapse_adjacent_reasoning_replay():
     assert _collapse_adjacent_reasoning_replay(repeated + repeated + unique) == (
         repeated + unique
     )
+    short = "**short**"
+    assert _collapse_adjacent_reasoning_replay(short + short) == short + short
 
 
 def test_run_codex_stream_reconnects_after_reasoning_phrase_loop(monkeypatch):
