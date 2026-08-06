@@ -287,6 +287,29 @@ def test_emit_with_payload(capture):
     assert msg["params"]["payload"]["key"] == "val"
 
 
+def test_emit_mirrors_cross_client_live_status_to_session_db(server, monkeypatch):
+    sid = "runtime-1"
+    server._sessions[sid] = {"session_key": "stored-1"}
+    calls = []
+
+    class _DB:
+        def set_session_live_status(self, session_id, status, *, owner):
+            calls.append((session_id, status, owner))
+
+    monkeypatch.setattr(server, "_get_db", lambda: _DB())
+    monkeypatch.setattr(server, "_durable_turn_owner", lambda runtime_id: f"owner:{runtime_id}")
+    monkeypatch.setattr(server, "write_json", lambda _payload: None)
+
+    server._emit("message.start", sid)
+    server._emit("message.complete", sid, {"status": "complete"})
+    server._emit("unrelated.event", sid)
+
+    assert calls == [
+        ("stored-1", "working", "owner:runtime-1"),
+        ("stored-1", "idle", "owner:runtime-1"),
+    ]
+
+
 # ── Blocking prompt round-trip ───────────────────────────────────────
 
 

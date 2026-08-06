@@ -1624,6 +1624,52 @@ def _event_frame(event: str, sid: str, payload: dict | None = None) -> dict:
 def _emit(event: str, sid: str, payload: dict | None = None):
     _record_inflight_event(event, sid, payload)
     write_json(_event_frame(event, sid, payload))
+    _record_durable_live_status(event, sid, payload)
+
+
+def _record_durable_live_status(event: str, sid: str, payload: dict | None) -> None:
+    """Mirror TUI lifecycle events into the shared SessionDB lease.
+
+    Desktop and Hermes Sync can attach independent runtimes to one stored
+    Session, so the in-memory ``_sessions`` registry is not a cross-client
+    status channel. Keep this adapter next to ``_emit`` so every surface that
+    produces the normal lifecycle events updates the durable projection.
+    """
+    if event == "session.info":
+        running = (payload or {}).get("running")
+        if not isinstance(running, bool):
+            return
+        status = "working" if running else "idle"
+    elif event in {
+        "message.start",
+        "message.delta",
+        "reasoning.delta",
+        "status.update",
+        "thinking.delta",
+        "tool.complete",
+        "tool.generating",
+        "tool.progress",
+        "tool.start",
+    }:
+        status = "working"
+    elif event in {"error", "message.complete", "message.done"}:
+        status = "idle"
+    else:
+        return
+
+    with _sessions_lock:
+        session = _sessions.get(sid)
+        session_key = str((session or {}).get("session_key") or "")
+    if not session_key:
+        return
+
+    try:
+        db = _get_db()
+        setter = getattr(db, "set_session_live_status", None)
+        if setter is not None:
+            setter(session_key, status, owner=_durable_turn_owner(sid))
+    except Exception:
+        logger.debug("failed to persist live status for %s", session_key, exc_info=True)
 
 
 # Live client transports, one per connected WS peer (maintained by tui_gateway.ws).
