@@ -307,6 +307,11 @@
       "source_commit": "e570751e4d",
       "patch_id": "559b92683f8a7f0be86c431eda885f2eae40efff",
       "feature": "transient-retry"
+    },
+    {
+      "source_commit": "dd0841e85f",
+      "patch_id": "4c1c77bee9b042b1d700c75ccbd4513fee8c0f0a",
+      "feature": "transient-retry"
     }
   ],
   "features": [
@@ -416,7 +421,7 @@
     {
       "id": "transient-retry",
       "label": "continuous upstream and incomplete-response retry",
-      "commits": ["2c357c4315", "424ca75dc7", "4bf551cf2e", "42ac6056fd", "c589d827d0", "3d5d9a6fa5", "457c32d69b", "0436d1fac5", "e570751e4d"],
+      "commits": ["2c357c4315", "424ca75dc7", "4bf551cf2e", "42ac6056fd", "c589d827d0", "3d5d9a6fa5", "457c32d69b", "0436d1fac5", "e570751e4d", "dd0841e85f"],
       "source_paths": ["agent/conversation_loop.py", "agent/codex_runtime.py", "agent/relay_llm.py"],
       "test_paths": [
         "tests/agent/test_relay_llm.py",
