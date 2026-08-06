@@ -143,6 +143,29 @@ def test_stream_uses_rewritten_request_and_post_intercept_chunks(relay_turn):
     assert turn.logical_llm_calls == {}
 
 
+def test_stream_force_passthrough_skips_managed_execution(relay_turn, monkeypatch):
+    relay, turn = relay_turn
+    del turn
+    event = SimpleNamespace(type="response.completed")
+
+    async def _unexpected_managed_stream(*_args, **_kwargs):
+        raise AssertionError("managed Relay stream should have been bypassed")
+
+    monkeypatch.setattr(relay.llm, "stream_execute", _unexpected_managed_stream)
+    stream = relay_llm.stream(
+        {"model": "test-model", "input": []},
+        lambda _request: iter([event]),
+        session_id="session-1",
+        name="test-provider",
+        model_name="test-model",
+        finalizer=lambda: {},
+        force_passthrough=True,
+    )
+
+    assert list(stream) == [event]
+    assert stream.output_modified is False
+
+
 
 
 
