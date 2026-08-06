@@ -282,6 +282,11 @@
       "source_commit": "d29cca702e",
       "patch_id": "d4216b86db4d329cacd578ef4f689b5975d6e1f5",
       "feature": "branch-merge"
+    },
+    {
+      "source_commit": "3f2042cf9e",
+      "patch_id": "3e24caafc4b2b7a97d8ce5114ac16f07dba99a85",
+      "feature": "branch-merge"
     }
   ],
   "features": [
@@ -324,10 +329,18 @@
         "55722e186d",
         "429786fcbe",
         "a0fd763ebf",
-        "2d9ee60b3d"
+        "2d9ee60b3d",
+        "3f2042cf9e"
       ],
-      "source_paths": ["apps/desktop/src/app/chat/sidebar/session-actions-menu.tsx", "tui_gateway/server.py"],
-      "test_paths": ["tests/test_background_review_session_isolation.py"],
+      "source_paths": [
+        "apps/desktop/src/app/chat/sidebar/session-actions-menu.tsx",
+        "apps/desktop/src/app/contrib/latest-actions.ts",
+        "tui_gateway/server.py"
+      ],
+      "test_paths": [
+        "apps/desktop/src/app/contrib/latest-actions.test.ts",
+        "tests/test_background_review_session_isolation.py"
+      ],
       "required_patterns": [
         {
           "path": "apps/desktop/src/app/session/hooks/use-session-actions/index.ts",
