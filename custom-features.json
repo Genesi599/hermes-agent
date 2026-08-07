@@ -334,6 +334,11 @@
       "feature": "desktop-ui"
     },
     {
+      "source_commit": "281c7ebb2b",
+      "patch_id": "935bc8159be5167762ec050484be720e1642b15e",
+      "feature": "desktop-ui"
+    },
+    {
       "source_commit": "edd7d12d0d",
       "patch_id": "40ac11cca111acd05f2dfbd94d37336d775ae8f3",
       "feature": "cross-device-session"
@@ -493,7 +498,8 @@
         "65d658edf2",
         "f4268252f3",
         "d0d7fdabf9",
-        "c33be1a696"
+        "c33be1a696",
+        "281c7ebb2b"
       ],
       "source_paths": [
         "apps/desktop/src/app/chat/session-status-dot.tsx",
