@@ -2823,12 +2823,12 @@ def _register_session_cwd(session: dict | None) -> None:
 
 
 def _ensure_session_db_row(session: dict) -> None:
-    """Idempotently persist the session's DB row on first real activity.
+    """Idempotently persist the session's DB row when it becomes durable.
 
-    Called from prompt.submit so a row only exists once the user actually sends
-    a message — abandoned drafts never leave an empty "Untitled" session behind.
-    Uses INSERT OR IGNORE under the hood, so re-calls (and the AIAgent's own
-    lazy create) are no-ops.
+    Called from prompt.submit for ordinary drafts and from session.create for a
+    seeded branch. Abandoned empty drafts therefore leave no "Untitled" row,
+    while an intentional branch is resumable before its first new prompt. Uses
+    INSERT OR IGNORE, so re-calls (and the AIAgent's own lazy create) are no-ops.
 
     A cwd the user *chose* is always persisted. When they made no explicit
     choice the launch directory stands in, and whether that is meaningful
@@ -2958,13 +2958,12 @@ def _ensure_session_db_row(session: dict) -> None:
 
 
 def _persist_branch_seed(session: dict) -> None:
-    """First-turn persist of a branch's copied transcript.
+    """Persist a branch's copied transcript once its row is durable.
 
-    A branch is a draft until its first submit: the parent's messages live only
-    in ``session["history"]`` (they ride into the agent as ``conversation_history``,
-    which ``_flush_messages_to_session_db`` skips by identity). Without this the
-    branch row would resume missing its pre-branch context. Runs once; the row +
-    parent link are written by ``_ensure_session_db_row`` just before this.
+    The parent's messages start in ``session["history"]`` and ride into the
+    agent as ``conversation_history``, which ``_flush_messages_to_session_db``
+    skips by identity. Without this the branch row would resume missing its
+    pre-branch context. Runs once after ``_ensure_session_db_row``.
     """
     if not session.get("parent_session_id") or session.get("_branch_seed_persisted"):
         return

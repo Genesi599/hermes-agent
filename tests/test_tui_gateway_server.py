@@ -5446,6 +5446,89 @@ def test_run_prompt_submit_prefers_origin_ui_session_id(monkeypatch, tmp_path):
         server._sessions.pop(sid, None)
 
 
+def test_session_create_keeps_empty_draft_lazy(monkeypatch):
+    created = []
+
+    class _FakeDB:
+        def create_session(self, *args, **kwargs):
+            created.append((args, kwargs))
+
+    monkeypatch.setattr(server, "_get_db", lambda: _FakeDB())
+    monkeypatch.setattr(server, "_schedule_agent_build", lambda *a, **k: None)
+    monkeypatch.setattr(server, "_schedule_session_cap_enforcement", lambda: None)
+
+    resp = server._methods["session.create"]("r1", {"cols": 80})
+    sid = resp["result"]["session_id"]
+
+    try:
+        assert resp["result"]["stored_session_id"]
+        assert created == []
+    finally:
+        server._sessions.pop(sid, None)
+
+
+def test_session_create_persists_seeded_branch_before_first_prompt(monkeypatch):
+    created = []
+    persisted = []
+    titles = []
+
+    class _FakeDB:
+        def create_session(self, key, **kwargs):
+            created.append((key, kwargs))
+
+        def append_messages_batch(self, session_id, messages, *, chunk_rows):
+            persisted.append((session_id, list(messages), chunk_rows))
+
+        def set_session_title(self, session_id, title):
+            titles.append((session_id, title))
+            return True
+
+    monkeypatch.setattr(server, "_get_db", lambda: _FakeDB())
+    monkeypatch.setattr(server, "_resolve_model", lambda: "test-model")
+    monkeypatch.setattr(server, "_schedule_agent_build", lambda *a, **k: None)
+    monkeypatch.setattr(server, "_schedule_session_cap_enforcement", lambda: None)
+
+    resp = server._methods["session.create"](
+        "r1",
+        {
+            "cols": 80,
+            "messages": [
+                {"role": "user", "content": "seed question"},
+                {"role": "assistant", "content": "seed answer"},
+            ],
+            "parent_session_id": "parent-stored",
+            "source": "desktop",
+            "title": "draft: branch #1",
+        },
+    )
+    sid = resp["result"]["session_id"]
+    key = resp["result"]["stored_session_id"]
+
+    try:
+        assert len(created) == 1
+        created_key, created_kwargs = created[0]
+        assert created_key == key
+        assert created_kwargs["source"] == "desktop"
+        assert created_kwargs["parent_session_id"] == "parent-stored"
+        assert created_kwargs["model_config"] == {
+            "_branched_from": "parent-stored",
+            "_branch_seed_message_count": 2,
+        }
+        assert len(persisted) == 1
+        persisted_key, persisted_messages, chunk_rows = persisted[0]
+        assert persisted_key == key
+        assert [(m["role"], m["content"]) for m in persisted_messages] == [
+            ("user", "seed question"),
+            ("assistant", "seed answer"),
+        ]
+        assert chunk_rows == 500
+        assert titles == [(key, "draft: branch #1")]
+        assert server._sessions[sid]["_branch_seed_persisted"] is True
+        assert server._sessions[sid]["pending_title"] is None
+    finally:
+        server._sessions.pop(sid, None)
+
+
 def test_ensure_session_db_row_persists_explicit_cwd(monkeypatch, tmp_path):
     """An explicitly chosen workspace is persisted as the session cwd."""
     created = []

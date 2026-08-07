@@ -76,6 +76,8 @@ vi.mock('@/store/session-color', () => ({
   setSessionColorOverride: vi.fn()
 }))
 vi.mock('@/store/session-states', () => ({
+  $focusedRuntimeId: atom<null | string>(null),
+  $focusedStoredSessionId: atom<null | string>(null),
   $sessionTiles: atom<unknown[]>([]),
   openSessionTile: vi.fn()
 }))

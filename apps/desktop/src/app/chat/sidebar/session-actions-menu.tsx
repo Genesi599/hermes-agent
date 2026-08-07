@@ -39,34 +39,32 @@ import {
   setSessions
 } from '@/store/session'
 import { $sessionColorOverrides, sessionColorFamilyId, setSessionColorOverride } from '@/store/session-color'
-import { $sessionTiles } from '@/store/session-states'
+import { $focusedRuntimeId, $focusedStoredSessionId, $sessionTiles } from '@/store/session-states'
 import { canOpenSessionWindow } from '@/store/windows'
 
 import type { SessionTitleResponse } from '../../types'
 
 // Rename a session, preferring the gateway's session.title RPC over REST.
 //
-// A freshly *branched* session (and any brand-new chat) lives only in the
-// gateway's in-memory _sessions map keyed by its RUNTIME id — no row is
-// persisted to state.db until the first turn. REST PATCH /api/sessions/{id}
-// resolves against the stored sessions table, so it 404s ("Session not found")
-// on these runtime-only sessions. The session.title RPC resolves the live
-// runtime session AND persists the row on demand, so it succeeds where REST
-// cannot. This mirrors the /title slash command's fix (use-prompt-actions.ts).
+// A brand-new empty chat (or a branch created by an older backend) can live only
+// in the gateway's in-memory _sessions map until its first turn. REST PATCH
+// /api/sessions/{id} resolves against the stored sessions table, so it 404s on
+// those runtime-only sessions. session.title resolves the live runtime and
+// persists its row on demand, mirroring /title in use-prompt-actions.ts.
 //
-// We only take the RPC path for the ACTIVE/selected session: its runtime id is
-// known ($activeSessionId) and it lives on the active gateway, so there is no
-// profile-routing ambiguity. Every other row (already persisted, possibly on a
-// background profile) keeps the REST path, which handles profile scoping and a
-// non-empty title is required by the RPC (it rejects clears), so clears stay on
-// REST too.
+// We only take the RPC path for the actually FOCUSED session. A branch can be
+// focused in its own tile while the route-selected primary remains its parent,
+// so $selectedStoredSessionId + $activeSessionId can address the wrong runtime.
+// The focused atoms resolve that stored/runtime pair from the pane layout.
+// Every other row keeps the profile-aware REST path; title clears do too because
+// session.title rejects empty titles.
 export async function renameSessionPreferringRpc(
   storedSessionId: string,
   title: string,
   profile?: string
 ): Promise<{ title?: string }> {
-  const isActiveRow = storedSessionId === $selectedStoredSessionId.get()
-  const runtimeId = isActiveRow ? $activeSessionId.get() : null
+  const isFocusedRow = storedSessionId === $focusedStoredSessionId.get()
+  const runtimeId = isFocusedRow ? $focusedRuntimeId.get() : null
   const gateway = activeGateway()
 
   if (title && runtimeId && gateway) {

@@ -96,6 +96,7 @@ def _(rid, params: dict) -> dict:
             "model_override": session_model_override,
             "create_reasoning_override": create_reasoning_override,
             "create_service_tier_override": create_service_tier_override,
+            "branch_seed_message_count": len(history) if parent_session_id else 0,
             "parent_session_id": parent_session_id,
             "pending_title": title or None,
             "profile_home": str(profile_home) if profile_home is not None else None,
@@ -110,12 +111,27 @@ def _(rid, params: dict) -> dict:
         }
         _register_session_cwd(_sessions[sid])
 
-    # NOTE: we intentionally do NOT persist a DB row here. Every TUI/desktop
-    # launch (and every "New agent" / draft) opens a session here just to paint
-    # the composer, so eagerly creating a row left an "Untitled" empty session
-    # behind for every launch the user never typed into. The row is now created
-    # lazily on the first prompt (see _ensure_session_db_row + prompt.submit),
-    # and the AIAgent's own INSERT-OR-IGNORE persists it on the first turn too.
+    # A seeded branch is already a deliberate, durable user action. Persist its
+    # row, lineage, copied transcript, and title before returning so rename,
+    # route recovery, delete review, and reconnect can resolve the stored id
+    # even before the branch's first new prompt. Plain empty drafts remain lazy.
+    if parent_session_id and history:
+        branch_session = _sessions[sid]
+        _ensure_session_db_row(branch_session)
+        _persist_branch_seed(branch_session)
+        if title:
+            with _session_db(branch_session) as branch_db:
+                if branch_db is not None:
+                    try:
+                        if branch_db.set_session_title(key, title):
+                            branch_session["pending_title"] = None
+                    except Exception:
+                        logger.debug("branch draft title persist failed", exc_info=True)
+
+    # Every TUI/desktop launch (and every "New agent" / empty draft) opens a
+    # session here just to paint the composer. Those rows are still created
+    # lazily on the first prompt so abandoned drafts do not leave "Untitled"
+    # sessions behind.
 
     # Return the lightweight session immediately so Ink can paint the composer
     # + skeleton panel, then build the real AIAgent just after this response is
