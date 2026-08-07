@@ -10,6 +10,7 @@ import {
   clearUnreadSessionIds,
   markSessionUnread
 } from '@/store/session'
+import { $focusedStoredSessionId } from '@/store/session-states'
 import type { SessionInfo } from '@/types/hermes'
 
 type SetTaskbarBadgeCount = (count: number) => void
@@ -140,6 +141,10 @@ export function subscribeSelectedSessionRead(): () => void {
   return $selectedStoredSessionId.subscribe(clearSessionUnread)
 }
 
+export function subscribeFocusedSessionRead(): () => void {
+  return $focusedStoredSessionId.subscribe(clearSessionUnread)
+}
+
 export function subscribeWorkingSessionsRead(): () => void {
   return $sessions.subscribe(sessions => {
     const workingAliases = sessions.flatMap(session =>
@@ -245,6 +250,7 @@ export function useTaskbarUnreadBadge() {
   useEffect(() => {
     const unsubscribeBadge = subscribeTaskbarUnreadBadge(window.hermesDesktop?.setTaskbarBadgeCount)
     const unsubscribeSelected = subscribeSelectedSessionRead()
+    const unsubscribeFocused = subscribeFocusedSessionRead()
     const unsubscribeWorking = subscribeWorkingSessionsRead()
     const unsubscribeReconciliation = subscribeUnreadSessionReconciliation()
 
@@ -259,6 +265,7 @@ export function useTaskbarUnreadBadge() {
     return () => {
       unsubscribeBadge()
       unsubscribeSelected()
+      unsubscribeFocused()
       unsubscribeWorking()
       unsubscribeReconciliation()
       unsubscribeGateway()
