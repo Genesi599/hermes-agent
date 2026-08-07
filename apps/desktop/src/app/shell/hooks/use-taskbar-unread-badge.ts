@@ -14,9 +14,15 @@ import type { SessionInfo } from '@/types/hermes'
 
 type SetTaskbarBadgeCount = (count: number) => void
 
-type UnreadSessionRow = Pick<SessionInfo, 'archived' | 'id' | 'last_active' | 'started_at' | '_lineage_root_id'>
+type UnreadSessionRow = Pick<
+  SessionInfo,
+  'archived' | 'id' | 'last_active' | 'started_at' | 'status' | '_lineage_root_id'
+>
 
 const UNREAD_RECONCILIATION_RETRY_MS = 2_500
+// The backend rejects larger pages with HTTP 422. Keep this aligned with
+// `/api/profiles/sessions` so stale unread IDs are actually reconciled.
+const UNREAD_RECONCILIATION_SESSION_LIMIT = 500
 
 export function subscribeTaskbarUnreadBadge(setBadgeCount?: SetTaskbarBadgeCount): () => void {
   if (!setBadgeCount) {
@@ -56,7 +62,7 @@ export function canonicalUnreadSessionIds(
   for (const session of sessions) {
     const id = session.id.trim()
 
-    if (!id || session.archived) {
+    if (!id || session.archived || session.status === 'working') {
       continue
     }
 
@@ -98,7 +104,13 @@ export async function reconcileTaskbarUnreadSessions(): Promise<void> {
   }
 
   try {
-    const { sessions } = await listAllProfileSessions(1_000, 0, 'include', 'recent', 'all')
+    const { sessions } = await listAllProfileSessions(
+      UNREAD_RECONCILIATION_SESSION_LIMIT,
+      0,
+      'include',
+      'recent',
+      'all'
+    )
     // Use one id per compression lineage. `mergeSessionPage` applies the same
     // rule to the sidebar, so the taskbar badge cannot count an old tip that
     // is no longer rendered as its own conversation.

@@ -559,6 +559,16 @@ describe('unread finished sessions', () => {
     expect($unreadFinishedSessionIds.get()).toEqual([])
     expect(localStorage.getItem('hermes.desktop.unreadSessionIds')).toBeNull()
   })
+
+  it('clears the previous completion when a new turn starts', () => {
+    const idle = makeState({ busy: false, storedSessionId: 's1' })
+
+    $unreadFinishedSessionIds.set(['s1', 'other'])
+    publishSessionState('rt1', idle)
+    publishSessionState('rt1', { ...idle, busy: true })
+
+    expect($unreadFinishedSessionIds.get()).toEqual(['other'])
+  })
 })
 
 describe('remembered session id (per profile)', () => {
