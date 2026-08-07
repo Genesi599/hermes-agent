@@ -35,7 +35,9 @@ import { $activeGatewayProfile, normalizeProfileKey } from './profile'
 import {
   $activeSessionId,
   $selectedStoredSessionId,
+  $sessions,
   clearSessionUnread,
+  idsShareLineage,
   markSessionUnread,
   setActiveSessionStoredIdRotation
 } from './session'
@@ -123,10 +125,15 @@ function rendererIsBackgrounded(): boolean {
 
 export function shouldMarkSessionUnread(
   storedSessionId: string,
-  selectedStoredSessionId: null | string,
-  backgrounded: boolean
+  focusedStoredSessionId: null | string,
+  backgrounded: boolean,
+  sessions = $sessions.get()
 ): boolean {
-  return storedSessionId !== selectedStoredSessionId || backgrounded
+  return (
+    backgrounded ||
+    !focusedStoredSessionId ||
+    !idsShareLineage(storedSessionId, focusedStoredSessionId, sessions)
+  )
 }
 
 /** Stored ids whose turn ended within the grace window. Prunes expired. */
@@ -193,7 +200,11 @@ function handleTransition(previous: ClientSessionState | null, next: ClientSessi
   } else if (!next.busy && wasWorking) {
     markSettled(storedId)
 
-    if (shouldMarkSessionUnread(storedId, $selectedStoredSessionId.get(), rendererIsBackgrounded())) {
+    // Multi-pane layouts keep the primary route selected while the user is
+    // actually looking at another session tab. Judge unread state against that
+    // real focus (and its compression lineage), otherwise the background
+    // primary misses its green dot while the visible tab increments the badge.
+    if (shouldMarkSessionUnread(storedId, $focusedStoredSessionId.get(), rendererIsBackgrounded())) {
       markSessionUnread(storedId)
     }
   }
