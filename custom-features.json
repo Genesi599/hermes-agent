@@ -354,6 +354,11 @@
       "feature": "desktop-ui"
     },
     {
+      "source_commit": "13167531d4",
+      "patch_id": "bb11a6f6180afb165d20b4f7227f1433bc23e2f0",
+      "feature": "desktop-ui"
+    },
+    {
       "source_commit": "edd7d12d0d",
       "patch_id": "40ac11cca111acd05f2dfbd94d37336d775ae8f3",
       "feature": "cross-device-session"
@@ -517,7 +522,8 @@
         "281c7ebb2b",
         "0863f2c756",
         "c6a8c670b1",
-        "8b481318a9"
+        "8b481318a9",
+        "13167531d4"
       ],
       "source_paths": [
         "apps/desktop/src/app/chat/session-status-dot.tsx",
@@ -584,6 +590,10 @@
         {
           "path": "apps/desktop/src/store/session-states.ts",
           "pattern": "clearSessionUnread(storedId)"
+        },
+        {
+          "path": "apps/desktop/src/store/session-states.ts",
+          "pattern": "shouldMarkSessionUnread(storedId, $focusedStoredSessionId.get()"
         }
       ]
     },
