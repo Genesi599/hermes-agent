@@ -324,6 +324,11 @@
       "feature": "desktop-ui"
     },
     {
+      "source_commit": "d0d7fdabf9",
+      "patch_id": "c6335fc035beef158fb60de143159b8961ef7c5c",
+      "feature": "desktop-ui"
+    },
+    {
       "source_commit": "edd7d12d0d",
       "patch_id": "40ac11cca111acd05f2dfbd94d37336d775ae8f3",
       "feature": "cross-device-session"
@@ -476,9 +481,11 @@
         "87be48ec19",
         "cabb4b5929",
         "65d658edf2",
-        "f4268252f3"
+        "f4268252f3",
+        "d0d7fdabf9"
       ],
       "source_paths": [
+        "apps/desktop/src/app/chat/session-status-dot.tsx",
         "apps/desktop/src/app/chat/sidebar/chrome.tsx",
         "apps/desktop/src/app/chat/sidebar/index.tsx",
         "apps/desktop/src/app/chat/sidebar/session-row.tsx",
@@ -488,6 +495,7 @@
         "apps/desktop/src/store/statusbar-prefs.ts",
         "apps/desktop/src/store/session.ts",
         "apps/desktop/src/store/session-color.ts",
+        "apps/desktop/src/store/session-states.ts",
         "apps/desktop/src/store/session-pins.ts"
       ],
       "test_paths": [
@@ -497,6 +505,8 @@
         "apps/desktop/src/app/session/hooks/use-message-stream/utils.test.ts",
         "apps/desktop/src/app/shell/hooks/use-taskbar-unread-badge.test.ts",
         "apps/desktop/src/store/session-color.test.ts",
+        "apps/desktop/src/store/session-watchdog.test.ts",
+        "apps/desktop/src/store/session.test.ts",
         "apps/desktop/src/store/session-pins.test.ts"
       ],
       "required_patterns": [
@@ -507,6 +517,18 @@
         {
           "path": "apps/desktop/src/store/statusbar-prefs.ts",
           "pattern": "migrateLegacyContextVisibility"
+        },
+        {
+          "path": "apps/desktop/src/store/session.ts",
+          "pattern": "UNREAD_FINISHED_SESSION_IDS_KEY"
+        },
+        {
+          "path": "apps/desktop/src/store/session-states.ts",
+          "pattern": "shouldMarkSessionUnread"
+        },
+        {
+          "path": "apps/desktop/src/app/chat/session-status-dot.tsx",
+          "pattern": "colors belong to title text only"
         }
       ]
     },
