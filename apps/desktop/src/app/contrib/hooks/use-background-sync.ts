@@ -25,10 +25,8 @@ import type { GatewayRequester } from '../types'
 const CRON_POLL_INTERVAL_MS = 30_000
 const CRON_BACKSTOP_INTERVAL_MS = 5 * 60_000
 const MESSAGING_POLL_INTERVAL_MS = 10_000
-<<<<<<< HEAD
 const ACTIVE_MESSAGING_SESSION_POLL_INTERVAL_MS = 5_000
 const ACTIVE_MESSAGING_SESSION_BACKSTOP_INTERVAL_MS = 30_000
-=======
 const SESSION_LIST_POLL_INTERVAL_MS = 5_000
 const ACTIVE_SESSION_POLL_INTERVAL_MS = 2_000
 // Match the TUI's live-session refresh cadence. Auto-compression can rotate a
@@ -445,7 +443,6 @@ export function useBackgroundSync({
 
     return dispose
   }, [gatewayState, hasActiveStoredSession, refreshActiveStoredTranscript])
->>>>>>> 76fe833b20 (desktop: 实时同步外部会话与消息)
 
   // A fresh new-session draft (gateway open, no active session) re-pulls the
   // model + config so the composer pill reflects the profile default.

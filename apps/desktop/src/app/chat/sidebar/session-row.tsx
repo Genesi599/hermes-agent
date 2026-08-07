@@ -401,18 +401,15 @@ function SidebarSessionRowImpl({
               dragHandleProps={dragHandleProps}
               leadClassName={needsInput || branchStem ? 'overflow-visible' : undefined}
             >
-              {lead ?? (
-                <SessionStatusDot
-                  branchStem={branchStem}
-                  className="transition-opacity group-hover/handle:opacity-0 group-focus-within/handle:opacity-0"
-                  session={session}
-                  storedSessionId={session.id}
-                />
-              )}
+              <SessionStatusDot
+                branchStem={branchStem}
+                className="transition-opacity group-hover/handle:opacity-0 group-focus-within/handle:opacity-0"
+                storedSessionId={session.id}
+              />
             </SidebarRowGrab>
           ) : (
-            <SidebarRowLead className="overflow-hidden">
-              {lead ?? <SessionStatusDot branchStem={branchStem} session={session} storedSessionId={session.id} />}
+            <SidebarRowLead className={needsInput ? 'overflow-visible' : 'overflow-hidden'}>
+              <SessionStatusDot branchStem={branchStem} storedSessionId={session.id} />
             </SidebarRowLead>
           )}
           {handoffSource && handoffLabel ? (

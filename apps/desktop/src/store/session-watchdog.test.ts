@@ -26,6 +26,7 @@ describe('session status transitions', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(0)
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true)
     clearAllSessionStates()
     $unreadFinishedSessionIds.set([])
     $selectedStoredSessionId.set(null)
@@ -39,6 +40,7 @@ describe('session status transitions', () => {
     $unreadFinishedSessionIds.set([])
     $selectedStoredSessionId.set(null)
     $activeSessionId.set(null)
+    vi.restoreAllMocks()
   })
 
   it('adds a session to $workingSessionIds when busy transitions to true', () => {
@@ -88,6 +90,17 @@ describe('session status transitions', () => {
     publishSessionState('rt1', { ...working, busy: false })
 
     expect($unreadFinishedSessionIds.get()).toEqual([])
+  })
+
+  it('marks the selected session unread when Hermes is not focused', () => {
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+    $selectedStoredSessionId.set('s1')
+    const working = state({ busy: true, storedSessionId: 's1' })
+    publishSessionState('rt1', working)
+
+    publishSessionState('rt1', { ...working, busy: false })
+
+    expect($unreadFinishedSessionIds.get()).toEqual(['s1'])
   })
 
   it('does NOT mark unread on idle→idle re-asserts (no prior working state)', () => {

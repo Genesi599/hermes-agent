@@ -5,6 +5,7 @@ import { lastVisibleMessageIsUser } from '@/app/chat/thread-loading'
 import type { ClientSessionState, ContextSuggestion } from '@/app/types'
 import type { HermesConnection } from '@/global'
 import type { ChatMessage } from '@/lib/chat-messages'
+import { Codecs, persistentAtom } from '@/lib/persisted'
 import {
   persistBoolean,
   persistString,
@@ -39,6 +40,7 @@ const COMPOSER_FAST_KEY = 'hermes.desktop.composer.fast'
 // global values is unknowable, and guessing the owning profile is exactly the
 // cross-profile corruption this storage boundary prevents (#67709).
 const LAST_SESSION_KEY = 'hermes.desktop.lastSessionId'
+const UNREAD_FINISHED_SESSION_IDS_KEY = 'hermes.desktop.unreadSessionIds'
 const LAST_ROUTE_KEY = 'hermes.desktop.lastRoute'
 
 function profileNavigationKey(base: string, profile: string): string {
@@ -663,9 +665,14 @@ export const setActiveSessionId = (next: Updater<string | null>) => updateAtom($
 export const setActiveSessionStoredIdRotation = (next: Updater<ActiveSessionStoredIdRotation | null>) =>
   updateAtom($activeSessionStoredIdRotation, next)
 
-// Transient: a background session finished and the user hasn't opened it since.
-// Written by session-states.ts (handleTransition), cleared here on session open.
-export const $unreadFinishedSessionIds = atom<string[]>([])
+// A background session finished and the user hasn't opened it since. Keep the
+// original storage key so unread completion dots and the taskbar badge survive
+// a Desktop restart and migrate transparently from the pre-0.20 implementation.
+export const $unreadFinishedSessionIds = persistentAtom<string[]>(
+  UNREAD_FINISHED_SESSION_IDS_KEY,
+  [],
+  Codecs.stringArray
+)
 
 export const markAllSessionsRead = () => {
   if ($unreadFinishedSessionIds.get().length) {

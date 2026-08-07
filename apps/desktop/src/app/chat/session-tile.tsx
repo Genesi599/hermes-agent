@@ -590,15 +590,10 @@ export const watchSessionTiles = paneMirror<SessionTile>({
   minWidth: '20rem',
   title: tileTitle,
   // The tab's status dot — the SAME primitive the sidebar row renders, keyed by
-  // the stored id, so a session's status/color can never disagree between the
-  // two surfaces. Self-subscribing (live state + resolved color), so the strip
-  // needn't re-sync when it changes.
-  tabLead: storedSessionId => (
-    <SessionStatusDot session={tileStoredRow(storedSessionId)} storedSessionId={storedSessionId} />
-  ),
-  // Until the first turn lists a row there is no title to register, so the tab
-  // takes its name from the composer instead — live, without re-registering.
-  tabTitle: storedSessionId => (tileStoredRow(storedSessionId) ? null : <SessionDraftTitle scope={storedSessionId} />),
+  // the stored id, so a session's semantic status can never disagree between
+  // the two surfaces. Self-subscribing, so the strip needn't re-sync when it
+  // changes.
+  tabLead: storedSessionId => <SessionStatusDot storedSessionId={storedSessionId} />,
   render: storedSessionId => <SessionTilePane storedSessionId={storedSessionId} />,
   tabWrap: (storedSessionId, tab) => (
     <SessionTabMenu

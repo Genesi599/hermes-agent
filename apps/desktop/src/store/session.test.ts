@@ -497,6 +497,7 @@ describe('getRecentlySettledSessionIds', () => {
 
 describe('unread finished sessions', () => {
   beforeEach(() => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true)
     clearAllSessionStates()
     $unreadFinishedSessionIds.set([])
     $selectedStoredSessionId.set(null)
@@ -506,6 +507,7 @@ describe('unread finished sessions', () => {
     clearAllSessionStates()
     $unreadFinishedSessionIds.set([])
     $selectedStoredSessionId.set(null)
+    vi.restoreAllMocks()
   })
 
   it('marks a session unread when its turn finishes in the background', () => {
@@ -518,6 +520,7 @@ describe('unread finished sessions', () => {
     publishSessionState('rt1', idle)
 
     expect($unreadFinishedSessionIds.get()).toEqual(['s1'])
+    expect(localStorage.getItem('hermes.desktop.unreadSessionIds')).toBe('["s1"]')
   })
 
   it('does NOT mark unread when the finishing session is the active one', () => {
@@ -554,6 +557,7 @@ describe('unread finished sessions', () => {
 
     setSelectedStoredSessionId('s1')
     expect($unreadFinishedSessionIds.get()).toEqual([])
+    expect(localStorage.getItem('hermes.desktop.unreadSessionIds')).toBeNull()
   })
 })
 
