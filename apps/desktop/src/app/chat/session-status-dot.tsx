@@ -1,14 +1,10 @@
-import { useStore } from '@nanostores/react'
-
 import { StatusPulse } from '@/components/ui/status-pulse'
 import { type Translations, useI18n } from '@/i18n'
 import { useStoreSelector } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
 import { $backgroundRunningSessionIds } from '@/store/composer-status'
 import { $unreadFinishedSessionIds } from '@/store/session'
-import { $sessionColorById, sessionColorFor } from '@/store/session-color'
 import { $attentionSessionIds, $stalledSessionIds, $workingSessionIds } from '@/store/session-states'
-import type { SessionInfo } from '@/types/hermes'
 
 import { type SessionDotState, sessionDotState } from './sidebar/session-row-state'
 
@@ -92,11 +88,6 @@ export interface SessionStatusDotProps {
    *  the sidebar row's `session.id` and a pane tile's `storedSessionId` are the
    *  same stored id (`$workingSessionIds` et al. map `storedSessionId`). */
   storedSessionId: string
-  /** The session row for color resolution — recents OR the project tree. Both
-   *  call sites already hold it; passing it lets the idle dot inherit the
-   *  project color even for a session older than the paginated recents page
-   *  (which has no `$sessionColorById` entry). */
-  session?: null | SessionInfo
   /** TUI-style tree stem for a branched session (`└─ ` / `├─ `). */
   branchStem?: string
   /** Applied to the OUTER wrapper (stem + dot) — e.g. hover-fade on the
@@ -106,22 +97,15 @@ export interface SessionStatusDotProps {
 
 /**
  * SESSION STATUS DOT — the ONE primitive both the sidebar row and the pane tab
- * render, so a session's status/color can never disagree between the two
+ * render, so a session's status can never disagree between the two
  * surfaces. It reads every signal itself from the shared stores keyed by the
  * stored session id: live state (working / needs-input / stalled / unread /
- * background, mutually exclusive via `sessionDotState`) and the resolved color
- * (override → project color, via `sessionColorFor`). An idle session shows its
- * project color; the active states own the dot with their semantic color so an
- * attention cue is never masked by the inherited tint.
+ * background, mutually exclusive via `sessionDotState`). Conversation-family
+ * colors belong to title text only; every dot keeps its semantic state color.
  */
-export function SessionStatusDot({ storedSessionId, session, branchStem, className }: SessionStatusDotProps) {
+export function SessionStatusDot({ storedSessionId, branchStem, className }: SessionStatusDotProps) {
   const { t } = useI18n()
   const r = t.sidebar.row
-
-  // Subscribe to the shared color map for reactivity; sessionColorFor falls
-  // back to the resolver for a session outside the recents page.
-  useStore($sessionColorById)
-  const color = sessionColorFor(session) ?? null
 
   // Per-session membership as booleans via useStoreSelector: these arrays tick
   // on every stream delta (any session working/stalled/etc changes the array
@@ -143,25 +127,21 @@ export function SessionStatusDot({ storedSessionId, session, branchStem, classNa
           {branchStem}
         </span>
       ) : null}
-      {dotState === 'idle' && color ? (
-        <span aria-hidden="true" className="size-1 rounded-full" style={{ backgroundColor: color }} />
-      ) : (
-        <span
-          aria-label={variant.ariaLabel?.(r)}
-          className={variant.className}
-          role={variant.role}
-          title={variant.title?.(r)}
-        >
-          {variant.pulse ? (
-            <StatusPulse
-              aria-hidden="true"
-              className={variant.pulse.className}
-              kind="ping"
-              opacity={variant.pulse.opacity}
-            />
-          ) : null}
-        </span>
-      )}
+      <span
+        aria-label={variant.ariaLabel?.(r)}
+        className={variant.className}
+        role={variant.role}
+        title={variant.title?.(r)}
+      >
+        {variant.pulse ? (
+          <StatusPulse
+            aria-hidden="true"
+            className={variant.pulse.className}
+            kind="ping"
+            opacity={variant.pulse.opacity}
+          />
+        ) : null}
+      </span>
     </span>
   )
 }

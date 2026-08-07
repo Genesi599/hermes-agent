@@ -35,7 +35,7 @@ import { $activeGatewayProfile, normalizeProfileKey } from './profile'
 import {
   $activeSessionId,
   $selectedStoredSessionId,
-  $unreadFinishedSessionIds,
+  markSessionUnread,
   setActiveSessionStoredIdRotation
 } from './session'
 import { isSecondaryWindow } from './windows'
@@ -112,6 +112,22 @@ function clearSettled(storedId: string) {
   settledExpiry.delete(storedId)
 }
 
+function rendererIsBackgrounded(): boolean {
+  if (typeof document === 'undefined') {
+    return false
+  }
+
+  return document.hidden || (typeof document.hasFocus === 'function' && !document.hasFocus())
+}
+
+export function shouldMarkSessionUnread(
+  storedSessionId: string,
+  selectedStoredSessionId: null | string,
+  backgrounded: boolean
+): boolean {
+  return storedSessionId !== selectedStoredSessionId || backgrounded
+}
+
 /** Stored ids whose turn ended within the grace window. Prunes expired. */
 export function getRecentlySettledSessionIds(now: number = Date.now()): string[] {
   const live: string[] = []
@@ -172,12 +188,8 @@ function handleTransition(previous: ClientSessionState | null, next: ClientSessi
   } else if (!next.busy && wasWorking) {
     markSettled(storedId)
 
-    if (storedId !== $selectedStoredSessionId.get()) {
-      const cur = $unreadFinishedSessionIds.get()
-
-      if (!cur.includes(storedId)) {
-        $unreadFinishedSessionIds.set([...cur, storedId])
-      }
+    if (shouldMarkSessionUnread(storedId, $selectedStoredSessionId.get(), rendererIsBackgrounded())) {
+      markSessionUnread(storedId)
     }
   }
 }

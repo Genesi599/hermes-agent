@@ -5,6 +5,7 @@ import { lastVisibleMessageIsUser } from '@/app/chat/thread-loading'
 import type { ClientSessionState, ContextSuggestion } from '@/app/types'
 import type { HermesConnection } from '@/global'
 import type { ChatMessage } from '@/lib/chat-messages'
+import { Codecs, persistentAtom } from '@/lib/persisted'
 import {
   persistBoolean,
   persistString,
@@ -39,6 +40,7 @@ const COMPOSER_FAST_KEY = 'hermes.desktop.composer.fast'
 // own last session. The default profile keeps the original unsuffixed key so
 // existing installs' remembered session survives the upgrade.
 const LAST_SESSION_KEY = 'hermes.desktop.lastSessionId'
+const UNREAD_FINISHED_SESSION_IDS_KEY = 'hermes.desktop.unreadSessionIds'
 
 function rememberedSessionKey(profile?: null | string): string {
   const key = (profile ?? '').trim()
@@ -505,9 +507,14 @@ export const setActiveSessionId = (next: Updater<string | null>) => updateAtom($
 export const setActiveSessionStoredIdRotation = (next: Updater<ActiveSessionStoredIdRotation | null>) =>
   updateAtom($activeSessionStoredIdRotation, next)
 
-// Transient: a background session finished and the user hasn't opened it since.
-// Written by session-states.ts (handleTransition), cleared here on session open.
-export const $unreadFinishedSessionIds = atom<string[]>([])
+// A background session finished and the user hasn't opened it since. Keep the
+// original storage key so unread completion dots and the taskbar badge survive
+// a Desktop restart and migrate transparently from the pre-0.20 implementation.
+export const $unreadFinishedSessionIds = persistentAtom<string[]>(
+  UNREAD_FINISHED_SESSION_IDS_KEY,
+  [],
+  Codecs.stringArray
+)
 
 export function markSessionUnread(sessionId: string | null | undefined) {
   const id = sessionId?.trim()

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SessionInfo } from '@/hermes'
 import type * as ComposerStatusStore from '@/store/composer-status'
 import type * as SessionStore from '@/store/session'
+import type * as SessionColorStore from '@/store/session-color'
 import type * as SessionStatesStore from '@/store/session-states'
 import type * as WindowsStore from '@/store/windows'
 
@@ -78,6 +79,11 @@ vi.mock('@/store/session-states', async importOriginal => {
     openSessionTile: vi.fn()
   }
 })
+vi.mock('@/store/session-color', async importOriginal => {
+  const actual = await importOriginal<typeof SessionColorStore>()
+
+  return { ...actual, $sessionColorById: atom<Record<string, string>>({ s1: '#12a4d9' }) }
+})
 vi.mock('@/store/windows', async importOriginal => {
   const actual = await importOriginal<typeof WindowsStore>()
 
@@ -117,6 +123,27 @@ const tipTrigger = (el: HTMLElement) => el.closest('[data-slot="tooltip-trigger"
 const noop = vi.fn()
 
 describe('SidebarSessionRow', () => {
+  it('colors only the title text while the status dot stays semantic gray', () => {
+    const { container } = render(
+      <SidebarSessionRow
+        isPinned={false}
+        isSelected={false}
+        isWorking={false}
+        onArchive={noop}
+        onDelete={noop}
+        onPin={noop}
+        onResume={noop}
+        session={makeSession({ title: 'Colored session' })}
+      />
+    )
+
+    expect(screen.getByText('Colored session').getAttribute('style')).toContain('color: rgb(18, 164, 217)')
+    const dot = [...container.querySelectorAll('span')].find(node => node.className.includes('rounded-full'))
+
+    expect(dot?.className).toContain('bg-(--ui-text-quaternary)')
+    expect(dot?.getAttribute('style')).toBeNull()
+  })
+
   it('keeps an aria-label on the kebab without wrapping it in a Tip', () => {
     render(
       <SidebarSessionRow

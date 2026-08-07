@@ -433,7 +433,7 @@ const syncWorkspaceTitle = () => {
       // The tab's status dot — the SAME primitive the sidebar row and session
       // tiles render, so the main tab never disagrees with its sidebar row. No
       // dot on a fresh draft (no session yet).
-      tabLead: selected ? () => <SessionStatusDot session={stored} storedSessionId={selected} /> : undefined,
+      tabLead: selected ? () => <SessionStatusDot storedSessionId={selected} /> : undefined,
       // Pages aren't tab-able: the main zone's bar stands down while one shows.
       headerVeto: $workspaceIsPage.get(),
       placement: 'main',
