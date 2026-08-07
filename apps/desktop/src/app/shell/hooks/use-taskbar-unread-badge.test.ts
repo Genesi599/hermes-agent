@@ -53,7 +53,7 @@ describe('subscribeTaskbarUnreadBadge', () => {
 
     await reconcileTaskbarUnreadSessions()
 
-    expect(listAllProfileSessions).toHaveBeenCalledWith(1_000, 0, 'include', 'recent', 'all')
+    expect(listAllProfileSessions).toHaveBeenCalledWith(500, 0, 'include', 'recent', 'all')
     expect($unreadFinishedSessionIds.get()).toEqual(['live'])
   })
 
@@ -64,6 +64,15 @@ describe('subscribeTaskbarUnreadBadge', () => {
         { id: 'new-tip', _lineage_root_id: 'root', last_active: 20, started_at: 20 }
       ])
     ).toEqual(['new-tip'])
+  })
+
+  it('does not count a previous completion while the session is working again', () => {
+    expect(
+      canonicalUnreadSessionIds(['working', 'idle'], [
+        { id: 'working', last_active: 20, started_at: 10, status: 'working' },
+        { id: 'idle', last_active: 10, started_at: 10, status: 'idle' }
+      ])
+    ).toEqual(['idle'])
   })
 
   it('migrates a lineage-root unread alias to the current tip', () => {

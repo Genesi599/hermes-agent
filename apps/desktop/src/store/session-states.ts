@@ -35,6 +35,7 @@ import { $activeGatewayProfile, normalizeProfileKey } from './profile'
 import {
   $activeSessionId,
   $selectedStoredSessionId,
+  clearSessionUnread,
   markSessionUnread,
   setActiveSessionStoredIdRotation
 } from './session'
@@ -185,6 +186,10 @@ function handleTransition(previous: ClientSessionState | null, next: ClientSessi
 
   if (next.busy && !wasWorking) {
     clearSettled(storedId)
+    // A new turn supersedes the previous completed-unread state. Without
+    // this, a working row shows its running indicator while the taskbar still
+    // counts the prior completion, so the two surfaces visibly disagree.
+    clearSessionUnread(storedId)
   } else if (!next.busy && wasWorking) {
     markSettled(storedId)
 
