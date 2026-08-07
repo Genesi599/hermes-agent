@@ -332,6 +332,11 @@
       "source_commit": "edd7d12d0d",
       "patch_id": "40ac11cca111acd05f2dfbd94d37336d775ae8f3",
       "feature": "cross-device-session"
+    },
+    {
+      "source_commit": "49c6927dc3",
+      "patch_id": "ee3f96e2776fd0db05c9206ab0a57c85d0913978",
+      "feature": "title-preview"
     }
   ],
   "features": [
@@ -581,6 +586,31 @@
         "tests/agent/test_shared_core_memory.py",
         "tests/agent/test_system_prompt.py",
         "tests/run_agent/test_413_compression.py"
+      ]
+    },
+    {
+      "id": "title-preview",
+      "label": "filter internal compaction messages from titles and previews",
+      "commits": ["49c6927dc3"],
+      "source_paths": [
+        "agent/title_generator.py",
+        "hermes_state_common.py",
+        "hermes_state.py",
+        "hermes_state_portability.py"
+      ],
+      "test_paths": [
+        "tests/agent/test_title_generator.py",
+        "tests/test_hermes_state.py"
+      ],
+      "required_patterns": [
+        {
+          "path": "agent/title_generator.py",
+          "pattern": "_is_title_eligible_user_message"
+        },
+        {
+          "path": "hermes_state_common.py",
+          "pattern": "_PREVIEW_INTERNAL_MESSAGE_FILTER_SQL"
+        }
       ]
     }
   ],
