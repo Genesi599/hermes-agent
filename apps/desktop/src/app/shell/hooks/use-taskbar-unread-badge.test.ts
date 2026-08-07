@@ -1,18 +1,23 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { group } from '@/components/pane-shell/tree/model'
+import { $activeTreeGroup, $layoutTree } from '@/components/pane-shell/tree/store'
+import type * as HermesApi from '@/hermes'
 import { listAllProfileSessions } from '@/hermes'
 import { $selectedStoredSessionId, $unreadFinishedSessionIds, setSessions } from '@/store/session'
 
 import {
   canonicalUnreadSessionIds,
   reconcileTaskbarUnreadSessions,
+  subscribeFocusedSessionRead,
   subscribeSelectedSessionRead,
   subscribeTaskbarUnreadBadge,
   subscribeUnreadSessionReconciliation,
   subscribeWorkingSessionsRead
 } from './use-taskbar-unread-badge'
 
-vi.mock('@/hermes', () => ({
+vi.mock('@/hermes', async importOriginal => ({
+  ...(await importOriginal<typeof HermesApi>()),
   listAllProfileSessions: vi.fn()
 }))
 
@@ -21,6 +26,8 @@ describe('subscribeTaskbarUnreadBadge', () => {
     vi.useRealTimers()
     $unreadFinishedSessionIds.set([])
     $selectedStoredSessionId.set(null)
+    $activeTreeGroup.set(null)
+    $layoutTree.set(null)
     setSessions([])
     vi.clearAllMocks()
   })
@@ -133,6 +140,18 @@ describe('subscribeTaskbarUnreadBadge', () => {
     expect($unreadFinishedSessionIds.get()).toEqual(['other'])
     $selectedStoredSessionId.set('other')
     expect($unreadFinishedSessionIds.get()).toEqual([])
+    unsubscribe()
+  })
+
+  it('marks the actually focused session tab as read', () => {
+    $unreadFinishedSessionIds.set(['primary', 'focused'])
+    $selectedStoredSessionId.set('primary')
+    $layoutTree.set(group(['session-tile:focused'], { active: 'session-tile:focused', id: 'chat-group' }))
+    $activeTreeGroup.set('chat-group')
+
+    const unsubscribe = subscribeFocusedSessionRead()
+
+    expect($unreadFinishedSessionIds.get()).toEqual(['primary'])
     unsubscribe()
   })
 
