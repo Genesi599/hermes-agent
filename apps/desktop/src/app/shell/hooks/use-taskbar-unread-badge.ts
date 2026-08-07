@@ -9,8 +9,11 @@ import {
   clearSessionUnread,
   clearUnreadSessionIds
 } from '@/store/session'
+import type { SessionInfo } from '@/types/hermes'
 
 type SetTaskbarBadgeCount = (count: number) => void
+
+type UnreadSessionRow = Pick<SessionInfo, 'archived' | 'id' | 'last_active' | 'started_at' | '_lineage_root_id'>
 
 const UNREAD_RECONCILIATION_RETRY_MS = 2_500
 
@@ -22,6 +25,74 @@ export function subscribeTaskbarUnreadBadge(setBadgeCount?: SetTaskbarBadgeCount
   return $unreadFinishedSessionIds.subscribe(sessionIds => setBadgeCount(sessionIds.length))
 }
 
+function sessionActivity(row: UnreadSessionRow): number {
+  return Math.max(row.last_active ?? 0, row.started_at ?? 0)
+}
+
+function isNewerSession(candidate: UnreadSessionRow, current: UnreadSessionRow): boolean {
+  const candidateActivity = sessionActivity(candidate)
+  const currentActivity = sessionActivity(current)
+
+  if (candidateActivity !== currentActivity) {
+    return candidateActivity > currentActivity
+  }
+
+  return candidate.id > current.id
+}
+
+/**
+ * Collapse persisted unread aliases to one current tip per compression
+ * lineage. The sidebar intentionally deduplicates a compression chain, while
+ * the durable unread store may still contain both the old and new stored IDs.
+ */
+export function canonicalUnreadSessionIds(
+  unreadIds: readonly string[],
+  sessions: readonly UnreadSessionRow[]
+): string[] {
+  const currentByLineage = new Map<string, UnreadSessionRow>()
+  const byId = new Map<string, UnreadSessionRow>()
+
+  for (const session of sessions) {
+    const id = session.id.trim()
+
+    if (!id || session.archived) {
+      continue
+    }
+
+    const lineage = session._lineage_root_id?.trim() || id
+    byId.set(id, session)
+
+    const current = currentByLineage.get(lineage)
+
+    if (!current || isNewerSession(session, current)) {
+      currentByLineage.set(lineage, session)
+    }
+  }
+
+  const canonicalIds: string[] = []
+  const seenLineages = new Set<string>()
+
+  for (const rawId of unreadIds) {
+    const id = rawId.trim()
+    const direct = byId.get(id)
+    const lineage = direct?._lineage_root_id?.trim() || direct?.id || id
+    const current = currentByLineage.get(lineage)
+
+    if (!current || seenLineages.has(lineage)) {
+      continue
+    }
+
+    seenLineages.add(lineage)
+    canonicalIds.push(current.id)
+  }
+
+  return canonicalIds
+}
+
+function sameIds(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((id, index) => id === right[index])
+}
+
 export async function reconcileTaskbarUnreadSessions(): Promise<void> {
   const unreadIds = $unreadFinishedSessionIds.get()
 
@@ -31,21 +102,21 @@ export async function reconcileTaskbarUnreadSessions(): Promise<void> {
 
   try {
     const { sessions } = await listAllProfileSessions(1_000, 0, 'include', 'recent', 'all')
-    const existingIds = new Set<string>()
+    // Use one id per compression lineage. `mergeSessionPage` applies the same
+    // rule to the sidebar, so the taskbar badge cannot count an old tip that
+    // is no longer rendered as its own conversation.
+    const canonicalIds = canonicalUnreadSessionIds(unreadIds, sessions)
+    const staleIds = unreadIds.filter(sessionId => !canonicalIds.includes(sessionId))
 
-    for (const session of sessions) {
-      if (session.archived) {
-        continue
-      }
-
-      existingIds.add(session.id)
-
-      if (session._lineage_root_id) {
-        existingIds.add(session._lineage_root_id)
-      }
+    if (staleIds.length) {
+      clearUnreadSessionIds(staleIds)
     }
 
-    clearUnreadSessionIds(unreadIds.filter(sessionId => !existingIds.has(sessionId)))
+    const remainingIds = $unreadFinishedSessionIds.get()
+
+    if (!sameIds(remainingIds, canonicalIds)) {
+      $unreadFinishedSessionIds.set(canonicalIds)
+    }
   } catch {
     // Keep persisted unread state when the session list is temporarily unavailable.
   }

@@ -4,6 +4,7 @@ import { listAllProfileSessions } from '@/hermes'
 import { $selectedStoredSessionId, $unreadFinishedSessionIds, setSessions } from '@/store/session'
 
 import {
+  canonicalUnreadSessionIds,
   reconcileTaskbarUnreadSessions,
   subscribeSelectedSessionRead,
   subscribeTaskbarUnreadBadge,
@@ -54,6 +55,37 @@ describe('subscribeTaskbarUnreadBadge', () => {
 
     expect(listAllProfileSessions).toHaveBeenCalledWith(1_000, 0, 'include', 'recent', 'all')
     expect($unreadFinishedSessionIds.get()).toEqual(['live'])
+  })
+
+  it('counts one unread item for duplicate compression tips', () => {
+    expect(
+      canonicalUnreadSessionIds(['old-tip', 'new-tip'], [
+        { id: 'old-tip', _lineage_root_id: 'root', last_active: 10, started_at: 10 },
+        { id: 'new-tip', _lineage_root_id: 'root', last_active: 20, started_at: 20 }
+      ])
+    ).toEqual(['new-tip'])
+  })
+
+  it('migrates a lineage-root unread alias to the current tip', () => {
+    expect(
+      canonicalUnreadSessionIds(['root'], [
+        { id: 'current-tip', _lineage_root_id: 'root', last_active: 20, started_at: 20 }
+      ])
+    ).toEqual(['current-tip'])
+  })
+
+  it('rewrites persisted aliases during reconciliation', async () => {
+    $unreadFinishedSessionIds.set(['old-tip', 'new-tip'])
+    vi.mocked(listAllProfileSessions).mockResolvedValue({
+      sessions: [
+        { archived: false, id: 'old-tip', _lineage_root_id: 'root', last_active: 10, started_at: 10 },
+        { archived: false, id: 'new-tip', _lineage_root_id: 'root', last_active: 20, started_at: 20 }
+      ]
+    } as never)
+
+    await reconcileTaskbarUnreadSessions()
+
+    expect($unreadFinishedSessionIds.get()).toEqual(['new-tip'])
   })
 
   it('preserves state on transient session list errors', async () => {
