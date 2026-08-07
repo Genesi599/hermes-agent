@@ -88,6 +88,23 @@ describe('subscribeTaskbarUnreadBadge', () => {
     expect($unreadFinishedSessionIds.get()).toEqual(['new-tip'])
   })
 
+  it('preserves unread completions that arrive during reconciliation', async () => {
+    $unreadFinishedSessionIds.set(['root'])
+    vi.mocked(listAllProfileSessions).mockImplementation(async () => {
+      $unreadFinishedSessionIds.set(['root', 'just-finished'])
+
+      return {
+        sessions: [
+          { archived: false, id: 'current-tip', _lineage_root_id: 'root', last_active: 20, started_at: 20 }
+        ]
+      } as never
+    })
+
+    await reconcileTaskbarUnreadSessions()
+
+    expect($unreadFinishedSessionIds.get()).toEqual(['just-finished', 'current-tip'])
+  })
+
   it('preserves state on transient session list errors', async () => {
     $unreadFinishedSessionIds.set(['live', 'unknown'])
     vi.mocked(listAllProfileSessions).mockRejectedValue(new Error('503: unavailable'))

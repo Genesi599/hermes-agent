@@ -7,7 +7,8 @@ import {
   $sessions,
   $unreadFinishedSessionIds,
   clearSessionUnread,
-  clearUnreadSessionIds
+  clearUnreadSessionIds,
+  markSessionUnread
 } from '@/store/session'
 import type { SessionInfo } from '@/types/hermes'
 
@@ -89,10 +90,6 @@ export function canonicalUnreadSessionIds(
   return canonicalIds
 }
 
-function sameIds(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((id, index) => id === right[index])
-}
-
 export async function reconcileTaskbarUnreadSessions(): Promise<void> {
   const unreadIds = $unreadFinishedSessionIds.get()
 
@@ -112,10 +109,15 @@ export async function reconcileTaskbarUnreadSessions(): Promise<void> {
       clearUnreadSessionIds(staleIds)
     }
 
+    // Add the current tip after removing aliases. Do this through the normal
+    // deduplicating setter so completions that arrived while the REST request
+    // was in flight remain untouched.
     const remainingIds = $unreadFinishedSessionIds.get()
 
-    if (!sameIds(remainingIds, canonicalIds)) {
-      $unreadFinishedSessionIds.set(canonicalIds)
+    for (const canonicalId of canonicalIds) {
+      if (!remainingIds.includes(canonicalId)) {
+        markSessionUnread(canonicalId)
+      }
     }
   } catch {
     // Keep persisted unread state when the session list is temporarily unavailable.
