@@ -8,6 +8,7 @@ from agent.title_generator import (
     generate_title,
     auto_title_session,
     maybe_auto_title,
+    _is_title_eligible_user_message,
     _title_language,
 )
 from hermes_state import SessionDB
@@ -15,6 +16,27 @@ from hermes_state import SessionDB
 
 class TestGenerateTitle:
     """Unit tests for generate_title()."""
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "[CONTEXT COMPACTION — REFERENCE ONLY] Earlier turns were compacted",
+            "[CONTEXT SUMMARY]: prior work",
+        ],
+    )
+    def test_rejects_internal_compaction_messages(self, message):
+        assert not _is_title_eligible_user_message(message)
+
+    def test_accepts_real_user_message(self):
+        assert _is_title_eligible_user_message("修复这个会话标题")
+
+    def test_generate_title_skips_internal_compaction_message(self):
+        with patch("agent.title_generator.call_llm") as mock_llm:
+            assert generate_title(
+                "[CONTEXT COMPACTION — REFERENCE ONLY] Earlier turns were compacted",
+                "继续",
+            ) is None
+            mock_llm.assert_not_called()
 
 
 
@@ -235,6 +257,29 @@ class TestMaybeAutoTitle:
                 title_callback=None,
                 runtime_validator=None,
             )
+
+    def test_skips_internal_compaction_exchange(self):
+        db = MagicMock()
+        history = [
+            {
+                "role": "user",
+                "content": "[CONTEXT COMPACTION — REFERENCE ONLY] Earlier turns were compacted",
+            },
+            {"role": "assistant", "content": "继续"},
+        ]
+
+        with patch("agent.title_generator.auto_title_session") as mock_auto:
+            maybe_auto_title(
+                db,
+                "sess-1",
+                history[0]["content"],
+                "继续",
+                history,
+            )
+            import time
+
+            time.sleep(0.1)
+            mock_auto.assert_not_called()
 
 
 

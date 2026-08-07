@@ -25,6 +25,29 @@ TitleCallback = Callable[[str], None]
 # the request would reload a model the runtime already evicted (#19027).
 RuntimeValidator = Callable[[], bool]
 
+
+def _is_title_eligible_user_message(user_message: str) -> bool:
+    """Return whether *user_message* is real user input suitable for titling.
+
+    Context compaction uses a ``role=user`` row to keep provider transcripts
+    valid. That row is an internal handoff, not a new request, and must never
+    become a session title (or count as the first exchange).
+    """
+    if not isinstance(user_message, str) or not user_message.strip():
+        return False
+    try:
+        from agent.context_compressor import is_compaction_summary_message
+
+        if is_compaction_summary_message({"role": "user", "content": user_message}):
+            return False
+    except Exception:
+        # Keep title generation available if the optional compressor import is
+        # unavailable during startup; the explicit prefix check still protects
+        # the current compaction format.
+        logger.debug("Compaction title-input check failed", exc_info=True)
+    normalized = user_message.lstrip().casefold()
+    return not normalized.startswith(("[context compaction", "[context summary]:"))
+
 _TITLE_PROMPT = (
     "Generate a short, descriptive title (3-7 words) for a conversation that starts with the "
     "following exchange. The title should capture the main topic or intent. "
@@ -121,6 +144,10 @@ def generate_title(
         logger.debug("Auto-title skipped: auxiliary.title_generation.enabled=false")
         return None
 
+    if not _is_title_eligible_user_message(user_message):
+        logger.debug("Auto-title skipped: internal compaction message")
+        return None
+
     if runtime_validator is not None:
         try:
             if not runtime_validator():
@@ -172,6 +199,9 @@ def generate_title(
         # Enforce reasonable length
         if len(title) > 80:
             title = title[:77] + "..."
+        if not _is_title_eligible_user_message(title):
+            logger.warning("Title generation returned an internal compaction marker; discarded")
+            return None
         return title if title else None
     except Exception as e:
         # Log at WARNING so this shows up in agent.log without debug mode.
@@ -371,6 +401,10 @@ def maybe_auto_title(
     - No title is already set
     """
     if not session_db or not session_id or not user_message or not assistant_response:
+        return
+
+    if not _is_title_eligible_user_message(user_message):
+        logger.debug("Auto-title skipped: internal compaction message")
         return
 
     # Count user messages in history to detect first exchange.
