@@ -349,6 +349,11 @@
       "feature": "desktop-ui"
     },
     {
+      "source_commit": "8b481318a9",
+      "patch_id": "c378eb30d2206319612e325a5d407ee2d9fe60f2",
+      "feature": "desktop-ui"
+    },
+    {
       "source_commit": "edd7d12d0d",
       "patch_id": "40ac11cca111acd05f2dfbd94d37336d775ae8f3",
       "feature": "cross-device-session"
@@ -511,7 +516,8 @@
         "c33be1a696",
         "281c7ebb2b",
         "0863f2c756",
-        "c6a8c670b1"
+        "c6a8c670b1",
+        "8b481318a9"
       ],
       "source_paths": [
         "apps/desktop/src/app/chat/session-status-dot.tsx",
@@ -570,6 +576,10 @@
         {
           "path": "apps/desktop/src/app/shell/hooks/use-taskbar-unread-badge.ts",
           "pattern": "subscribeWorkingSessionsRead"
+        },
+        {
+          "path": "apps/desktop/src/app/shell/hooks/use-taskbar-unread-badge.ts",
+          "pattern": "subscribeFocusedSessionRead"
         },
         {
           "path": "apps/desktop/src/store/session-states.ts",
