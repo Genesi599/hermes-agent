@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ClientSessionState } from '@/app/types'
+import { group } from '@/components/pane-shell/tree/model'
+import { $activeTreeGroup, $layoutTree } from '@/components/pane-shell/tree/store'
 import { createClientSessionState } from '@/lib/chat-runtime'
 
 import { $activeSessionId, $selectedStoredSessionId, $unreadFinishedSessionIds } from './session'
@@ -31,6 +33,8 @@ describe('session status transitions', () => {
     $unreadFinishedSessionIds.set([])
     $selectedStoredSessionId.set(null)
     $activeSessionId.set(null)
+    $activeTreeGroup.set(null)
+    $layoutTree.set(null)
   })
 
   afterEach(() => {
@@ -40,6 +44,8 @@ describe('session status transitions', () => {
     $unreadFinishedSessionIds.set([])
     $selectedStoredSessionId.set(null)
     $activeSessionId.set(null)
+    $activeTreeGroup.set(null)
+    $layoutTree.set(null)
     vi.restoreAllMocks()
   })
 
@@ -101,6 +107,27 @@ describe('session status transitions', () => {
     publishSessionState('rt1', { ...working, busy: false })
 
     expect($unreadFinishedSessionIds.get()).toEqual(['s1'])
+  })
+
+  it('uses the actually focused tab instead of the primary route for unread completion', () => {
+    $selectedStoredSessionId.set('primary')
+    $layoutTree.set(
+      group(['workspace', 'session-tile:focused'], {
+        active: 'session-tile:focused',
+        id: 'main'
+      })
+    )
+    $activeTreeGroup.set('main')
+
+    const backgroundPrimary = state({ busy: true, storedSessionId: 'primary' })
+    publishSessionState('rt-primary', backgroundPrimary)
+    publishSessionState('rt-primary', { ...backgroundPrimary, busy: false })
+
+    const visibleFocused = state({ busy: true, storedSessionId: 'focused' })
+    publishSessionState('rt-focused', visibleFocused)
+    publishSessionState('rt-focused', { ...visibleFocused, busy: false })
+
+    expect($unreadFinishedSessionIds.get()).toEqual(['primary'])
   })
 
   it('does NOT mark unread on idle→idle re-asserts (no prior working state)', () => {

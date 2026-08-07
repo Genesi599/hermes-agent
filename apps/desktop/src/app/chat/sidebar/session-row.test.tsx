@@ -9,13 +9,17 @@ import type * as ChatRuntime from '@/lib/chat-runtime'
 import type * as ComposerStatusStore from '@/store/composer-status'
 import type * as SessionStore from '@/store/session'
 import { clearAllSessionStates, publishSessionState } from '@/store/session-states'
+import { $unreadFinishedSessionIds } from '@/store/session'
 import type * as SessionColorStore from '@/store/session-color'
 import type * as SessionStatesStore from '@/store/session-states'
 import type * as WindowsStore from '@/store/windows'
 
 import { SidebarSessionRow } from './session-row'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  $unreadFinishedSessionIds.set([])
+})
 
 vi.mock('@/i18n', () => ({
   useI18n: () => ({
@@ -214,6 +218,28 @@ describe('SidebarSessionRow running arc', () => {
 })
 
 describe('SidebarSessionRow', () => {
+  it('renders a steady green dot for a completed unread session', () => {
+    $unreadFinishedSessionIds.set(['s1'])
+
+    const { container } = render(
+      <SidebarSessionRow
+        isPinned={false}
+        isSelected={false}
+        isWorking={false}
+        onArchive={noop}
+        onDelete={noop}
+        onPin={noop}
+        onResume={noop}
+        session={makeSession({ title: 'Unread session' })}
+      />
+    )
+
+    const dot = screen.getByRole('status', { name: 'Finished' })
+
+    expect(dot.className).toContain('bg-emerald-500')
+    expect(container.querySelector('[aria-label="Running"]')).toBeNull()
+  })
+
   it('colors only the title text while the status dot stays semantic gray', () => {
     const { container } = render(
       <SidebarSessionRow
