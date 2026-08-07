@@ -123,6 +123,29 @@ _CONTROL_WRAPPERS = (
     ("<ide_selection>", "</ide_selection>"),
 )
 
+
+def _is_title_eligible_user_message(user_message: str) -> bool:
+    """Return whether *user_message* is real user input suitable for titling.
+
+    Context compaction uses a ``role=user`` row to keep provider transcripts
+    valid. That row is an internal handoff, not a new request, and must never
+    become a session title (or count as the first exchange).
+    """
+    if not isinstance(user_message, str) or not user_message.strip():
+        return False
+    try:
+        from agent.context_compressor import is_compaction_summary_message
+
+        if is_compaction_summary_message({"role": "user", "content": user_message}):
+            return False
+    except Exception:
+        # Keep title generation available if the optional compressor import is
+        # unavailable during startup; the explicit prefix check still protects
+        # the current compaction format.
+        logger.debug("Compaction title-input check failed", exc_info=True)
+    normalized = user_message.lstrip().casefold()
+    return not normalized.startswith(("[context compaction", "[context summary]:"))
+
 # Hermes' own machine-authored openers. A compaction handoff or a resumed
 # session must not be titled after the scaffolding that carried it. The legacy
 # summary prefix comes from the compressor rather than a fourth local copy —
@@ -363,6 +386,10 @@ def generate_title(
         logger.debug("Auto-title skipped: auxiliary.title_generation.enabled=false")
         return None
 
+    if not _is_title_eligible_user_message(user_message):
+        logger.debug("Auto-title skipped: internal compaction message")
+        return None
+
     if runtime_validator is not None:
         try:
             if not runtime_validator():
@@ -404,7 +431,11 @@ def generate_title(
             extra_body={"response_format": _TITLE_RESPONSE_FORMAT},
         )
         content = response.choices[0].message.content or ""
-        return _clean_title(_extract_title_text(content))
+        title = _clean_title(_extract_title_text(content))
+        if title is not None and not _is_title_eligible_user_message(title):
+            logger.warning('Title generation returned an internal compaction marker; discarded')
+            return None
+        return title
     except Exception as e:
         # Log at WARNING so this shows up in agent.log without debug mode.
         # Full detail at debug level for operators who need the stack.
@@ -711,6 +742,10 @@ def maybe_auto_title(
     # store too old to report one.
     user_msg_count = sum(1 for m in (conversation_history or []) if _is_real_user_turn(m))
     if user_msg_count > 1 and not _session_is_untitled(session_db, session_id):
+        return
+
+    if not _is_title_eligible_user_message(user_message):
+        logger.debug('Auto-title skipped: internal compaction message')
         return
 
     if not is_titleable_user_message(user_message):

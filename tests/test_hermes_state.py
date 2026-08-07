@@ -1737,6 +1737,19 @@ class TestListSessionsRich:
         assert len(sessions) == 1
         assert "Help me refactor the auth module" in sessions[0]["preview"]
 
+    def test_preview_skips_internal_compaction_message(self, db):
+        db.create_session("s1", "cli")
+        db.append_message(
+            "s1",
+            "user",
+            "[CONTEXT COMPACTION — REFERENCE ONLY] Earlier turns were compacted",
+        )
+        db.append_message("s1", "assistant", "继续")
+        db.append_message("s1", "user", "修复这个标题问题")
+
+        (session,) = db.list_sessions_rich()
+        assert session["preview"] == "修复这个标题问题"
+
 
 
 

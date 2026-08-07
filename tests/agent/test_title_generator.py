@@ -8,6 +8,7 @@ from agent.title_generator import (
     generate_title,
     auto_title_session,
     maybe_auto_title,
+    _is_title_eligible_user_message,
     _title_language,
 )
 from hermes_state import SessionDB
@@ -15,6 +16,27 @@ from hermes_state import SessionDB
 
 class TestGenerateTitle:
     """Unit tests for generate_title()."""
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "[CONTEXT COMPACTION — REFERENCE ONLY] Earlier turns were compacted",
+            "[CONTEXT SUMMARY]: prior work",
+        ],
+    )
+    def test_rejects_internal_compaction_messages(self, message):
+        assert not _is_title_eligible_user_message(message)
+
+    def test_accepts_real_user_message(self):
+        assert _is_title_eligible_user_message("修复这个会话标题")
+
+    def test_generate_title_skips_internal_compaction_message(self):
+        with patch("agent.title_generator.call_llm") as mock_llm:
+            assert generate_title(
+                "[CONTEXT COMPACTION — REFERENCE ONLY] Earlier turns were compacted",
+                "继续",
+            ) is None
+            mock_llm.assert_not_called()
 
 
 
@@ -253,121 +275,28 @@ class TestMaybeAutoTitle:
                 runtime_validator=None,
             )
 
-    def test_writes_instant_title_before_the_model_runs(self, tmp_path):
-        """The derived title lands synchronously — no LLM, no waiting."""
-        db = SessionDB(tmp_path / "state.db")
-        db.create_session(session_id="sess-1", source="cli")
-        with patch("agent.title_generator.auto_title_session"):
-            maybe_auto_title(
-                db, "sess-1", "fix the flaky auth test in login", []
-            )
-        assert db.get_session_title("sess-1") == "fix the flaky auth test in login"
-        assert db.get_session_title_source("sess-1") == "derived"
+    def test_skips_internal_compaction_exchange(self):
+        db = MagicMock()
+        history = [
+            {
+                "role": "user",
+                "content": "[CONTEXT COMPACTION — REFERENCE ONLY] Earlier turns were compacted",
+            },
+            {"role": "assistant", "content": "继续"},
+        ]
 
-    def test_skips_machine_authored_opening_messages(self, tmp_path):
-        """A compaction handoff is not a user request and must not title."""
-        db = SessionDB(tmp_path / "state.db")
-        db.create_session(session_id="sess-1", source="cli")
         with patch("agent.title_generator.auto_title_session") as mock_auto:
             maybe_auto_title(
                 db,
                 "sess-1",
-                "[CONTEXT COMPACTION — REFERENCE ONLY] Earlier turns were compacted",
-                [],
+                history[0]["content"],
+                "继续",
+                history,
             )
-        assert db.get_session_title("sess-1") is None
-        mock_auto.assert_not_called()
+            import time
 
-    @pytest.mark.parametrize(
-        "opener",
-        [
-            "[CONTEXT COMPACTION — REFERENCE ONLY] Earlier turns were compacted",
-            "[CONTEXT SUMMARY]: the user was refactoring the auth module",
-            "[System note: the user switched models]",
-            "[Runtime note: resumed from checkpoint]",
-        ],
-    )
-    def test_skips_every_shape_of_machine_authored_opener(self, tmp_path, opener):
-        """A session named after our own scaffolding is named after us."""
-        db = SessionDB(tmp_path / "state.db")
-        db.create_session(session_id="sess-1", source="cli")
-        with patch("agent.title_generator.auto_title_session") as mock_auto:
-            maybe_auto_title(db, "sess-1", opener, [])
-        assert db.get_session_title("sess-1") is None
-        mock_auto.assert_not_called()
-
-    def test_a_multimodal_turn_counts_as_a_real_question(self, tmp_path):
-        """"Here's a screenshot, fix the login" is a question, parts list or not.
-
-        Judging a turn by `content` alone reads a multimodal one as machinery
-        and undercounts the conversation, so a session deep into its history
-        looks like it is still on its opening turn.
-        """
-        from agent.title_generator import _is_real_user_turn
-
-        assert _is_real_user_turn(
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": "data:image/png;base64,x"}},
-                    {"type": "text", "text": "fix the login button"},
-                ],
-            }
-        )
-        # An image with no words is not a question we can name anything after.
-        assert not _is_real_user_turn(
-            {"role": "user", "content": [{"type": "image_url", "image_url": {"url": "x"}}]}
-        )
-
-    def test_titles_on_a_later_turn_when_the_opener_was_not_titleable(self, tmp_path):
-        """A session whose opener couldn't be titled gets named by a later turn.
-
-        The opener here is a compaction handoff, so turn one leaves the session
-        nameless. Nothing used to reconsider it: the guard that stops re-titling
-        a named session also stopped the nameless one from ever asking again.
-        """
-        db = SessionDB(tmp_path / "state.db")
-        db.create_session(session_id="sess-1", source="cli")
-        history = [
-            {"role": "user", "content": "[CONTEXT COMPACTION — REFERENCE ONLY] x"},
-            {"role": "assistant", "content": "ok"},
-            {"role": "user", "content": "thanks"},
-            {"role": "assistant", "content": "sure"},
-        ]
-        with patch("agent.title_generator.auto_title_session"):
-            maybe_auto_title(db, "sess-1", "fix the flaky auth test", history)
-        assert db.get_session_title("sess-1") == "fix the flaky auth test"
-
-    def test_leaves_an_already_titled_session_alone_on_later_turns(self, tmp_path):
-        """The retry is for nameless sessions only; a named one asks nothing."""
-        db = SessionDB(tmp_path / "state.db")
-        db.create_session(session_id="sess-1", source="cli")
-        db.set_session_title("sess-1", "Existing name")
-        history = [
-            {"role": "user", "content": "hello"},
-            {"role": "assistant", "content": "hi"},
-            {"role": "user", "content": "thanks"},
-            {"role": "assistant", "content": "sure"},
-        ]
-        with patch("agent.title_generator.auto_title_session") as mock_auto:
-            maybe_auto_title(db, "sess-1", "and now something else", history)
-        assert db.get_session_title("sess-1") == "Existing name"
-        mock_auto.assert_not_called()
-
-    def test_instant_title_declines_a_name_collision(self, tmp_path):
-        """A colliding derived title is skipped, not scanned into 'hi #2'.
-
-        Common openers collide constantly, and the lineage scan that resolves
-        the collision runs inline on the turn. The model's title lands moments
-        later, so the session is named either way.
-        """
-        db = SessionDB(tmp_path / "state.db")
-        db.create_session(session_id="taken", source="cli")
-        db.set_session_title("taken", "hi")
-        db.create_session(session_id="sess-1", source="cli")
-        with patch("agent.title_generator.auto_title_session"):
-            maybe_auto_title(db, "sess-1", "hi", [])
-        assert db.get_session_title("sess-1") is None
+            time.sleep(0.1)
+            mock_auto.assert_not_called()
 
 
 

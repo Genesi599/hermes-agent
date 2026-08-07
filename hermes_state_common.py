@@ -51,6 +51,14 @@ _PREVIEW_CONTENT_SQL = "REPLACE(REPLACE(m.content, X'0A', ' '), X'0D', ' ')"
 
 _PREVIEW_SCAFFOLDED_SQL = f"m.content LIKE '{SKILL_SCAFFOLD_SQL_LIKE}'"
 
+# Context compaction summaries are persisted with ``role='user'`` so provider
+# transcripts keep a valid alternation. They are internal handoffs, not user
+# prompts, and must not become the sidebar preview/title fallback.
+_PREVIEW_INTERNAL_MESSAGE_FILTER_SQL = (
+    "AND NOT (LOWER(LTRIM(m.content)) LIKE '[context compaction%' "
+    "OR LOWER(LTRIM(m.content)) LIKE '[context summary]:%')"
+)
+
 
 # The shared ``_preview_raw`` SELECT expression, interpolated by every listing
 # query. A scaffolded row gets a wider excerpt: the whole message while it fits
