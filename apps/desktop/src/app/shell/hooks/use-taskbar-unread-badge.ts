@@ -140,6 +140,18 @@ export function subscribeSelectedSessionRead(): () => void {
   return $selectedStoredSessionId.subscribe(clearSessionUnread)
 }
 
+export function subscribeWorkingSessionsRead(): () => void {
+  return $sessions.subscribe(sessions => {
+    const workingAliases = sessions.flatMap(session =>
+      session.status === 'working' ? [session.id, session._lineage_root_id] : []
+    )
+
+    if (workingAliases.length) {
+      clearUnreadSessionIds(workingAliases)
+    }
+  })
+}
+
 function sessionMembershipSignature(): string {
   const ids = new Set<string>()
 
@@ -233,6 +245,7 @@ export function useTaskbarUnreadBadge() {
   useEffect(() => {
     const unsubscribeBadge = subscribeTaskbarUnreadBadge(window.hermesDesktop?.setTaskbarBadgeCount)
     const unsubscribeSelected = subscribeSelectedSessionRead()
+    const unsubscribeWorking = subscribeWorkingSessionsRead()
     const unsubscribeReconciliation = subscribeUnreadSessionReconciliation()
 
     const unsubscribeGateway = $gatewayState.subscribe(state => {
@@ -246,6 +259,7 @@ export function useTaskbarUnreadBadge() {
     return () => {
       unsubscribeBadge()
       unsubscribeSelected()
+      unsubscribeWorking()
       unsubscribeReconciliation()
       unsubscribeGateway()
     }

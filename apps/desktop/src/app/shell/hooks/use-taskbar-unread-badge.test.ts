@@ -8,7 +8,8 @@ import {
   reconcileTaskbarUnreadSessions,
   subscribeSelectedSessionRead,
   subscribeTaskbarUnreadBadge,
-  subscribeUnreadSessionReconciliation
+  subscribeUnreadSessionReconciliation,
+  subscribeWorkingSessionsRead
 } from './use-taskbar-unread-badge'
 
 vi.mock('@/hermes', () => ({
@@ -132,6 +133,23 @@ describe('subscribeTaskbarUnreadBadge', () => {
     expect($unreadFinishedSessionIds.get()).toEqual(['other'])
     $selectedStoredSessionId.set('other')
     expect($unreadFinishedSessionIds.get()).toEqual([])
+    unsubscribe()
+  })
+
+  it('clears unread aliases when a loaded session starts working again', () => {
+    $unreadFinishedSessionIds.set(['root', 'tip', 'idle'])
+    setSessions([
+      { id: 'tip', _lineage_root_id: 'root', status: 'idle' } as never,
+      { id: 'idle', status: 'idle' } as never
+    ])
+    const unsubscribe = subscribeWorkingSessionsRead()
+
+    setSessions([
+      { id: 'tip', _lineage_root_id: 'root', status: 'working' } as never,
+      { id: 'idle', status: 'idle' } as never
+    ])
+
+    expect($unreadFinishedSessionIds.get()).toEqual(['idle'])
     unsubscribe()
   })
 
