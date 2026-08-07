@@ -1,15 +1,15 @@
-import { atom } from 'nanostores'
+import { atom, type WritableAtom } from 'nanostores'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { $activeSessionId, $selectedStoredSessionId } from '@/store/session'
+import { $focusedRuntimeId, $focusedStoredSessionId } from '@/store/session-states'
 
 import { renameSessionPreferringRpc } from './session-actions-menu'
 
-// The branched-session rename bug: a freshly branched session lives only in the
-// gateway's runtime _sessions map (no state.db row yet), so REST PATCH
-// /api/sessions/{id} 404s with "Session not found". renameSessionPreferringRpc
-// must route the ACTIVE row through the session.title RPC (runtime id), which
-// persists the row on demand, and otherwise fall back to REST.
+// Rename must translate the actually focused stored session to its runtime id.
+// A branch tile can be focused while the route-selected primary remains its
+// parent; using the primary runtime would rename the wrong session or return
+// "Session not found".
 
 // Hoisted so the vi.mock factories below (which vitest lifts to the top of the
 // module) can reference these before the module body runs. This matters because
@@ -43,8 +43,21 @@ vi.mock('@/store/gateway', () => ({
   activeGateway: () => activeGateway()
 }))
 
+vi.mock('@/store/session-states', async importOriginal => {
+  const actual = (await importOriginal()) as Record<string, unknown>
+  const { atom: createAtom } = await import('nanostores')
+
+  return {
+    ...actual,
+    $focusedRuntimeId: createAtom<null | string>(null),
+    $focusedStoredSessionId: createAtom<null | string>(null)
+  }
+})
+
 const RUNTIME_ID = 'rt-runtime-1'
 const STORED_ID = 'stored-branch-1'
+const focusedRuntimeId = $focusedRuntimeId as unknown as WritableAtom<null | string>
+const focusedStoredSessionId = $focusedStoredSessionId as unknown as WritableAtom<null | string>
 
 afterEach(() => {
   renameSession.mockClear()
@@ -53,12 +66,16 @@ afterEach(() => {
   activeGateway.mockReturnValue({ request })
   $activeSessionId.set(null)
   $selectedStoredSessionId.set(null)
+  focusedRuntimeId.set(null)
+  focusedStoredSessionId.set(null)
 })
 
 describe('renameSessionPreferringRpc', () => {
-  it('renames the active branched session via the session.title RPC, not REST', async () => {
-    $selectedStoredSessionId.set(STORED_ID)
-    $activeSessionId.set(RUNTIME_ID)
+  it('renames a focused branch tile through its own runtime, not the selected primary runtime', async () => {
+    $selectedStoredSessionId.set('stored-parent')
+    $activeSessionId.set('runtime-parent')
+    focusedStoredSessionId.set(STORED_ID)
+    focusedRuntimeId.set(RUNTIME_ID)
 
     const result = await renameSessionPreferringRpc(STORED_ID, 'My branch')
 
@@ -68,8 +85,8 @@ describe('renameSessionPreferringRpc', () => {
   })
 
   it('falls back to REST when the RPC fails (e.g. socket mid-reconnect)', async () => {
-    $selectedStoredSessionId.set(STORED_ID)
-    $activeSessionId.set(RUNTIME_ID)
+    focusedStoredSessionId.set(STORED_ID)
+    focusedRuntimeId.set(RUNTIME_ID)
     request.mockRejectedValueOnce(new Error('not connected'))
 
     const result = await renameSessionPreferringRpc(STORED_ID, 'My branch', 'work')
@@ -79,9 +96,9 @@ describe('renameSessionPreferringRpc', () => {
     expect(result.title).toBe('rest-title')
   })
 
-  it('uses REST for a non-active row (background/persisted session)', async () => {
-    $selectedStoredSessionId.set('some-other-active-session')
-    $activeSessionId.set(RUNTIME_ID)
+  it('uses REST for a non-focused row (background/persisted session)', async () => {
+    focusedStoredSessionId.set('some-other-focused-session')
+    focusedRuntimeId.set(RUNTIME_ID)
 
     await renameSessionPreferringRpc(STORED_ID, 'My branch', 'work')
 
@@ -90,8 +107,8 @@ describe('renameSessionPreferringRpc', () => {
   })
 
   it('uses REST when clearing the title (RPC rejects empty titles)', async () => {
-    $selectedStoredSessionId.set(STORED_ID)
-    $activeSessionId.set(RUNTIME_ID)
+    focusedStoredSessionId.set(STORED_ID)
+    focusedRuntimeId.set(RUNTIME_ID)
 
     await renameSessionPreferringRpc(STORED_ID, '')
 
@@ -100,8 +117,8 @@ describe('renameSessionPreferringRpc', () => {
   })
 
   it('uses REST when no gateway is connected', async () => {
-    $selectedStoredSessionId.set(STORED_ID)
-    $activeSessionId.set(RUNTIME_ID)
+    focusedStoredSessionId.set(STORED_ID)
+    focusedRuntimeId.set(RUNTIME_ID)
     activeGateway.mockReturnValue(null)
 
     await renameSessionPreferringRpc(STORED_ID, 'My branch')
