@@ -2158,6 +2158,7 @@ export interface Translations {
           tool_definitions: string
         }
         empty: string
+        cacheSummary: (read: string, write: string) => string
         loading: string
         percentFull: (percent: number) => string
         title: string

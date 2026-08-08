@@ -94,6 +94,10 @@ export function ContextUsagePanel({
 
       <p className="text-[0.6875rem] text-foreground">{copy.percentFull(contextPercent)}</p>
 
+      <p className="text-[0.6875rem] text-muted-foreground">
+        {copy.cacheSummary(compactNumber(currentUsage.cache_read ?? 0), compactNumber(currentUsage.cache_write ?? 0))}
+      </p>
+
       <ContextUsageBar categories={categories} segmentTotal={segmentTotal} />
 
       <ul className="flex flex-col gap-1.5">
