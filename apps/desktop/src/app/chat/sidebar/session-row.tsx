@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { memo, useRef } from 'react'
+import { memo, useRef, useState } from 'react'
 import type * as React from 'react'
 
 import { ProfileTag } from '@/app/chat/profile-tag'
@@ -9,6 +9,7 @@ import { openSession } from '@/app/open-session'
 import { ReviewActivityUnderline } from '@/components/chat/review-activity'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
+import { Input } from '@/components/ui/input'
 import { Tip } from '@/components/ui/tooltip'
 import type { SessionInfo } from '@/hermes'
 import { type Translations, useI18n } from '@/i18n'
@@ -18,14 +19,15 @@ import { middleClickHandlers } from '@/lib/middle-click'
 import { handoffOriginSource, sessionSourceLabel } from '@/lib/session-source'
 import { coarseElapsed } from '@/lib/time'
 import { cn } from '@/lib/utils'
-import { $reviewActivityBySessionId } from '@/store/session'
+import { notify, notifyError } from '@/store/notifications'
+import { $reviewActivityBySessionId, setSessions } from '@/store/session'
 import { $sessionColorById } from '@/store/session-color'
 import { $attentionSessionIds } from '@/store/session-states'
 
 import { SessionStatusDot } from '../session-status-dot'
 
 import { SidebarRowBody, SidebarRowGrab, SidebarRowLabel, SidebarRowLead, SidebarRowShell } from './chrome'
-import { SessionActionsMenu, SessionContextMenu } from './session-actions-menu'
+import { renameSessionPreferringRpc, SessionActionsMenu, SessionContextMenu } from './session-actions-menu'
 import { sessionShowsRunningArc } from './session-row-state'
 import { useProfilePrewarm } from './use-profile-prewarm'
 
@@ -111,6 +113,41 @@ function SidebarSessionRowImpl({
   const reviewActivity = useStore($reviewActivityBySessionId)[session.id] ?? null
   const branchTaskStatus = session.branch_task_status
   const suppressNextNativeClickRef = useRef(false)
+  const [renaming, setRenaming] = useState(false)
+  const [draftTitle, setDraftTitle] = useState('')
+  // Kept in a ref so commit/cancel from blur/Enter/Escape race safely.
+  const renamingRef = useRef(false)
+  const beginRename = () => {
+    setDraftTitle(title)
+    renamingRef.current = true
+    setRenaming(true)
+  }
+  const cancelRename = () => {
+    renamingRef.current = false
+    setRenaming(false)
+  }
+  const commitRename = async () => {
+    if (!renamingRef.current) {
+      return
+    }
+    renamingRef.current = false
+    setRenaming(false)
+
+    const next = draftTitle.trim()
+
+    if (!next || next === title.trim()) {
+      return
+    }
+
+    try {
+      const result = await renameSessionPreferringRpc(session.id, next, session.profile)
+      const finalTitle = result.title || next
+      setSessions(prev => prev.map(s => (s.id === session.id ? { ...s, title: finalTitle || null } : s)))
+      notify({ durationMs: 2_000, kind: 'success', message: r.renamed })
+    } catch (err) {
+      notifyError(err, r.renameFailed)
+    }
+  }
 
   const branchElapsed = session.branch_started_at
     ? formatDuration((session.branch_completed_at ?? Date.now() / 1000) - session.branch_started_at, r)
@@ -178,6 +215,14 @@ function SidebarSessionRowImpl({
           className
         )}
         data-working={isWorking ? 'true' : undefined}
+        onDoubleClick={event => {
+          if ((event.target as HTMLElement).closest('[data-reorder-handle], [data-row-actions]')) {
+            return
+          }
+          if (!renamingRef.current) {
+            beginRename()
+          }
+        }}
         onPointerDown={event => {
           // Reorder drags belong to dnd-kit (the grab handle); the ⋯ actions
           // cluster keeps its own gestures. Everything else on the row —
@@ -301,9 +346,33 @@ function SidebarSessionRowImpl({
               />
             </Tip>
           ) : null}
-          <SidebarRowLabel className="flex-1 font-normal" style={{ color: sessionColor }}>
-            {title}
-          </SidebarRowLabel>
+          {renaming ? (
+            <Input
+              aria-label={r.renameTitle}
+              autoFocus
+              className="h-5 min-w-0 flex-1 px-1 py-0 text-[0.8125rem] leading-5"
+              onBlur={() => void commitRename()}
+              onChange={event => setDraftTitle(event.target.value)}
+              onClick={event => event.stopPropagation()}
+              onDoubleClick={event => event.stopPropagation()}
+              onKeyDown={event => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  void commitRename()
+                } else if (event.key === 'Escape') {
+                  event.preventDefault()
+                  cancelRename()
+                }
+              }}
+              onPointerDown={event => event.stopPropagation()}
+              onPointerUp={event => event.stopPropagation()}
+              value={draftTitle}
+            />
+          ) : (
+            <SidebarRowLabel className="flex-1 font-normal" style={{ color: sessionColor }}>
+              {title}
+            </SidebarRowLabel>
+          )}
           {showProfile && <ProfileTag profile={session.profile} />}
           {isMergeWaiting ? (
             <span
