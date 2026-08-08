@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { memo } from 'react'
+import { memo, useRef } from 'react'
 import type * as React from 'react'
 
 import { PrTag } from '@/app/chat/pr-tag'
@@ -219,6 +219,7 @@ function SidebarSessionRowImpl({
 
   const reviewActivity = useStore($reviewActivityBySessionId)[session.id] ?? null
   const branchTaskStatus = session.branch_task_status
+  const suppressNextNativeClickRef = useRef(false)
 
   const branchElapsed = session.branch_started_at
     ? formatDuration((session.branch_completed_at ?? Date.now() / 1000) - session.branch_started_at, r)
@@ -319,18 +320,35 @@ function SidebarSessionRowImpl({
         // Whichever one the release lands on is the one that commits.
         {...dragHandleProps}
         onPointerDown={event => {
-          // The grabber already carries these same listeners, and the ⋯
-          // cluster keeps its own gestures.
+          // Reorder drags belong to dnd-kit (the grab handle); the ⋯ actions
+          // cluster keeps its own gestures. Everything else on the row —
+          // including the row-body BUTTON, the natural grab surface — is a
+          // session drag source: a POINTER drag on the shared drag session
+          // (never native HTML5 DnD: no macOS snap-back, Esc aborts
+          // instantly). Commit an unmodified tap from pointerup: clearing a
+          // completed-unread session can move this row between sections before
+          // the browser emits `click`, otherwise the first activation is lost.
           if ((event.target as HTMLElement).closest('[data-reorder-handle], [data-row-actions]')) {
             return
           }
 
-          // A POINTER drag on the shared drag session (never native HTML5 DnD:
-          // no macOS snap-back, Esc aborts instantly). Sub-threshold releases
-          // stay ordinary clicks, so resume / pin / open-in-window are
-          // untouched.
-          startSessionDrag({ id: session.id, profile: session.profile || 'default', title }, event)
-          dragHandleProps?.onPointerDown?.(event)
+          const plainPrimaryTap = event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey
+
+          startSessionDrag(
+            { id: session.id, profile: session.profile || 'default', title },
+            event,
+            plainPrimaryTap
+              ? {
+                  onTap: () => {
+                    suppressNextNativeClickRef.current = true
+                    onResume()
+                    window.setTimeout(() => {
+                      suppressNextNativeClickRef.current = false
+                    }, 0)
+                  }
+                }
+              : undefined
+          )
         }}
         // Hovering a row from another profile (the all-profiles view) telegraphs
         // a cross-profile resume — start that backend's spawn now so the click
@@ -359,6 +377,12 @@ function SidebarSessionRowImpl({
             openSession(session.id, () => undefined, 'tab')
           })}
           onClick={event => {
+            if (suppressNextNativeClickRef.current) {
+              suppressNextNativeClickRef.current = false
+
+              return
+            }
+
             const mod = event.metaKey || event.ctrlKey
 
             // ⇧⌘-click → pop into its own window (needs standalone windows).

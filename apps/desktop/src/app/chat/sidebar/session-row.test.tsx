@@ -1,8 +1,9 @@
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { atom } from 'nanostores'
 import type * as React from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { startSessionDrag } from '@/app/chat/session-drag'
 import type { SessionInfo } from '@/hermes'
 import { createClientSessionState } from '@/lib/chat-runtime'
 import type * as ChatRuntime from '@/lib/chat-runtime'
@@ -238,6 +239,37 @@ describe('SidebarSessionRow', () => {
 
     expect(dot.className).toContain('bg-emerald-500')
     expect(container.querySelector('[aria-label="Running"]')).toBeNull()
+  })
+
+  it('activates a plain pointer tap before a completed session row can move sections', () => {
+    const onResume = vi.fn()
+
+    render(
+      <SidebarSessionRow
+        isPinned={false}
+        isSelected={false}
+        isWorking={false}
+        onArchive={noop}
+        onDelete={noop}
+        onPin={noop}
+        onResume={onResume}
+        session={makeSession({ title: 'Completed session' })}
+      />
+    )
+
+    const row = screen.getByRole('button', { name: 'Completed session' })
+    fireEvent.pointerDown(row, { button: 0, pointerId: 1 })
+
+    const dragOptions = vi.mocked(startSessionDrag).mock.calls.at(-1)?.[2]
+    expect(dragOptions?.onTap).toEqual(expect.any(Function))
+
+    dragOptions?.onTap?.()
+    expect(onResume).toHaveBeenCalledTimes(1)
+
+    // The browser still emits click after pointerup when the row remains in
+    // place. It must not activate the session a second time.
+    fireEvent.click(row)
+    expect(onResume).toHaveBeenCalledTimes(1)
   })
 
   it('colors only the title text while the status dot stays semantic gray', () => {
