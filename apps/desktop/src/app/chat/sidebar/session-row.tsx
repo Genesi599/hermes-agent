@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { memo, useRef } from 'react'
+import { memo, useRef, useState } from 'react'
 import type * as React from 'react'
 
 import { PrTag } from '@/app/chat/pr-tag'
@@ -10,6 +10,7 @@ import { openSession } from '@/app/open-session'
 import { ReviewActivityUnderline } from '@/components/chat/review-activity'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
+import { Input } from '@/components/ui/input'
 import { Tip } from '@/components/ui/tooltip'
 import type { SessionInfo } from '@/hermes'
 import { type Translations, useI18n } from '@/i18n'
@@ -26,9 +27,10 @@ import { normalizeProfileKey } from '@/store/profile'
 import { $pullRequestsByBranch, sessionPrKey } from '@/store/pull-requests'
 import { $sessionDotStateById, hasLiveTurn, showsRunningArc } from '@/store/session-dot-state'
 import { sessionCostUsd } from '@/store/sidebar-archive'
-import { $reviewActivityBySessionId, $sessions } from '@/store/session'
+import { $reviewActivityBySessionId, $sessions, setSessions } from '@/store/session'
+import { notify, notifyError } from '@/store/notifications'
+import { $sessionColorById } from '@/store/session-color'
 import { $attentionSessionIds } from '@/store/session-states'
-import { $sessionColorById } from '@/store/session-color' 
 
 import { SessionStatusDot } from '../session-status-dot'
 
@@ -42,7 +44,7 @@ import {
   SidebarRowLeadGlyph,
   SidebarRowShell
 } from './chrome' 
-import { SessionActionsMenu, SessionContextMenu } from './session-actions-menu'
+import { renameSessionPreferringRpc, SessionActionsMenu, SessionContextMenu } from './session-actions-menu'
 import { useProfilePrewarm } from './use-profile-prewarm'
 
 interface SidebarSessionRowProps extends React.ComponentProps<'div'> {
@@ -220,6 +222,41 @@ function SidebarSessionRowImpl({
   const reviewActivity = useStore($reviewActivityBySessionId)[session.id] ?? null
   const branchTaskStatus = session.branch_task_status
   const suppressNextNativeClickRef = useRef(false)
+  const [renaming, setRenaming] = useState(false)
+  const [draftTitle, setDraftTitle] = useState('')
+  // Kept in a ref so commit/cancel from blur/Enter/Escape race safely.
+  const renamingRef = useRef(false)
+  const beginRename = () => {
+    setDraftTitle(title)
+    renamingRef.current = true
+    setRenaming(true)
+  }
+  const cancelRename = () => {
+    renamingRef.current = false
+    setRenaming(false)
+  }
+  const commitRename = async () => {
+    if (!renamingRef.current) {
+      return
+    }
+    renamingRef.current = false
+    setRenaming(false)
+
+    const next = draftTitle.trim()
+
+    if (!next || next === title.trim()) {
+      return
+    }
+
+    try {
+      const result = await renameSessionPreferringRpc(session.id, next, session.profile)
+      const finalTitle = result.title || next
+      setSessions(prev => prev.map(s => (s.id === session.id ? { ...s, title: finalTitle || null } : s)))
+      notify({ durationMs: 2_000, kind: 'success', message: r.renamed })
+    } catch (err) {
+      notifyError(err, r.renameFailed)
+    }
+  }
 
   const branchElapsed = session.branch_started_at
     ? formatDuration((session.branch_completed_at ?? Date.now() / 1000) - session.branch_started_at, r)
@@ -311,13 +348,15 @@ function SidebarSessionRowImpl({
           dragging && 'z-10 cursor-grabbing bg-(--ui-sidebar-surface-background)',
           className
         )}
-        data-working={liveTurn ? 'true' : undefined}
-        // The row runs BOTH drags off one press, and each declines outside its
-        // own region — so no timing/arbitration rule is needed and neither can
-        // steal the other's gesture. Over the sidebar only the reorder has a
-        // target (the session drop denies: side chrome hosts no main tile);
-        // over the tree only the session drop does (no sortable row there).
-        // Whichever one the release lands on is the one that commits.
+        data-working={isWorking ? 'true' : undefined}
+        onDoubleClick={event => {
+          if ((event.target as HTMLElement).closest('[data-reorder-handle], [data-row-actions]')) {
+            return
+          }
+          if (!renamingRef.current) {
+            beginRename()
+          }
+        }}
         {...dragHandleProps}
         onPointerDown={event => {
           // Reorder drags belong to dnd-kit (the grab handle); the ⋯ actions
@@ -445,9 +484,33 @@ function SidebarSessionRowImpl({
               />
             </Tip>
           ) : null}
-          <SidebarRowLabel className="flex-1 font-normal" style={{ color: sessionColor }}>
-            {title}
-          </SidebarRowLabel>
+          {renaming ? (
+            <Input
+              aria-label={r.renameTitle}
+              autoFocus
+              className="h-5 min-w-0 flex-1 px-1 py-0 text-[0.8125rem] leading-5"
+              onBlur={() => void commitRename()}
+              onChange={event => setDraftTitle(event.target.value)}
+              onClick={event => event.stopPropagation()}
+              onDoubleClick={event => event.stopPropagation()}
+              onKeyDown={event => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  void commitRename()
+                } else if (event.key === 'Escape') {
+                  event.preventDefault()
+                  cancelRename()
+                }
+              }}
+              onPointerDown={event => event.stopPropagation()}
+              onPointerUp={event => event.stopPropagation()}
+              value={draftTitle}
+            />
+          ) : (
+            <SidebarRowLabel className="flex-1 font-normal" style={{ color: sessionColor }}>
+              {title}
+            </SidebarRowLabel>
+          )}
           {showProfile && <ProfileTag profile={session.profile} />}
           {isMergeWaiting ? (
             <span

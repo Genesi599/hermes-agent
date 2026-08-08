@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { atom } from 'nanostores'
 import type * as React from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { startSessionDrag } from '@/app/chat/session-drag'
 import type { SessionInfo } from '@/hermes'
@@ -15,6 +15,7 @@ import type * as SessionColorStore from '@/store/session-color'
 import type * as SessionStatesStore from '@/store/session-states'
 import type * as WindowsStore from '@/store/windows'
 
+import { renameSessionPreferringRpc } from './session-actions-menu'
 import { SidebarSessionRow } from './session-row'
 
 afterEach(() => {
@@ -33,6 +34,9 @@ vi.mock('@/i18n', () => ({
           finishedUnread: 'Finished',
           handoffOrigin: (platform: string) => `Started on ${platform}`,
           needsInput: 'Needs input',
+          renamed: 'Renamed',
+          renameFailed: 'Rename failed',
+          renameTitle: 'Rename session',
           sessionActions: 'Session actions',
           sessionRunning: 'Running',
           waitingForAnswer: 'Waiting for answer'
@@ -117,6 +121,7 @@ vi.mock('@/store/windows', async importOriginal => {
 // against the real component. Stub it here so this file stays focused on the
 // row chrome (handoff avatar tip, etc.).
 vi.mock('./session-actions-menu', () => ({
+  renameSessionPreferringRpc: vi.fn(),
   SessionActionsMenu: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   SessionContextMenu: ({ children }: { children: React.ReactNode }) => <>{children}</>
 }))
@@ -219,6 +224,10 @@ describe('SidebarSessionRow running arc', () => {
 })
 
 describe('SidebarSessionRow', () => {
+  beforeEach(() => {
+    vi.mocked(renameSessionPreferringRpc).mockReset()
+  })
+
   it('renders a steady green dot for a completed unread session', () => {
     $unreadFinishedSessionIds.set(['s1'])
 
@@ -352,5 +361,63 @@ describe('SidebarSessionRow', () => {
     const avatar = handoffAvatar(container)
     expect(avatar).toBeTruthy()
     expect(tipTrigger(avatar as HTMLElement)).toBeTruthy()
+  })
+
+  it('double-click enters inline rename; Enter commits via RPC', async () => {
+    const rename = vi.mocked(renameSessionPreferringRpc)
+    rename.mockResolvedValue({ title: 'New name' })
+
+    render(
+      <SidebarSessionRow
+        isPinned={false}
+        isSelected={false}
+        isWorking={false}
+        onArchive={noop}
+        onDelete={noop}
+        onPin={noop}
+        onResume={noop}
+        session={makeSession({ title: 'Old name' })}
+      />
+    )
+
+    const row = screen.getByRole('button', { name: 'Old name' })
+    fireEvent.doubleClick(row)
+
+    const input = screen.getByRole('textbox', { name: 'Rename session' })
+    expect((input as HTMLInputElement).value).toBe('Old name')
+
+    fireEvent.change(input, { target: { value: 'New name' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(rename).toHaveBeenCalledWith('s1', 'New name', 'default')
+    await screen.findByRole('button', { name: 'Old name' })
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+
+  it('Escape cancels inline rename without committing', () => {
+    const rename = vi.mocked(renameSessionPreferringRpc)
+
+    render(
+      <SidebarSessionRow
+        isPinned={false}
+        isSelected={false}
+        isWorking={false}
+        onArchive={noop}
+        onDelete={noop}
+        onPin={noop}
+        onResume={noop}
+        session={makeSession({ title: 'Old name' })}
+      />
+    )
+
+    const row = screen.getByRole('button', { name: 'Old name' })
+    fireEvent.doubleClick(row)
+
+    const input = screen.getByRole('textbox', { name: 'Rename session' })
+    fireEvent.change(input, { target: { value: 'Changed' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    expect(rename).not.toHaveBeenCalled()
+    expect(screen.queryByRole('textbox')).toBeNull()
   })
 })
