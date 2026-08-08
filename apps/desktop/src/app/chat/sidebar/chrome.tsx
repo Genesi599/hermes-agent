@@ -27,7 +27,7 @@ export function SidebarSectionMeta({ children }: { children: React.ReactNode }) 
 const rowMinH = 'min-h-[1.625rem]'
 const rowPadX = 'pl-2 pr-1'
 const rowGap = 'gap-1.5'
-const rowLead = 'grid size-3.5 shrink-0 place-items-center'
+const rowLead = 'grid min-h-3.5 min-w-3.5 shrink-0 place-items-center'
 const rowInset = cn(rowPadX, rowGap, 'flex h-full min-w-0 items-center self-stretch py-0.5')
 const rowLabel = 'min-w-0 truncate text-[0.8125rem] leading-5 text-(--ui-text-secondary)'
 
