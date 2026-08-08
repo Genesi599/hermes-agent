@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import type { CommandCenterSection } from '@/app/command-center'
 import { useApprovalModeStatusbarItem } from '@/app/shell/approval-mode-menu'
@@ -148,6 +148,27 @@ export function useStatusbarItems({
   const primaryFocused = !focusedStoredSessionId || focusedStoredSessionId === selectedStoredSessionId
 
   const activeSessionId = primaryFocused ? primaryActiveSessionId : (focusedRuntimeId ?? null)
+
+  // Restart/session-switch recovery: the live usage atom starts empty and only
+  // fills from turn events, so after a backend restart (or opening a resumed
+  // session) the context-usage / cache readouts stay hidden until the next
+  // real turn. Pull one authoritative snapshot on mount / active-session
+  // change so the status bar shows usage immediately. Once per session id.
+  const prefetchedUsageForRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!activeSessionId || prefetchedUsageForRef.current === activeSessionId) {
+      return
+    }
+
+    prefetchedUsageForRef.current = activeSessionId
+    void requestGateway<UsageStats>('session.usage', { session_id: activeSessionId })
+      .then((usage: UsageStats) => {
+        if (usage && (usage.context_max || usage.total)) {
+          setCurrentUsage(current => ({ ...current, ...usage }))
+        }
+      })
+      .catch(() => {})
+  }, [activeSessionId, requestGateway])
   const busy = primaryFocused ? primaryBusy : focusedBusy
 
   // EMPTY_USAGE (module constant) keeps the fallback referentially stable —
