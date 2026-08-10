@@ -80,14 +80,22 @@ function useModifierHeld(): boolean {
     const sync = (event: KeyboardEvent) => setHeld(event.metaKey || event.ctrlKey)
     const clear = () => setHeld(false)
 
-    window.addEventListener('keydown', sync)
-    window.addEventListener('keyup', sync)
+    // Capture phase: a keyup inside a child frame / popover would otherwise
+    // never reach the bubbling listener and leave `held` stuck true, keeping
+    // the layout button in its composite reset form forever.
+    window.addEventListener('keydown', sync, true)
+    window.addEventListener('keyup', sync, true)
     window.addEventListener('blur', clear)
+    // Windows IME shortcuts (Ctrl+Shift toggling the input method) swallow
+    // the keyup at the OS level — neither capture nor bubble sees it. Clear
+    // the stuck modifier when the window/tab loses visibility as a backstop.
+    document.addEventListener('visibilitychange', clear)
 
     return () => {
-      window.removeEventListener('keydown', sync)
-      window.removeEventListener('keyup', sync)
+      window.removeEventListener('keydown', sync, true)
+      window.removeEventListener('keyup', sync, true)
       window.removeEventListener('blur', clear)
+      document.removeEventListener('visibilitychange', clear)
     }
   }, [])
 
