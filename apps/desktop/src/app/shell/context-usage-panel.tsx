@@ -95,7 +95,13 @@ export function ContextUsagePanel({
       <p className="text-[0.6875rem] text-foreground">{copy.percentFull(contextPercent)}</p>
 
       <p className="text-[0.6875rem] text-muted-foreground">
-        {copy.cacheSummary(compactNumber(currentUsage.cache_read ?? 0), compactNumber(currentUsage.cache_write ?? 0))}
+        {copy.cacheSummary(
+          compactNumber(currentUsage.cache_read ?? 0),
+          compactNumber(currentUsage.cache_write ?? 0),
+          currentUsage.prompt
+            ? `${Math.round(((currentUsage.cache_read ?? 0) / currentUsage.prompt) * 100)}%`
+            : null
+        )}
       </p>
 
       <ContextUsageBar categories={categories} segmentTotal={segmentTotal} />

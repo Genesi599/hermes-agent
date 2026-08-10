@@ -684,6 +684,7 @@ export interface UsageStats {
   cost_usd?: number
   input: number
   output: number
+  prompt?: number
   total: number
 }
 

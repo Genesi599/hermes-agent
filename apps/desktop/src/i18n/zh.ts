@@ -2731,7 +2731,7 @@ export const zh: Translations = {
         empty: '暂无上下文数据',
         loading: '正在加载明细…',
         percentFull: percent => `已用 ${percent}%`,
-        cacheSummary: (read, write) => `缓存命中 ${read} · 写入 ${write}`,
+        cacheSummary: (read, write, rate) => `缓存命中 ${read} · 写入 ${write}${rate ? ` · 命中率 ${rate}` : ''}`,
         title: '上下文用量',
         tokenSummary: (used, max) => `${used} / ${max} Tokens`
       },

@@ -2553,7 +2553,7 @@ export const en: Translations = {
         empty: 'No context data yet',
         loading: 'Loading breakdown…',
         percentFull: percent => `${percent}% Full`,
-        cacheSummary: (read, write) => `cache hit ${read} · write ${write}`,
+        cacheSummary: (read, write, rate) => `cache hit ${read} · write ${write}${rate ? ` · hit ${rate}` : ''}`,
         title: 'Context Usage',
         tokenSummary: (used, max) => `${used} / ${max} Tokens`
       },
