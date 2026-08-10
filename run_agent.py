@@ -1692,21 +1692,26 @@ class AIAgent:
         if stripped.endswith('^'):
             return True
         last = stripped[-1]
-        if last in '.!?:)"\']}。！？：）】」』》^':
+        if last in '.!?:"\']}。！？）】」』》^':
             return True
         # Emoji ranges (Misc Symbols, Dingbats, Emoticons, Supplemental, etc.)
         if ord(last) >= 0x1F300:
             return True
         return False
 
-    def _is_ollama_glm_backend(self) -> bool:
-        """Detect Ollama-hosted GLM models affected by stop misreports.
+    def _is_truncation_misreport_risk(self) -> bool:
+        """Detect backend families that occasionally misreport a cut-off
+        response as finish_reason='stop'.
 
-        Ollama can misreport truncated output as finish_reason='stop'.
-        Detection relies on explicit Ollama signatures:
-        - Port 11434 (Ollama default)
-        - "ollama" in the base URL (e.g. ollama.local, /ollama/ path)
-        - provider explicitly set to "ollama"
+        Original family (8011aa31ba): Ollama-hosted GLM — Ollama can
+        misreport truncated output as 'stop'. Detection relies on explicit
+        Ollama signatures (port 11434, "ollama" in base URL, provider
+        "ollama") plus GLM/zai models.
+
+        Extended (2026-08-10): the deepseek / opencode-go pool exhibited the
+        same symptom — "…和 pubspec：" cut mid-sentence with finish=stop
+        (session 20260715_202017_cb0dc0 and 3 more across 2026-08-08).
+        Matches "deepseek" in model/provider or provider opencode-go.
 
         Crucially it does NOT match arbitrary local/private endpoints
         (LiteLLM/sglang/vLLM/LM Studio proxies, Tailscale boxes), which
@@ -1715,11 +1720,19 @@ class AIAgent:
         """
         model_lower = (self.model or "").lower()
         provider_lower = (self.provider or "").lower()
-        if "glm" not in model_lower and provider_lower != "zai":
-            return False
-        if "ollama" in self._base_url_lower or ":11434" in self._base_url_lower:
-            return True
-        return provider_lower == "ollama"
+
+        ollama_glm = ("glm" in model_lower or provider_lower == "zai") and (
+            "ollama" in self._base_url_lower
+            or ":11434" in self._base_url_lower
+            or provider_lower == "ollama"
+        )
+        deepseek_pool = (
+            "deepseek" in model_lower
+            or "deepseek" in provider_lower
+            or provider_lower in ("opencode-go", "opencode_go")
+        )
+
+        return ollama_glm or deepseek_pool
 
     def _should_treat_stop_as_truncated(
         self,
@@ -1730,7 +1743,7 @@ class AIAgent:
         """Detect conservative stop->length misreports for Ollama-hosted GLM models."""
         if finish_reason != "stop" or self.api_mode != "chat_completions":
             return False
-        if not self._is_ollama_glm_backend():
+        if not self._is_truncation_misreport_risk():
             return False
         if not any(
             isinstance(msg, dict) and msg.get("role") == "tool"
