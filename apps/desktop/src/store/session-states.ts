@@ -139,11 +139,15 @@ export function shouldMarkSessionUnread(
   backgrounded: boolean,
   sessions = $sessions.get()
 ): boolean {
-  return (
-    backgrounded ||
-    !focusedStoredSessionId ||
-    !idsShareLineage(storedSessionId, focusedStoredSessionId, sessions)
-  )
+  // 当前窗口正在显示的会话(聚焦,含压缩谱系)完成 → 不算未读:
+  // 无论 Hermes 窗口是否系统聚焦(用户在别的窗口时 Hermes 就是后台),
+  // 回到窗口看到的还是这个会话,不需要绿点提示。其余任何完成的会话
+  // (后台 tab、其他会话)一律标记未读。
+  if (focusedStoredSessionId && idsShareLineage(storedSessionId, focusedStoredSessionId, sessions)) {
+    return false
+  }
+
+  return true
 }
 
 /** Stored ids whose turn ended within the grace window. Prunes expired. */
