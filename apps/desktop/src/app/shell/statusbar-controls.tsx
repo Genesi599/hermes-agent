@@ -218,8 +218,8 @@ const StatusbarItemView = memo(function StatusbarItemView({
   const content = (
     <>
       {item.icon}
-      {item.label && <span className="truncate">{item.label}</span>}
-      {item.detail && <span className="truncate text-muted-foreground/80">{item.detail}</span>}
+      {item.label && <span className="min-w-0 truncate">{item.label}</span>}
+      {item.detail && <span className="min-w-0 shrink-0 truncate text-muted-foreground/80">{item.detail}</span>}
     </>
   )
 

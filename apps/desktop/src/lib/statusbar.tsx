@@ -87,5 +87,9 @@ export function LiveDuration({ since }: { since: number | null | undefined }) {
     return null
   }
 
-  return <StableText>{formatDuration(now - since)}</StableText>
+  // tabular-nums keeps the digits monospaced so the ticking timer doesn't
+  // jiggle — same stability as the previous per-char StableText hack, without
+  // the fixed w-[1ch] boxes that overflow/overlap in narrow status bars
+  // (2026-08-10: "Running process" label collided with the seconds readout).
+  return <span className="whitespace-nowrap tabular-nums">{formatDuration(now - since)}</span>
 }
