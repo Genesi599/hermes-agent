@@ -44,7 +44,15 @@ export function usageContextLabel(usage: UsageStats): string {
   if (usage.context_max) {
     const base = `${compactNumber(usage.context_used ?? 0)}/${compactNumber(usage.context_max)}`
 
-    return usage.cache_read ? `${base} \u00b7 cache ${compactNumber(usage.cache_read)}` : base
+    if (usage.cache_read) {
+      const hitRate = usage.prompt ? Math.round((usage.cache_read / usage.prompt) * 100) : null
+
+      return hitRate
+        ? `${base} \u00b7 cache ${compactNumber(usage.cache_read)} (${hitRate}%)`
+        : `${base} \u00b7 cache ${compactNumber(usage.cache_read)}`
+    }
+
+    return base
   }
 
   return usage.total > 0 ? `${compactNumber(usage.total)} tok` : ''
