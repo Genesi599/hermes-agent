@@ -129,6 +129,13 @@ export function shouldMarkSessionUnread(
   backgrounded: boolean,
   sessions = $sessions.get()
 ): boolean {
+  // 自动计划任务(cron)会话完成不标未读:用户没有主动发起,也不会回到
+  // 电脑来"读"它,绿点/任务栏角标只会造成"有未读完成"的假象。复盘等
+  // 内部自动化跑在 cron 会话里,同样排除。
+  if (storedSessionId.startsWith('cron_')) {
+    return false
+  }
+
   // 当前窗口正在显示的会话(聚焦,含压缩谱系)完成 → 不算未读:
   // 无论 Hermes 窗口是否系统聚焦(用户在别的窗口时 Hermes 就是后台),
   // 回到窗口看到的还是这个会话,不需要绿点提示。其余任何完成的会话
@@ -642,9 +649,16 @@ export function focusOpenSession(storedSessionId: string): 'main' | 'tile' | nul
 
     if (group) {
       noteActiveTreeGroup(group.id)
+
+      return 'tile'
     }
 
-    return 'tile'
+    // The tile is tracked in the store but its pane is NOT (yet) in the
+    // layout tree — e.g. right after a restore/relaunch the tree adopts panes
+    // asynchronously. Claiming it is on screen here would swallow the click
+    // (no fronting, no navigation), so report a miss and let the caller load
+    // the session into main instead of eating the first activation.
+    return null
   }
 
   // Already the main session: front the workspace tab and drop tile focus so
