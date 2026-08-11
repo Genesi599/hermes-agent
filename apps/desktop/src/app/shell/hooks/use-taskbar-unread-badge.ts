@@ -115,7 +115,11 @@ export async function reconcileTaskbarUnreadSessions(): Promise<void> {
     // Use one id per compression lineage. `mergeSessionPage` applies the same
     // rule to the sidebar, so the taskbar badge cannot count an old tip that
     // is no longer rendered as its own conversation.
-    const canonicalIds = canonicalUnreadSessionIds(unreadIds, sessions)
+    const canonicalIds = canonicalUnreadSessionIds(unreadIds, sessions).filter(id => !id.startsWith('cron_'))
+    // Cron/automation sessions are excluded from the badge entirely — their
+    // completions are not something the user comes back to read. Dropping them
+    // from canonicalIds above also stops the re-add loop below from resurrecting
+    // residue that a previous version left in the persisted set.
     const staleIds = unreadIds.filter(sessionId => !canonicalIds.includes(sessionId))
 
     if (staleIds.length) {

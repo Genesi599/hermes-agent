@@ -10,7 +10,8 @@ import {
   focusedSessionNeedsRoute,
   markSelectionRestore,
   orderTilesByTree,
-  selectionHomesToWorkspace
+  selectionHomesToWorkspace,
+  shouldMarkSessionUnread
 } from '@/store/session-states'
 
 const tile = (storedSessionId: string): SessionTile => ({ storedSessionId })
@@ -225,5 +226,16 @@ describe('reopenLastClosedTile focuses the restored tab', () => {
     expect(states.$sessionTiles.get().some(t => t.storedSessionId === 'closed')).toBe(true)
     expect(findGroupOfPane(tree.$layoutTree.get()!, tilePane('closed'))?.active).toBe(tilePane('closed'))
     expect(tree.$activeTreeGroup.get()).toBe('grp-main')
+  })
+})
+
+describe('shouldMarkSessionUnread (cron exclusion)', () => {
+  it('never marks an automated cron session unread', () => {
+    expect(shouldMarkSessionUnread('cron_6d5a83c11c17_20260811_093018', null, true)).toBe(false)
+    expect(shouldMarkSessionUnread('cron_job_123', 'other-session', false)).toBe(false)
+  })
+
+  it('still marks a normal background completion unread', () => {
+    expect(shouldMarkSessionUnread('20260811_141303_6536f5', null, true)).toBe(true)
   })
 })
