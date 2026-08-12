@@ -819,6 +819,49 @@ def _canonicalize_tool_call_arguments(arg_str: str) -> str:
     return canonical
 
 
+
+def _append_task_status_nudge(api_messages: list, enabled: bool) -> None:
+    """Append a task-status-rail reminder to the last user message before send.
+
+    The rail guidance also lives in the system prompt, but long/compressed
+    sessions bury it and smaller models (deepseek-v4-flash) ignore it. A fresh
+    nudge on the live user turn fixes adherence. Idempotent: never nudges a
+    message that already carries the marker, so tool-call loops don't stack
+    reminders. The mutation is request-level only (api_messages is a copy) —
+    the stored transcript is untouched.
+    """
+    if not enabled:
+        return
+    nudge = (
+        "\n\n[SYSTEM REQUIREMENT] You MUST end this reply with exactly one line, no more, no less: "
+        "[HERMES_TASK_STATUS]{\"background\":\"...\",\"progress\":\"...\","
+        "\"next\":\"...\",\"skip\":false}[/HERMES_TASK_STATUS]. "
+        "background=当前任务背景(一句话), progress=已完成进展(一句话), next=下一步(一句话), "
+        "用和用户相同的语言; 纯闲聊或一次性问答时三个字段留空且 skip:true. 这是硬性要求, 永远不要省略."
+    )
+    for am in reversed(api_messages):
+        if am.get("role") != "user":
+            continue
+        content = am.get("content")
+        if isinstance(content, str):
+            if "HERMES_TASK_STATUS" in content:
+                return
+            am["content"] = content + nudge
+            return
+        if isinstance(content, list):
+            for part in reversed(content):
+                if (
+                    isinstance(part, dict)
+                    and part.get("type") == "text"
+                    and isinstance(part.get("text"), str)
+                ):
+                    if "HERMES_TASK_STATUS" in part["text"]:
+                        return
+                    part["text"] = part["text"] + nudge
+                    return
+        return
+
+
 def _canonicalize_api_tool_calls(api_messages) -> None:
     """Canonicalize tool-call argument JSON on the send-path message copy.
 
@@ -1735,6 +1778,12 @@ def run_conversation(
             effective_system = (effective_system + "\n\n" + agent.ephemeral_system_prompt).strip()
         if effective_system:
             api_messages = [{"role": "system", "content": effective_system}] + api_messages
+
+        # Task-status rail: nudge the live user turn so even small models
+        # (deepseek-v4-flash) emit the [HERMES_TASK_STATUS] block.  Idempotent,
+        # request-level only — the stored transcript is not modified.
+        if getattr(agent, "_task_status_guidance", True):
+            _append_task_status_nudge(api_messages, True)
 
         if moa_config:
             try:
