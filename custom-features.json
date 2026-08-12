@@ -1,7 +1,10 @@
 {
   "schema_version": 1,
   "baseline_commit": "46d277505d89a15cd27e66711421603a6978f4eb",
-  "guard_paths": ["custom-features.json", "scripts/Verify-HermesCustomFeatures.ps1"],
+  "guard_paths": [
+    "custom-features.json",
+    "scripts/Verify-HermesCustomFeatures.ps1"
+  ],
   "tracked_patches": [
     {
       "source_commit": "b661b77fff",
@@ -367,14 +370,123 @@
       "source_commit": "49c6927dc3",
       "patch_id": "ee3f96e2776fd0db05c9206ab0a57c85d0913978",
       "feature": "title-preview"
+    },
+    {
+      "source_commit": "b8e5dce7f1e5",
+      "patch_id": "3fea961e79af500566b1196da27ea7e5f868d332",
+      "feature": "conversation-branches"
+    },
+    {
+      "source_commit": "a9337601ec6f",
+      "patch_id": "b216ad1a640b68b5f0de90152e0f1047f50cd9cd",
+      "feature": "desktop-ui"
+    },
+    {
+      "source_commit": "d3e5f1727a2b",
+      "patch_id": "937b568409c25cb3b623f71c099ed484f2aca42b",
+      "feature": "desktop-ui"
+    },
+    {
+      "source_commit": "09301b3df2de",
+      "patch_id": "20a7a94c44f445fec4790d254e00352b33d21f06",
+      "feature": "desktop-ui"
+    },
+    {
+      "source_commit": "7db44f985306",
+      "patch_id": "a96ae4e1aeb0ad0ec506cecf8543359a75926413",
+      "feature": "desktop-ui"
+    },
+    {
+      "source_commit": "416535093a90",
+      "patch_id": "6710d1743a78269dd4659b675b3002a117be286c",
+      "feature": "desktop-ui"
+    },
+    {
+      "source_commit": "52f8babccae7",
+      "patch_id": "c03f110bb9d6edadf674b3b6bf5fd5e2812f75db",
+      "feature": "desktop-ui"
+    },
+    {
+      "source_commit": "e89f0022c887",
+      "patch_id": "19da0c2dcb72f2c3bb88eb34824118f80891281f",
+      "feature": "desktop-ui"
+    },
+    {
+      "source_commit": "00251804bd7a",
+      "patch_id": "17f707f5dbb0698e158ff2d8b3f100420e89c987",
+      "feature": "desktop-ui"
+    },
+    {
+      "source_commit": "cbacd67fb543",
+      "patch_id": "a84999908e46c48ef03728b1a981c48d81810fae",
+      "feature": "transient-retry"
+    },
+    {
+      "source_commit": "2706a11970cb",
+      "patch_id": "31e51b34e3d90ee7ce831de7092d8f3b7094449f",
+      "feature": "desktop-ui"
+    },
+    {
+      "source_commit": "f94f7d17c00c",
+      "patch_id": "cc9392c27d4ece3a867a6fd73639b52b57a63651",
+      "feature": "desktop-ui"
+    },
+    {
+      "source_commit": "b3a9e25e3b69",
+      "patch_id": "022b1ed6d2f4a6295d1cb34a5de695a649b0256c",
+      "feature": "desktop-ui"
+    },
+    {
+      "source_commit": "636635d84dfe",
+      "patch_id": "e46e35fb11e58ae5f0f76d06bf18f7c5063c4ce0",
+      "feature": "desktop-ui"
+    },
+    {
+      "source_commit": "afcb7df9c7e8",
+      "patch_id": "6916b252abdfa6f21fba9efd49968d2f242e0e1d",
+      "feature": "transient-retry"
+    },
+    {
+      "source_commit": "4aa0a8e77b71",
+      "patch_id": "739b82225e4f8c4619d3cba17460bbe483df35c9",
+      "feature": "runtime-status-and-sidebar"
+    },
+    {
+      "source_commit": "591d13373435",
+      "patch_id": "250cf681c13dd51089bd7db98dab4b2eda511993",
+      "feature": "runtime-status-and-sidebar"
+    },
+    {
+      "source_commit": "b943149d7425",
+      "patch_id": "fbd913f1c755a0dbd7b7376e2cbdc68f02a0cd90",
+      "feature": "runtime-status-and-sidebar"
+    },
+    {
+      "source_commit": "f1d56a65bd9b",
+      "patch_id": "baa425cfaedf334667e36d0a46c77929f8c695bc",
+      "feature": "runtime-status-and-sidebar"
+    },
+    {
+      "source_commit": "0b357686b9d8",
+      "patch_id": "bc9d3f4b418139bc9e9bdb88718912402b38c264",
+      "feature": "runtime-status-and-sidebar"
     }
   ],
   "features": [
     {
       "id": "cross-device-session",
       "label": "Desktop/mobile Session and message sync",
-      "commits": ["76fe833b20", "8eef345f3c", "92b912083b", "edd7d12d0d"],
-      "source_paths": ["hermes_state.py", "tui_gateway/server.py", "apps/desktop/src/store/session.ts"],
+      "commits": [
+        "76fe833b20",
+        "8eef345f3c",
+        "92b912083b",
+        "edd7d12d0d"
+      ],
+      "source_paths": [
+        "hermes_state.py",
+        "tui_gateway/server.py",
+        "apps/desktop/src/store/session.ts"
+      ],
       "test_paths": [
         "tests/hermes_state/test_session_live_status.py",
         "tests/test_tui_gateway_server.py",
@@ -390,7 +502,15 @@
     {
       "id": "session-identity",
       "label": "stored/runtime identity and send recovery",
-      "commits": ["59112e8bf4", "46458913bd", "782d1dcf9b", "8ef26104ae", "a1eed1d17c", "be3099a47a", "bddda86718"],
+      "commits": [
+        "59112e8bf4",
+        "46458913bd",
+        "782d1dcf9b",
+        "8ef26104ae",
+        "a1eed1d17c",
+        "be3099a47a",
+        "bddda86718"
+      ],
       "source_paths": [
         "tui_gateway/server.py",
         "apps/desktop/src/app/session/hooks/use-session-actions/index.ts",
@@ -404,9 +524,16 @@
     {
       "id": "branch-context",
       "label": "branch context isolation",
-      "commits": ["d4dc959ec6", "51652b5be8"],
-      "source_paths": ["apps/desktop/src/app/session/hooks/use-session-actions/index.ts"],
-      "test_paths": ["tests/cli/test_branch_command.py"]
+      "commits": [
+        "d4dc959ec6",
+        "51652b5be8"
+      ],
+      "source_paths": [
+        "apps/desktop/src/app/session/hooks/use-session-actions/index.ts"
+      ],
+      "test_paths": [
+        "tests/cli/test_branch_command.py"
+      ]
     },
     {
       "id": "branch-merge",
@@ -449,17 +576,38 @@
     {
       "id": "experience-review",
       "label": "20-user-message review and visible progress",
-      "commits": ["be99c6b029", "ae1b355606", "19481f719f", "355398d406", "22a2e06506", "4a5a953a5d", "818aae12ae"],
+      "commits": [
+        "be99c6b029",
+        "ae1b355606",
+        "19481f719f",
+        "355398d406",
+        "22a2e06506",
+        "4a5a953a5d",
+        "818aae12ae"
+      ],
       "source_paths": [
         "tui_gateway/server.py",
         "apps/desktop/src/app/session/hooks/use-message-stream/gateway-event.ts"
       ],
-      "test_paths": ["tests/test_background_review_session_isolation.py"]
+      "test_paths": [
+        "tests/test_background_review_session_isolation.py"
+      ]
     },
     {
       "id": "runtime-status",
       "label": "runtime recovery and status reconciliation",
-      "commits": ["a2289fa57e", "c9e338e3e2", "59d9b2fd30", "5227f6bc27", "7003eae129", "c645100d63", "354b9476d0", "cabb4b5929", "6911929477", "6a46de585a"],
+      "commits": [
+        "a2289fa57e",
+        "c9e338e3e2",
+        "59d9b2fd30",
+        "5227f6bc27",
+        "7003eae129",
+        "c645100d63",
+        "354b9476d0",
+        "cabb4b5929",
+        "6911929477",
+        "6a46de585a"
+      ],
       "source_paths": [
         "tui_gateway/server.py",
         "hermes_state.py",
@@ -475,19 +623,43 @@
     {
       "id": "model-switch",
       "label": "queued and all-session model switching",
-      "commits": ["ec7f5bee64", "72b904fae6", "2d47e82409", "535f2526a8", "546784e038"],
+      "commits": [
+        "ec7f5bee64",
+        "72b904fae6",
+        "2d47e82409",
+        "535f2526a8",
+        "546784e038"
+      ],
       "source_paths": [
         "tui_gateway/server.py",
         "hermes_cli/model_switch.py",
         "apps/desktop/src/app/session/hooks/use-session-actions/index.ts"
       ],
-      "test_paths": ["tests/test_tui_gateway_server.py", "tests/hermes_cli/test_user_providers_model_switch.py"]
+      "test_paths": [
+        "tests/test_tui_gateway_server.py",
+        "tests/hermes_cli/test_user_providers_model_switch.py"
+      ]
     },
     {
       "id": "transient-retry",
       "label": "continuous upstream and incomplete-response retry",
-      "commits": ["2c357c4315", "424ca75dc7", "4bf551cf2e", "42ac6056fd", "c589d827d0", "3d5d9a6fa5", "457c32d69b", "0436d1fac5", "e570751e4d", "dd0841e85f"],
-      "source_paths": ["agent/conversation_loop.py", "agent/codex_runtime.py", "agent/relay_llm.py"],
+      "commits": [
+        "2c357c4315",
+        "424ca75dc7",
+        "4bf551cf2e",
+        "42ac6056fd",
+        "c589d827d0",
+        "3d5d9a6fa5",
+        "457c32d69b",
+        "0436d1fac5",
+        "e570751e4d",
+        "dd0841e85f"
+      ],
+      "source_paths": [
+        "agent/conversation_loop.py",
+        "agent/codex_runtime.py",
+        "agent/relay_llm.py"
+      ],
       "test_paths": [
         "tests/agent/test_relay_llm.py",
         "tests/run_agent/test_transient_retry_forever.py",
@@ -600,14 +772,23 @@
     {
       "id": "windows-deploy",
       "label": "Windows deployment and EPIPE protection",
-      "commits": ["cc2d077cff", "c095260f9e"],
-      "source_paths": ["apps/desktop/electron"],
-      "test_paths": ["apps/desktop/electron"]
+      "commits": [
+        "cc2d077cff",
+        "c095260f9e"
+      ],
+      "source_paths": [
+        "apps/desktop/electron"
+      ],
+      "test_paths": [
+        "apps/desktop/electron"
+      ]
     },
     {
       "id": "conversation-branches",
       "label": "durable visible batch Conversation Branch management",
-      "commits": ["060d325a12"],
+      "commits": [
+        "060d325a12"
+      ],
       "source_paths": [
         "hermes_state.py",
         "tui_gateway/conversation_branches.py",
@@ -640,8 +821,14 @@
     {
       "id": "shared-core-memory",
       "label": "reload AI-Agent-Hub core memory after compression",
-      "commits": ["e6e379f0b6"],
-      "source_paths": ["agent/shared_core_memory.py", "agent/conversation_compression.py", "agent/system_prompt.py"],
+      "commits": [
+        "e6e379f0b6"
+      ],
+      "source_paths": [
+        "agent/shared_core_memory.py",
+        "agent/conversation_compression.py",
+        "agent/system_prompt.py"
+      ],
       "test_paths": [
         "tests/agent/test_shared_core_memory.py",
         "tests/agent/test_system_prompt.py",
@@ -651,7 +838,9 @@
     {
       "id": "title-preview",
       "label": "filter internal compaction messages from titles and previews",
-      "commits": ["49c6927dc3"],
+      "commits": [
+        "49c6927dc3"
+      ],
       "source_paths": [
         "agent/title_generator.py",
         "hermes_state_common.py",
@@ -679,7 +868,13 @@
       "id": "python-retry",
       "cwd": ".",
       "command": "uv",
-      "args": ["run", "--frozen", "pytest", "tests/run_agent/test_transient_retry_forever.py", "-q"]
+      "args": [
+        "run",
+        "--frozen",
+        "pytest",
+        "tests/run_agent/test_transient_retry_forever.py",
+        "-q"
+      ]
     },
     {
       "id": "codex-incomplete",

@@ -35,7 +35,9 @@ function Assert-Ancestor([string]$Ancestor, [string]$Descendant, [string]$Label)
 }
 
 function Get-PatchId([string]$Commit) {
-    $patchOutput = @(& git show --format= --binary --no-ext-diff --no-renames $Commit | & git patch-id --stable 2>&1)
+    # PS 5.1 pipes decode native output as GBK and convert CRLF, corrupting
+    # `git show --binary` bytes; delegate patch-id to python for byte-exact pipes.
+    $patchOutput = @(& python (Join-Path $PSScriptRoot 'hermes_patch_id.py') $Commit)
     if ($LASTEXITCODE -ne 0 -or $patchOutput.Count -eq 0) {
         throw "Could not calculate patch-id for $Commit"
     }
