@@ -1822,6 +1822,11 @@ def init_agent(
     # targets.
     agent._task_completion_guidance = bool(_agent_section.get("task_completion_guidance", True))
 
+    # Task-status rail guidance toggle.  Default True.  Tells the model to
+    # close each turn with a [HERMES_TASK_STATUS] JSON block the desktop app
+    # renders into the per-session status rail (background / progress / next).
+    agent._task_status_guidance = bool(_agent_section.get("task_status_guidance", True))
+
     # Universal parallel-tool-call guidance toggle.  Default True.  Separate
     # flag from task_completion_guidance because a user may want one but not
     # the other.  Steers the model to batch independent tool calls into a

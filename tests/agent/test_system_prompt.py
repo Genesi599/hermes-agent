@@ -14,6 +14,7 @@ def _make_agent(**overrides):
         skip_context_files=False,
         valid_tool_names=[],
         _task_completion_guidance=False,
+        _task_status_guidance=False,
         _tool_use_enforcement=False,
         _environment_probe=False,
         _kanban_worker_guidance="",
@@ -197,6 +198,27 @@ def test_coding_prompt_preserves_legacy_workspace_order(monkeypatch):
 
     assert prompt == expected
     assert agent._cached_system_prompt_static == "\n\n".join(expected.split("\n\n")[:4])
+
+
+class TestTaskStatusGuidance:
+    """Task-status rail guidance is injected when enabled, omitted when off."""
+
+    def _build_stable(self, agent):
+        with (
+            patch("run_agent.load_soul_md", return_value=""),
+            patch("run_agent.build_nous_subscription_prompt", return_value=""),
+            patch("run_agent.build_environment_hints", return_value=""),
+            patch("run_agent.build_context_files_prompt", return_value=""),
+        ):
+            return build_system_prompt_parts(agent)["stable"]
+
+    def test_injected_by_default(self):
+        stable = self._build_stable(_make_agent(valid_tool_names=["read_file"], _task_status_guidance=True))
+        assert "[HERMES_TASK_STATUS]" in stable
+
+    def test_omitted_when_disabled(self):
+        stable = self._build_stable(_make_agent(valid_tool_names=["read_file"], _task_status_guidance=False))
+        assert "[HERMES_TASK_STATUS]" not in stable
 
 
 class TestTelegramRichMessagesHint:

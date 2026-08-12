@@ -4,6 +4,7 @@ import { type BillingBlock, skillInvocationText } from '@hermes/shared'
 import { extractImageRefs } from '@/lib/embedded-images'
 import { dedupeGeneratedImageEchoesInParts } from '@/lib/generated-images'
 import { mediaDisplayLabel, mediaMarkdownHref } from '@/lib/media'
+import { parseTaskStatus, stripTaskStatusBlocks, type TaskStatus } from '@/lib/task-status'
 import { normalize } from '@/lib/text'
 import { parseTodos } from '@/lib/todos'
 import type { ExperienceReviewInfo, MessageReaction, SessionMessage, UsageStats } from '@/types/hermes'
@@ -33,6 +34,8 @@ export type ChatMessage = {
   rowId?: number
   /** Emoji reactions on this message — one per author (see MessageReaction). */
   reactions?: MessageReaction[]
+  /** Task-status block parsed out of an assistant body (rendered in the rail). */
+  taskStatus?: TaskStatus | null
 }
 
 export type GatewayEventPayload = {
@@ -1033,8 +1036,15 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
     // optimistic composer already uses) and render them via the dedicated
     // attachments row below the bubble instead.
     const imageRefExtraction = displayRole === 'user' && rawDisplayContent ? extractImageRefs(rawDisplayContent) : null
-    const displayContent = imageRefExtraction ? imageRefExtraction.cleanedText : rawDisplayContent
+    let displayContent = imageRefExtraction ? imageRefExtraction.cleanedText : rawDisplayContent
     const extractedAttachmentRefs = imageRefExtraction?.refs.length ? imageRefExtraction.refs : undefined
+
+    // Task-status block: strip from the visible body, keep for the rail.
+    let taskStatus: TaskStatus | null = null
+    if (message.role === 'assistant' && displayContent) {
+      taskStatus = parseTaskStatus(displayContent)
+      displayContent = stripTaskStatusBlocks(displayContent)
+    }
 
     const parts: ChatMessagePart[] = []
 
@@ -1114,7 +1124,8 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
       timestamp: message.timestamp,
       ...(rowId !== undefined ? { rowId } : {}),
       ...(reactions.length ? { reactions } : {}),
-      ...(extractedAttachmentRefs ? { attachmentRefs: extractedAttachmentRefs } : {})
+      ...(extractedAttachmentRefs ? { attachmentRefs: extractedAttachmentRefs } : {}),
+      ...(taskStatus ? { taskStatus } : {})
     })
 
     activeAssistantIndex = message.role === 'assistant' ? result.length - 1 : null
