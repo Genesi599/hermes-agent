@@ -836,7 +836,9 @@ def _append_task_status_nudge(api_messages: list, enabled: bool) -> None:
         "\n\n[SYSTEM REQUIREMENT] You MUST end this reply with exactly one line, no more, no less: "
         "[HERMES_TASK_STATUS]{\"background\":\"...\",\"progress\":\"...\","
         "\"next\":\"...\",\"skip\":false}[/HERMES_TASK_STATUS]. "
-        "background=当前任务背景(一句话), progress=已完成进展(一句话), next=下一步(一句话), "
+        "background=整个对话的大背景(这个会话在做什么任务, 一句话, 不是当前这一轮的小问题), "
+        "progress=整个大背景下的当前进度(整个任务推进到哪了, 一句话, 不是这一轮回复的进度), "
+        "next=推动整个任务前进的下一步(一句话), "
         "用和用户相同的语言; 纯闲聊或一次性问答时三个字段留空且 skip:true. 这是硬性要求, 永远不要省略."
     )
     for am in reversed(api_messages):
