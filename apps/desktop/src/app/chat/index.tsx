@@ -43,6 +43,7 @@ import {
   shouldMigrateComposerScope
 } from '@/store/session'
 import { isSessionFamilyPinned } from '@/store/session-pins'
+import { $taskStatusRailEnabled, toggleTaskStatusRail } from '@/store/task-status'
 import { isSecondaryWindow, isWatchWindow } from '@/store/windows'
 import type { ModelOptionsResponse } from '@/types/hermes'
 
@@ -113,6 +114,7 @@ function ChatHeader({
   const sessions = useStore($sessions)
   const pinnedSessionIds = useStore($pinnedSessionIds)
   const profiles = useStore($profiles)
+  const taskStatusRailEnabled = useStore($taskStatusRailEnabled)
 
   const activeStoredSession =
     (selectedSessionId && sessions.find(session => sessionMatchesStoredId(session, selectedSessionId))) || null
@@ -150,6 +152,17 @@ function ChatHeader({
         }}
       >
         {showProfileTag && <ProfileTag className="pointer-events-auto mr-1.5" profile={activeStoredSession?.profile} />}
+        {!taskStatusRailEnabled && (
+          <button
+            aria-label="开启任务状态侧边栏"
+            className="grid size-6 shrink-0 place-items-center rounded text-(--ui-text-tertiary) hover:bg-(--ui-hover-overlay) hover:text-(--ui-text-secondary)"
+            onClick={toggleTaskStatusRail}
+            title="开启任务状态侧边栏"
+            type="button"
+          >
+            <span aria-hidden>◧</span>
+          </button>
+        )}
         <div className="min-w-0">
           <SessionActionsMenu
             align="start"
