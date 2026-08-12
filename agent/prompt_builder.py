@@ -356,6 +356,36 @@ TASK_COMPLETION_GUIDANCE = (
     "is always better than inventing a result."
 )
 
+# Task-status rail guidance — applied to ALL models. The desktop app shows a
+# small per-session rail with three fields (task background / progress / next)
+# and strips the marker block from the visible body, so the model is asked to
+# emit it on every reply. `skip:true` keeps the previous status for chat /
+# one-shot answers. Gated by config.yaml `agent.task_status_guidance`
+# (default True) so users who want a leaner prompt can turn it off.
+TASK_STATUS_GUIDANCE = (
+    "# Task-status rail\n"
+    "The desktop app shows a small per-session status rail with three fields: "
+    "task background, progress, and next step. At the END of every reply, add "
+    "one line in EXACTLY this form (no other markup, no code fence):\n"
+    "[HERMES_TASK_STATUS]{\"background\":\"...\",\"progress\":\"...\","
+    "\"next\":\"...\",\"skip\":false}[/HERMES_TASK_STATUS]\n"
+    "Rules:\n"
+    "- background: one sentence restating the user's current task/context "
+    "(what the user is working toward).\n"
+    "- progress: one sentence on what has been done so far in the current "
+    "task/turn.\n"
+    "- next: one sentence on the immediate next action.\n"
+    "- Use the same language as the user's message.\n"
+    "- If the reply is casual chat or a trivial one-shot answer with no task "
+    "in progress, emit {\"background\":\"\",\"progress\":\"\","
+    "\"next\":\"\",\"skip\":true}.\n"
+    "- The block is consumed by the app and never shown to the user — do not "
+    "explain it.\n"
+    "- Keep each field under ~60 characters (Chinese) / ~90 (English).\n"
+    "- Always emit the block at the very end of the reply, even if the reply "
+    "already ended with a code block."
+)
+
 # Universal parallel-tool-call guidance — applied to ALL models.
 #
 # Why this matters for cost: every assistant turn resends the entire
