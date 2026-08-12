@@ -213,13 +213,6 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     if getattr(agent, "_task_completion_guidance", True) and agent.valid_tool_names:
         stable_parts.append(TASK_COMPLETION_GUIDANCE)
 
-    # Task-status rail: model closes each turn with a small structured block
-    # (background / progress / next) the desktop app renders into the
-    # per-session status rail. Independent of tool availability — the block is
-    # only consumed by the client UI.
-    if getattr(agent, "_task_status_guidance", True):
-        stable_parts.append(TASK_STATUS_GUIDANCE)
-
     # Universal parallel-tool-call guidance.  Tells the model to batch
     # independent tool calls into one assistant turn rather than emitting one
     # call per turn — the runtime already runs independent calls concurrently
@@ -550,6 +543,13 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     if agent.platform:
         timestamp_line += f"\nPlatform: {agent.platform}"
     volatile_parts.append(timestamp_line)
+
+    # Task-status rail: placed at the very END of the volatile tier so the
+    # model sees it last (max attention), unlike mid-prompt stable guidance
+    # that smaller models tend to ignore. The desktop app renders the block
+    # into the per-session status rail; only consumed by the client UI.
+    if getattr(agent, "_task_status_guidance", True):
+        volatile_parts.append(TASK_STATUS_GUIDANCE)
 
     return {
         "stable":   "\n\n".join(p.strip() for p in stable_parts   if p and p.strip()),

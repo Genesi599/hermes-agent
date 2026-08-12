@@ -201,24 +201,26 @@ def test_coding_prompt_preserves_legacy_workspace_order(monkeypatch):
 
 
 class TestTaskStatusGuidance:
-    """Task-status rail guidance is injected when enabled, omitted when off."""
+    """Task-status rail guidance is injected at the volatile end when enabled,
+    omitted when off."""
 
-    def _build_stable(self, agent):
+    def _build_parts(self, agent):
         with (
             patch("run_agent.load_soul_md", return_value=""),
             patch("run_agent.build_nous_subscription_prompt", return_value=""),
             patch("run_agent.build_environment_hints", return_value=""),
             patch("run_agent.build_context_files_prompt", return_value=""),
         ):
-            return build_system_prompt_parts(agent)["stable"]
+            return build_system_prompt_parts(agent)
 
-    def test_injected_by_default(self):
-        stable = self._build_stable(_make_agent(valid_tool_names=["read_file"], _task_status_guidance=True))
-        assert "[HERMES_TASK_STATUS]" in stable
+    def test_injected_by_default_in_volatile(self):
+        parts = self._build_parts(_make_agent(valid_tool_names=["read_file"], _task_status_guidance=True))
+        assert "[HERMES_TASK_STATUS]" in parts["volatile"]
+        assert "[HERMES_TASK_STATUS]" not in parts["stable"]
 
     def test_omitted_when_disabled(self):
-        stable = self._build_stable(_make_agent(valid_tool_names=["read_file"], _task_status_guidance=False))
-        assert "[HERMES_TASK_STATUS]" not in stable
+        parts = self._build_parts(_make_agent(valid_tool_names=["read_file"], _task_status_guidance=False))
+        assert "[HERMES_TASK_STATUS]" not in parts["volatile"]
 
 
 class TestTelegramRichMessagesHint:
