@@ -1692,7 +1692,7 @@ class AIAgent:
         if stripped.endswith('^'):
             return True
         last = stripped[-1]
-        if last in '.!?:"\']}。！？）】」』》^':
+        if last in '.!?:"\']}.。！？：）】」』》^':
             return True
         # Emoji ranges (Misc Symbols, Dingbats, Emoticons, Supplemental, etc.)
         if ord(last) >= 0x1F300:
