@@ -2815,7 +2815,12 @@ def _(rid, params: dict) -> dict:
                 # the parent live (no end_reason='branched'), so the legacy
                 # end_reason heuristic never matches it — the marker is the only
                 # thing that surfaces TUI branches. See issue #20856.
-                model_config={"_branched_from": old_key},
+                # _branch_seed_message_count lets branch-merge isolate only the
+                # child's new turns (see conversation_branches.fork).
+                model_config={
+                    "_branched_from": old_key,
+                    "_branch_seed_message_count": len(history),
+                },
                 parent_session_id=old_key,
                 cwd=_session_cwd(session),
                 # The branch stays on its parent's profile. Explicit stamp (not

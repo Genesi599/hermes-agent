@@ -95,10 +95,11 @@ def test_external_cron_messages_are_hydrated_before_next_turn(server, monkeypatc
 def test_queued_prompt_stays_queued_until_session_lease_is_free(server, monkeypatch):
     session = _session()
     session["queued_prompt"] = {"text": "after cron", "transport": None}
-    monkeypatch.setattr(
-        server, "_try_claim_durable_session_turn", lambda sid, current: False
-    )
+    # The drain path defers to the caller's durable lease claim; while the
+    # session reports running (lease held by cron), the queued prompt must not
+    # be dispatched and must stay queued.
+    session["running"] = True
 
     assert server._drain_queued_prompt("rid", "live-1", session) is False
     assert session["queued_prompt"]["text"] == "after cron"
-    assert session["running"] is False
+    assert session["running"] is True

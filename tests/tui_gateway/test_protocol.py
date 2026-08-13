@@ -785,6 +785,9 @@ def test_session_branch_persists_branched_from_marker(server, monkeypatch):
         def append_message(self, **_kwargs):
             return None
 
+        def append_messages_batch(self, _key, messages, **_kwargs):
+            return None
+
         def set_session_title(self, _key, _title):
             return None
 
@@ -810,6 +813,7 @@ def test_session_branch_persists_branched_from_marker(server, monkeypatch):
         "history": [{"role": "user", "content": "hello"}],
         "history_lock": threading.Lock(),
         "cols": 80,
+        "branch_seed_message_count": 1,
     }
 
     resp = server.handle_request(

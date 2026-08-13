@@ -8684,6 +8684,7 @@ def _lazy_resume_info(
         "tools": {},
         "skills": {},
         "lazy": True,
+        "experience_review": _experience_review_info(session),
         "desktop_contract": DESKTOP_BACKEND_CONTRACT,
         "profile_name": _response_profile_name(profile),
     }
@@ -9126,32 +9127,6 @@ def _(rid, params: dict) -> dict:
     except Exception:
         logger.exception("verification.status failed")
         return _ok(rid, {"verification": {"status": "unknown", "evidence": None}})
-
-
-def _lazy_resume_info(
-    cwd: str,
-    *,
-    model: str = "",
-    provider: str = "",
-    session: dict | None = None,
-) -> dict:
-    """session.info for a not-yet-built session (the shape session.create
-    returns). tools/skills land later when the deferred build emits session.info."""
-    info = {
-        "cwd": cwd,
-        "branch": _git_branch_for_cwd(cwd),
-        "project": _project_info_for_cwd(cwd),
-        "model": model or _resolve_model(),
-        "tools": {},
-        "skills": {},
-        "lazy": True,
-        "experience_review": _experience_review_info(session),
-        "desktop_contract": DESKTOP_BACKEND_CONTRACT,
-        "profile_name": _response_profile_name(profile),
-    }
-    if provider:
-        info["provider"] = provider
-    return info
 
 
 def _deferred_session_record(
