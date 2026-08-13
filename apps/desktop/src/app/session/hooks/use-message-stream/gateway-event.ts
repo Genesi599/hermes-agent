@@ -51,7 +51,7 @@ import {
   $sessions,
   clearPendingModelSelectionIfApplied,
   clearUnreadSessionIds,
-  noteSessionActivity,
+  touchSessionActivity,
   sessionMatchesStoredId,
   setCurrentBranch,
   setCurrentCwdTransient,
@@ -65,8 +65,9 @@ import {
   setTerminalBackend,
   setTurnStartedAt,
   setWorkspaceCwdOwner,
-  setYoloActive
+  setYoloActive,
 } from '@/store/session'
+import { broadcastSessionsChanged } from '@/store/session-sync'
 import { dropSessionState } from '@/store/session-states'
 import { pruneDelegateFallbackSubagents, pruneFinishedSessionSubagents, upsertSubagent } from '@/store/subagents'
 import { clearActiveSessionTodos } from '@/store/todos'

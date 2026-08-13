@@ -94,6 +94,7 @@ interface SessionActions {
   profile?: string
   onPin?: () => void
   onBranch?: () => void
+  onCreateBranches?: () => void
   mergeChildrenCount?: number
   onMergeChildren?: () => Promise<void> | void
   onMergeCompletedChildren?: () => Promise<void> | void
@@ -129,9 +130,9 @@ function SessionColorSwatches({ sessionId }: { sessionId: string }) {
     <ColorSwatches
       clearIcon="circle-slash"
       clearLabel={t.sidebar.projects.noColor}
-      onChange={color => setSessionColorOverride(familyId, color)}
+      onChange={color => setSessionColorOverride(durableId, color)}
       swatches={PROFILE_SWATCHES}
-      value={overrides[familyId] ?? null}
+      value={overrides[durableId] ?? null}
     />
   )
 }
@@ -181,6 +182,7 @@ function useSessionActions({
   profile,
   onPin,
   onBranch,
+  onCreateBranches,
   mergeChildrenCount = 0,
   onMergeChildren,
   onMergeCompletedChildren,

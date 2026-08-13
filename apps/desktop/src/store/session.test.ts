@@ -13,6 +13,7 @@ import {
   $unreadFinishedSessionIds,
   _resetLegacyDiscardForTests,
   applyConfiguredDefaultProjectDir,
+  clearUnreadSessionIds,
   commitWorkspaceCwdForSelectedSession,
   getRememberedRoute,
   getRememberedSessionId,

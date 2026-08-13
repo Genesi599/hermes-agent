@@ -4,6 +4,7 @@ import { useStoreSelector } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
 import { $backgroundRunningSessionIds } from '@/store/composer-status'
 import { $unreadFinishedSessionIds } from '@/store/session'
+import { $sessionDotStateById, type SessionDotState } from '@/store/session-dot-state'
 import { $attentionSessionIds, $stalledSessionIds, $workingSessionIds } from '@/store/session-states'
 
 // A pure lookup table: each state maps to its className, aria-label, and title.
@@ -12,6 +13,10 @@ import { $attentionSessionIds, $stalledSessionIds, $workingSessionIds } from '@/
 type DotVariant = {
   ariaLabel?: (r: Translations['sidebar']['row']) => string
   className: string
+  pulse?: {
+    className: string
+    opacity: number
+  }
   role?: 'status'
   title?: (r: Translations['sidebar']['row']) => string
 }
@@ -78,7 +83,7 @@ const DOT_VARIANTS: Record<SessionDotState, DotVariant> = {
   // get a grey dot, which put a mark of the same weight as a status next to
   // every resting row and made "no color" look like a state of its own.
   idle: {
-    className: 'size-1 rounded-full'
+    className: 'size-1 rounded-full bg-(--ui-text-quaternary)'
   }
 }
 
@@ -121,6 +126,7 @@ export function SessionStatusDot({ storedSessionId, branchStem, className }: Ses
   const isStalled = useStoreSelector($stalledSessionIds, ids => ids.includes(storedSessionId))
   const isUnread = useStoreSelector($unreadFinishedSessionIds, ids => ids.includes(storedSessionId))
   const hasBackground = useStoreSelector($backgroundRunningSessionIds, ids => ids.includes(storedSessionId))
+  const dotState = useStoreSelector($sessionDotStateById, states => states[storedSessionId] ?? 'idle')
 
   const variant = DOT_VARIANTS[dotState]
 

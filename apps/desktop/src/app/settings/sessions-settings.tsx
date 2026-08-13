@@ -4,12 +4,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tip } from '@/components/ui/tooltip'
 import {
+  PROMPT_SUBMIT_REQUEST_TIMEOUT_MS,
   deleteSession,
   getHermesConfigRecord,
   listAllProfileSessions,
   saveHermesConfig,
   setSessionArchived
 } from '@/hermes'
+import { useGatewayRequest } from '@/app/gateway/hooks/use-gateway-request'
 import { useI18n } from '@/i18n'
 import { sessionTitle } from '@/lib/chat-runtime'
 import { pathLeaf } from '@/lib/display-path'
@@ -19,7 +21,7 @@ import { notify, notifyError } from '@/store/notifications'
 import { ensureGatewayProfile } from '@/store/profile'
 import { untombstoneSessions } from '@/store/projects'
 import { applyConfiguredDefaultProjectDir, ensureDefaultWorkspaceCwd, setSessions } from '@/store/session'
-import type { HermesConfigRecord, SessionInfo } from '@/types/hermes'
+import type { HermesConfigRecord, SessionInfo, SessionResumeResponse } from '@/types/hermes'
 
 import { EmptyState, ListRow, SectionHeading, SettingsContent, SettingsSkeleton, ToggleRow } from './primitives'
 import { useDeepLinkHighlight } from './use-deep-link-highlight'

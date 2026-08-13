@@ -103,12 +103,15 @@ interface SidebarSessionsSectionProps {
   onDeleteSession: (sessionId: string) => void
   onArchiveSession: (sessionId: string) => void
   onBranchSession?: (sessionId: string, profile?: string) => void
+  onCreateBranchesSession?: (sessionId: string) => void
   onMergeChildrenSession?: (sessionId: string) => Promise<void> | void
   onMergeSession?: (sessionId: string, profile?: string) => Promise<void> | void
   onTogglePin: (sessionId: string) => void
   onNewSessionInWorkspace?: (path: null | string) => void
   pinned: boolean
   pinnedSessionIdSet?: ReadonlySet<string>
+  workingSessionIdSet?: ReadonlySet<string>
+  isSessionPinned?: (session: SessionInfo) => boolean
   rootClassName?: string
   contentClassName?: string
   emptyState: React.ReactNode
@@ -178,12 +181,15 @@ export function SidebarSessionsSection({
   onDeleteSession,
   onArchiveSession,
   onBranchSession,
+  onCreateBranchesSession,
   onMergeChildrenSession,
   onMergeSession,
   onTogglePin,
   onNewSessionInWorkspace,
   pinned,
   pinnedSessionIdSet,
+  workingSessionIdSet,
+  isSessionPinned,
   rootClassName,
   contentClassName,
   emptyState,
@@ -245,20 +251,6 @@ export function SidebarSessionsSection({
     () => flattenSessionsWithBranches(sessions, { preserveOrder: pinned }),
     [sessions, pinned]
   )
-  const childCountByParent = useMemo(() => {
-    const counts = new Map<string, number>()
-
-    for (const item of sessions) {
-      const parentId = item.parent_session_id?.trim()
-
-      if (parentId) {
-        counts.set(parentId, (counts.get(parentId) ?? 0) + 1)
-      }
-    }
-
-    return counts
-  }, [sessions])
-
   const childCountByParent = useMemo(() => {
     const counts = new Map<string, number>()
 

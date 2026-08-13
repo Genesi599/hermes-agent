@@ -316,27 +316,6 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
         return sessionContextDrifted() ? null : validatedBinding()
       }
 
-      const waitForRoutedRuntimeBinding = async (storedSessionId: string): Promise<null | string> => {
-        const validatedBinding = () => {
-          const runtimeId = getRuntimeIdForStoredSession(storedSessionId)
-
-          return runtimeId && activeSessionIdRef.current === runtimeId ? runtimeId : null
-        }
-        const deadline = Date.now() + RUNTIME_BINDING_WAIT_MS
-
-        while (!sessionContextDrifted() && Date.now() < deadline) {
-          const runtimeId = validatedBinding()
-
-          if (runtimeId) {
-            return runtimeId
-          }
-
-          await delay(RUNTIME_BINDING_POLL_MS)
-        }
-
-        return sessionContextDrifted() ? null : validatedBinding()
-      }
-
       // One submit in flight per session — drop any concurrent re-fire so a
       // stalled turn can't stack the same prompt into multiple real turns. The
       // foreground ChatBar and background drainers can briefly overlap during a

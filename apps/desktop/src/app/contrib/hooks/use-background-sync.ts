@@ -417,8 +417,6 @@ export function useBackgroundSync({
     return visiblePoll(MESSAGING_POLL_INTERVAL_MS, () => void refreshMessagingSessions())
   }, [changeEventsAvailable, gatewayState, refreshMessagingSessions])
 
-  }, [gatewayState, refreshMessagingSessions])
-
   // External Desktop-compatible clients can create regular sessions without a
   // renderer websocket event, so keep the sidebar current while visible.
   useEffect(() => {

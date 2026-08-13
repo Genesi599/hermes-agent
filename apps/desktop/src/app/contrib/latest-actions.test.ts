@@ -101,14 +101,12 @@ describe('latestActions adapters', () => {
 
     const sidebar = makeSidebarActions()
     sidebar.onLoadMoreMessaging = undefined
-    sidebar.onLoadMoreProfileSessions = undefined
     sidebar.onMergeChildrenSession = undefined
     sidebar.onMergeSession = undefined
 
     const adaptedSidebar = latestSidebarActions(sidebar)
 
     expect(adaptedSidebar.onLoadMoreMessaging).toBeUndefined()
-    expect(adaptedSidebar.onLoadMoreProfileSessions).toBeUndefined()
     expect(adaptedSidebar.onMergeChildrenSession).toBeUndefined()
     expect(adaptedSidebar.onMergeSession).toBeUndefined()
   })

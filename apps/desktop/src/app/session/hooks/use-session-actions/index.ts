@@ -205,7 +205,6 @@ function normalizeNewChatWorkspaceTarget(target: NewChatWorkspaceTarget): NewCha
 interface MergeBranchResponse {
   deleted_ids?: string[]
   deleted?: string
-  deleted_ids?: string[]
   parent_session_id: string
   queued?: boolean
   summary: string
@@ -1505,14 +1504,15 @@ export function useSessionActions({
         throw new Error('Could not resume the branch for its merge review.')
       }
 
-      const result = await requestGateway<MergeBranchResponse>(
-        'session.merge_branch',
-        {
-          runtime_session_id: runtimeSessionId,
-          session_id: storedSessionId
-        },
-        PROMPT_SUBMIT_REQUEST_TIMEOUT_MS
-      )
+      try {
+        const result = await requestGateway<MergeBranchResponse>(
+          'session.merge_branch',
+          {
+            runtime_session_id: runtimeSessionId,
+            session_id: storedSessionId
+          },
+          PROMPT_SUBMIT_REQUEST_TIMEOUT_MS
+        )
 
         if (result.deleted) {
           setSessions(prev => prev.filter(session => !sessionMatchesStoredId(session, storedSessionId)))
@@ -1534,7 +1534,7 @@ export function useSessionActions({
         clearQueuedPrompts(storedSessionId)
         broadcastSessionsChanged()
 
-        if (wasSelected) {
+        if (selectedStoredSessionIdRef.current === storedSessionId) {
           setActiveSessionId(null)
           activeSessionIdRef.current = null
           setSelectedStoredSessionId(result.parent_session_id)
@@ -1542,24 +1542,15 @@ export function useSessionActions({
           setMessages([])
           navigate(sessionRoute(result.parent_session_id), { replace: true })
         }
+
+        return result
       } catch (err) {
-        if (wasSelected && closingRuntimeId) {
+        if (selectedStoredSessionIdRef.current === storedSessionId) {
           await resumeSession(storedSessionId).catch(() => undefined)
         }
 
         throw err
       }
-      clearQueuedPrompts(storedSessionId)
-      broadcastSessionsChanged()
-
-      setActiveSessionId(null)
-      activeSessionIdRef.current = null
-      setSelectedStoredSessionId(result.parent_session_id)
-      selectedStoredSessionIdRef.current = result.parent_session_id
-      setMessages([])
-      navigate(sessionRoute(result.parent_session_id), { replace: true })
-
-      return result
     },
     [
       activeSessionIdRef,
@@ -1696,7 +1687,6 @@ export function useSessionActions({
               ...deletedIds,
               ...removedRows.flatMap(session => [session.id, session._lineage_root_id])
             ])
-            setSessionsTotal(prev => Math.max(0, prev - removedRows.length))
             $pinnedSessionIds.set($pinnedSessionIds.get().filter(id => !removedPinIds.has(id)))
 
             for (const deletedId of deletedIds) {
@@ -1763,181 +1753,6 @@ export function useSessionActions({
     ]
   )
 
-  const resumeBranchForMerge = useCallback(
-    async (child: SessionInfo): Promise<string> => {
-      const profile = child.profile?.trim() || null
-
-      await ensureGatewayProfile(profile)
-
-      const resumed = await requestGateway<SessionResumeResponse>('session.resume', {
-        session_id: child.id,
-        cols: 96,
-        source: 'desktop',
-        ...(profile ? { profile } : {})
-      })
-
-      if (!resumed.session_id) {
-        throw new Error('Could not resume the branch for its merge review.')
-      }
-
-      const runtimeInfo = applyRuntimeInfo(resumed.info)
-      const running = Boolean(resumed.running)
-
-      updateSessionState(
-        resumed.session_id,
-        state => ({
-          ...state,
-          ...(runtimeInfo ?? {}),
-          messages: toChatMessages(resumed.messages),
-          busy: running,
-          awaitingResponse: running,
-          reviewActivity: 'branch-merge'
-        }),
-        child.id
-      )
-
-      return resumed.session_id
-    },
-    [requestGateway, updateSessionState]
-  )
-
-  const mergeAllChildrenIntoParent = useCallback(
-    async (parentSessionId: string): Promise<void> => {
-      const orderedChildren = descendantBranchMergeOrder($sessions.get(), parentSessionId)
-
-      if (!orderedChildren.length) {
-        return
-      }
-
-      const blockedAncestors = new Set<string>()
-      const failures: string[] = []
-      const parentById = new Map(orderedChildren.map(child => [child.id, child.parent_session_id?.trim() ?? '']))
-
-      const blockAncestors = (child: SessionInfo) => {
-        let ancestorId = child.parent_session_id?.trim() ?? ''
-
-        while (ancestorId && ancestorId !== parentSessionId) {
-          blockedAncestors.add(ancestorId)
-          ancestorId = parentById.get(ancestorId) ?? ''
-        }
-      }
-
-      const levels = new Map<number, SessionInfo[]>()
-
-      for (const child of orderedChildren) {
-        let depth = 1
-        let ancestorId = child.parent_session_id?.trim() ?? ''
-
-        while (ancestorId && ancestorId !== parentSessionId) {
-          depth += 1
-          ancestorId = parentById.get(ancestorId) ?? ''
-        }
-
-        levels.set(depth, [...(levels.get(depth) ?? []), child])
-      }
-
-      for (const depth of [...levels.keys()].sort((left, right) => right - left)) {
-        const candidates = (levels.get(depth) ?? []).filter(child => !blockedAncestors.has(child.id))
-
-        const results = await Promise.allSettled(
-          candidates.map(async child => {
-            const runtimeSessionId = await resumeBranchForMerge(child)
-            const result = await requestGateway<MergeBranchResponse>(
-              'session.merge_branch',
-              { runtime_session_id: runtimeSessionId, session_id: child.id },
-              PROMPT_SUBMIT_REQUEST_TIMEOUT_MS
-            )
-
-            return { child, result, runtimeSessionId }
-          })
-        )
-
-        for (const [index, settled] of results.entries()) {
-          if (settled.status === 'rejected') {
-            const child = candidates[index]
-            const title = child.title?.trim() || child.preview?.trim() || child.id
-            const detail = settled.reason instanceof Error ? settled.reason.message : String(settled.reason)
-
-            failures.push(`${title}: ${detail}`)
-            blockAncestors(child)
-            continue
-          }
-
-          const { child, result, runtimeSessionId } = settled.value
-          const deletedIds = new Set(result.deleted_ids ?? (result.deleted ? [result.deleted] : []))
-
-          if (deletedIds.size) {
-            const removedRows = $sessions
-              .get()
-              .filter(session => [...deletedIds].some(id => sessionMatchesStoredId(session, id)))
-
-            const removedIds = [
-              ...deletedIds,
-              ...removedRows.flatMap(session => [session.id, session._lineage_root_id])
-            ]
-
-            const removedPinIds = new Set([...deletedIds, ...removedRows.map(session => sessionPinId(session))])
-
-            setSessions(prev =>
-              prev.filter(session => ![...deletedIds].some(id => sessionMatchesStoredId(session, id)))
-            )
-            tombstoneSessions(removedIds)
-            clearUnreadSessionIds(removedIds)
-            $pinnedSessionIds.set($pinnedSessionIds.get().filter(id => !removedPinIds.has(id)))
-
-            for (const deletedId of deletedIds) {
-              const deletedRuntimeId = runtimeIdByStoredSessionIdRef.current.get(deletedId)
-
-              if (deletedRuntimeId) {
-                runtimeIdByStoredSessionIdRef.current.delete(deletedId)
-                sessionStateByRuntimeIdRef.current.delete(deletedRuntimeId)
-                dropSessionState(deletedRuntimeId)
-              }
-            }
-          } else if (result.queued) {
-            setSessions(prev =>
-              prev.map(session =>
-                sessionMatchesStoredId(session, child.id)
-                  ? { ...session, branch_merge_status: 'waiting_for_parent' }
-                  : session
-              )
-            )
-          }
-
-          clearQueuedPrompts(child.id)
-          clearQueuedPrompts(runtimeSessionId)
-
-          for (const deletedId of deletedIds) {
-            clearQueuedPrompts(deletedId)
-          }
-
-          if (result.queued && result.parent_session_id !== parentSessionId) {
-            blockAncestors(child)
-          }
-        }
-      }
-
-      broadcastSessionsChanged()
-
-      if (failures.length) {
-        notifyError(
-          new Error(`${t.sidebar.row.mergeChildrenFailed}: ${failures.join('; ')}`),
-          t.sidebar.row.mergeChildrenFailed
-        )
-      } else if (blockedAncestors.size) {
-        notify({ kind: 'warning', message: t.sidebar.row.mergeChildrenDeferred })
-      }
-    },
-    [
-      requestGateway,
-      resumeBranchForMerge,
-      runtimeIdByStoredSessionIdRef,
-      sessionStateByRuntimeIdRef,
-      t.sidebar.row.mergeChildrenDeferred,
-      t.sidebar.row.mergeChildrenFailed
-    ]
-  )
-
   const removeSession = useCallback(
     async (storedSessionId: string) => {
       clearNotifications()
@@ -1946,6 +1761,9 @@ export function useSessionActions({
       const previousPinned = $pinnedSessionIds.get()
       const removedPinId = removed ? sessionPinId(removed) : storedSessionId
       const removedIds = [storedSessionId, removed?.id, removed?._lineage_root_id]
+      const wasSelected = selectedStoredSessionId === storedSessionId
+      const previousMessages = $messages.get()
+      const closingRuntimeId = activeSessionIdRef.current
 
       setSessions(prev => prev.filter(session => !sessionMatchesStoredId(session, storedSessionId)))
       // Evict from the project tree's optimistic layer too (the backend snapshot

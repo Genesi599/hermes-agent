@@ -11,8 +11,6 @@ import type { ExperienceReviewInfo, MessageReaction, SessionMessage, UsageStats 
 
 export const INTERNAL_TURN_PREFIX = '[HERMES_INTERNAL_'
 
-export const INTERNAL_TURN_PREFIX = '[HERMES_INTERNAL_'
-
 export type ChatMessagePart = Exclude<ThreadMessageLike['content'], string>[number]
 
 export type ChatMessage = {

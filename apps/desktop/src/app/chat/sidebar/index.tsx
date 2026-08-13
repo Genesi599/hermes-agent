@@ -123,6 +123,7 @@ import {
 import { $sessionDotStateById, sessionStatusBucket } from '@/store/session-dot-state'
 import {
   expandPinnedSessionFamilies,
+  expandSessionFamilyMemberIds,
   pinSessionFamily,
   toggleSessionFamilyPin,
   unpinSessionFamily
@@ -406,6 +407,7 @@ export function ChatSidebar({
   const [messagingLoadMorePending, setMessagingLoadMorePending] = useState<Record<string, boolean>>({})
   const [recentsLoadMorePending, setRecentsLoadMorePending] = useState(false)
   const [branchBatchOpen, setBranchBatchOpen] = useState(false)
+  const [runningOpen, setRunningOpen] = useState(false)
 
   const openBranchBatchForSession = useCallback(
     (sessionId: string) => {
@@ -523,6 +525,11 @@ export function ChatSidebar({
 
   const workingSessionIdSet = useMemo(() => new Set(workingSessionIds), [workingSessionIds])
 
+  const recentsRemovedSessionIds = useMemo(
+    () => new Set(visibleSessions.map(session => session.id)),
+    [visibleSessions]
+  )
+
   // Index sessions by every id a pin might be stored under — recents, cron,
   // AND messaging, since all three can be pinned (see session-index.ts).
   const sessionByAnyId = useMemo(
@@ -537,15 +544,6 @@ export function ChatSidebar({
 
   useEffect(() => pinSessions(expandedPinnedSessionIds), [expandedPinnedSessionIds])
 
-  const expandedPinnedSessionIds = useMemo(
-    () => expandPinnedSessionFamilies([...cronSessions, ...visibleSessions], pinnedSessionIds),
-    [cronSessions, pinnedSessionIds, visibleSessions]
-  )
-
-  // Migrate old single-row pins and immediately include newly-created Branch
-  // children without moving the family's existing position in the pinned list.
-  useEffect(() => pinSessions(expandedPinnedSessionIds), [expandedPinnedSessionIds])
-
   const pinnedSessions = useMemo(() => {
     const seen = new Set<string>()
     const out: SessionInfo[] = []
@@ -553,26 +551,15 @@ export function ChatSidebar({
     for (const pinId of expandedPinnedSessionIds) {
       const session = sessionByAnyId.get(pinId)
 
-      if (session && !activeFamilySessionIds.has(session.id) && !seen.has(session.id)) {
+      if (session && !seen.has(session.id)) {
         seen.add(session.id)
         out.push(session)
       }
     }
 
     return out
-  }, [activeFamilySessionIds, expandedPinnedSessionIds, sessionByAnyId])
+  }, [expandedPinnedSessionIds, sessionByAnyId])
 
-  const pinnedSessionPinIdSet = useMemo(() => new Set(expandedPinnedSessionIds), [expandedPinnedSessionIds])
-
-  const runningPinnedSessionIdSet = useMemo(
-    () =>
-      new Set(
-        runningSessions
-          .filter(session => pinnedSessionPinIdSet.has(sessionPinId(session)))
-          .map(session => session.id)
-      ),
-    [pinnedSessionPinIdSet, runningSessions]
-  )
 
   // Every id a pin is reachable under: the raw stored ids, plus BOTH identities
   // of each session we resolved one to. A pin is stored on the durable lineage
@@ -605,6 +592,29 @@ export function ChatSidebar({
     [pinnedIdentitySet]
   )
 
+  const runningFamilySessionIds = useMemo(
+    () => expandSessionFamilyMemberIds(visibleSessions, [...workingSessionIds, ...unreadFinishedSessionIds]),
+    [unreadFinishedSessionIds, visibleSessions, workingSessionIds]
+  )
+
+  const runningSessions = useMemo(
+    () => sortedSessions.filter(session => runningFamilySessionIds.has(session.id) && !isPinnedSession(session)),
+    [isPinnedSession, runningFamilySessionIds, sortedSessions]
+  )
+
+  const pinnedSessionPinIdSet = useMemo(() => new Set(expandedPinnedSessionIds), [expandedPinnedSessionIds])
+
+  const runningPinnedSessionIdSet = useMemo(
+    () =>
+      new Set(
+        runningSessions
+          .filter(session => pinnedSessionPinIdSet.has(sessionPinId(session)))
+          .map(session => session.id)
+      ),
+    [pinnedSessionPinIdSet, runningSessions]
+  )
+
+
   // What the project tree drops: pins (they live in their own section) plus
   // anything the active filters exclude, so filtering works the same whether
   // you're looking at the flat list or the lanes.
@@ -613,17 +623,6 @@ export function ChatSidebar({
     [isPinnedSession, filtersNarrow, sessionMatchesFilters]
   )
 
-  const runningBuckets = useMemo(
-    () =>
-      splitActiveSessionFamilies(sortedSessions, resolvedPinnedSessions, [
-        ...workingSessionIds,
-        ...unreadFinishedSessionIds
-      ]),
-    [resolvedPinnedSessions, sortedSessions, unreadFinishedSessionIds, workingSessionIds]
-  )
-  const runningFamilySessionIds = runningBuckets.activeFamilyIds
-  const runningSessions = runningBuckets.activeSessions
-  const pinnedSessions = runningBuckets.inactivePinnedSessions
 
   // Full-text search across *all* sessions (not just the loaded page) so 699
   // sessions stay findable. Debounced; loaded sessions are matched instantly

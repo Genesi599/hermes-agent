@@ -95,6 +95,10 @@ export const VirtualSessionList: FC<VirtualSessionListProps> = ({
   const totalSize = virtualizer.getTotalSize()
   const paddingTop = virtualItems[0]?.start ?? 0
   const paddingBottom = Math.max(0, totalSize - (virtualItems[virtualItems.length - 1]?.end ?? 0))
+  const entries = listRows
+    .filter(row => row.kind !== 'divider')
+    .map(row => row.entry)
+
   const childCountByParent = new Map<string, number>()
 
   for (const { session } of entries) {

@@ -27,7 +27,7 @@ import { normalizeProfileKey } from '@/store/profile'
 import { $pullRequestsByBranch, sessionPrKey } from '@/store/pull-requests'
 import { $sessionDotStateById, hasLiveTurn, showsRunningArc } from '@/store/session-dot-state'
 import { sessionCostUsd } from '@/store/sidebar-archive'
-import { $reviewActivityBySessionId, $sessions, setSessions } from '@/store/session'
+import { $reviewActivityBySessionId, $sessions, $unreadFinishedSessionIds, setSessions } from '@/store/session'
 import { notify, notifyError } from '@/store/notifications'
 import { $sessionColorById } from '@/store/session-color'
 import { $attentionSessionIds } from '@/store/session-states'
@@ -53,6 +53,7 @@ interface SidebarSessionRowProps extends React.ComponentProps<'div'> {
   branchStem?: string
   isPinned: boolean
   isSelected: boolean
+  isWorking?: boolean
   onArchive: () => void
   onBranch?: () => void
   onCreateBranches?: () => void
@@ -99,6 +100,7 @@ function SidebarSessionRowImpl({
   branchStem,
   isPinned,
   isSelected,
+  isWorking = false,
   onArchive,
   onBranch,
   onCreateBranches,
@@ -202,7 +204,7 @@ function SidebarSessionRowImpl({
   const liveTurn = hasLiveTurn(dotState)
   // True when a clarify prompt in this session is waiting on the user.
   const needsInput = useStore($attentionSessionIds).includes(session.id)
-  const isUnread = useStore($unreadSessionIds).includes(session.id)
+  const isUnread = useStore($unreadFinishedSessionIds).includes(session.id)
   const sessionColor = useStore($sessionColorById)[session.id]
   const isMergeWaiting = session.branch_merge_status === 'waiting_for_parent'
   const branchTaskStatus = session.branch_task_status
@@ -220,7 +222,6 @@ function SidebarSessionRowImpl({
     .join(' · ')
 
   const reviewActivity = useStore($reviewActivityBySessionId)[session.id] ?? null
-  const branchTaskStatus = session.branch_task_status
   const suppressNextNativeClickRef = useRef(false)
   const [renaming, setRenaming] = useState(false)
   const [draftTitle, setDraftTitle] = useState('')
@@ -257,14 +258,6 @@ function SidebarSessionRowImpl({
       notifyError(err, r.renameFailed)
     }
   }
-
-  const branchElapsed = session.branch_started_at
-    ? formatDuration((session.branch_completed_at ?? Date.now() / 1000) - session.branch_started_at, r)
-    : null
-
-  const branchMeta = [session.branch_model || session.model, session.branch_provider, session.branch_workspace_mode]
-    .filter(Boolean)
-    .join(' · ')
 
   // An archived session has no live status to paint, so the archive glyph takes
   // the lead slot the dot would occupy instead of adding a column of its own.

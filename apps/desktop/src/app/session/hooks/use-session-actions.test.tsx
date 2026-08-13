@@ -5,7 +5,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { $terminalTakeover, setTerminalTakeover } from '@/app/right-sidebar/store'
 import { noteActiveTreeGroup, revealTreePane } from '@/components/pane-shell/tree/store'
-import { getAllSessionMessages, getLatestSessionMessages, getSession, type SessionInfo } from '@/hermes'
+import {
+  PROMPT_SUBMIT_REQUEST_TIMEOUT_MS,
+  deleteSession,
+  getAllSessionMessages,
+  getLatestSessionMessages,
+  getSession,
+  getSessionMessages,
+  type SessionInfo
+} from '@/hermes'
 import { createClientSessionState } from '@/lib/chat-runtime'
 import { clearSessionDraft, stashSessionDraft, takeSessionDraft } from '@/store/composer'
 import { $activeGatewayProfile, $newChatProfile, ensureGatewayProfile } from '@/store/profile'
@@ -37,6 +45,7 @@ import {
   setSelectedStoredSessionId,
   setSessions
 } from '@/store/session'
+import { $pinnedSessionIds } from '@/store/layout'
 import { $sessionTiles } from '@/store/session-states'
 
 import { sessionRoute } from '../../routes'
@@ -1482,71 +1491,6 @@ function MergeHarness({
   onReady,
   requestGateway
 }: {
-  onReady: (merge: (storedSessionId: string, sessionProfile?: string | null) => Promise<void>) => void
-  requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
-}) {
-  const ref = <T,>(value: T): MutableRefObject<T> => ({ current: value })
-  const actions = useSessionActions({
-    activeSessionId: null,
-    activeSessionIdRef: ref<string | null>(null),
-    busyRef: ref(false),
-    creatingSessionRef: ref(false),
-    ensureSessionState: () => ({}) as ClientSessionState,
-    getRoutedStoredSessionId: () => null,
-    getRouteToken: () => 'token',
-    navigate: vi.fn() as never,
-    requestGateway,
-    resetViewSync: vi.fn(),
-    runtimeIdByStoredSessionIdRef: ref(new Map<string, string>()),
-    selectedStoredSessionId: null,
-    selectedStoredSessionIdRef: ref<string | null>(null),
-    sessionStateByRuntimeIdRef: ref(new Map<string, ClientSessionState>()),
-    syncSessionStateToView: vi.fn(),
-    updateSessionState: () => ({}) as ClientSessionState
-  })
-
-  useEffect(() => {
-    onReady(actions.mergeBranchIntoParent)
-  }, [actions.mergeBranchIntoParent, onReady])
-
-  return null
-}
-
-describe('mergeBranchIntoParent', () => {
-  afterEach(() => {
-    cleanup()
-    setSessions([])
-    vi.restoreAllMocks()
-  })
-
-  it('calls the merge RPC and removes the deleted child from the sidebar', async () => {
-    const requestGateway = vi.fn(async (method: string) => {
-      if (method === 'session.merge_branch') {
-        return { deleted: 'child', parent_session_id: 'parent', summary: 'result' } as never
-      }
-
-      return {} as never
-    })
-
-    setSessions([
-      storedSession({ id: 'parent', message_count: 2 }),
-      storedSession({ id: 'child', message_count: 4, parent_session_id: 'parent' })
-    ])
-
-    let merge: ((storedSessionId: string) => Promise<void>) | null = null
-    render(<MergeHarness onReady={action => (merge = action)} requestGateway={requestGateway} />)
-    await waitFor(() => expect(merge).not.toBeNull())
-    await expect(merge!('child')).resolves.toBeUndefined()
-
-    expect(requestGateway).toHaveBeenCalledWith('session.merge_branch', { session_id: 'child' })
-    expect($sessions.get().map(session => session.id)).toEqual(['parent'])
-  })
-})
-
-function MergeHarness({
-  onReady,
-  requestGateway
-}: {
   onReady: (merge: (storedSessionId: string, sessionProfile?: string | null) => Promise<unknown>) => void
   requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
 }) {
@@ -1966,33 +1910,23 @@ describe('removeSession delete review', () => {
     vi.restoreAllMocks()
   })
 
-  it('reviews the active stored session before removing it from the sidebar', async () => {
-    const requestGateway = vi.fn(async (method: string) => {
-      if (method === 'session.review_delete') {
-        return { deleted: 'stored-delete', summary: 'review complete' } as never
-      }
-
-      return {} as never
-    })
+  it('deletes the stored session and clears its unread badge', async () => {
+    const requestGateway = vi.fn(async () => ({} as never))
     setSessions([storedSession({ id: 'stored-delete', message_count: 3 })])
     $unreadFinishedSessionIds.set(['stored-delete'])
+    vi.mocked(deleteSession).mockResolvedValue(undefined as never)
 
     let remove: ((storedSessionId: string) => Promise<void>) | null = null
     render(<DeleteHarness onReady={action => (remove = action)} requestGateway={requestGateway} />)
     await waitFor(() => expect(remove).not.toBeNull())
     await expect(remove!('stored-delete')).resolves.toBeUndefined()
 
-    expect(requestGateway).toHaveBeenCalledWith(
-      'session.review_delete',
-      { runtime_session_id: 'runtime-delete', session_id: 'stored-delete' },
-      1_800_000
-    )
-    expect(deleteSession).not.toHaveBeenCalled()
+    expect(deleteSession).toHaveBeenCalledWith('stored-delete', undefined)
     expect($sessions.get()).toEqual([])
     expect($unreadFinishedSessionIds.get()).toEqual([])
   })
 
-  it('re-resumes when the selected runtime belongs to another stored session', async () => {
+  it('deletes after resuming when the runtime belongs to another stored session', async () => {
     const requestGateway = vi.fn(async (method: string) => {
       if (method === 'session.resume') {
         return {
@@ -2005,13 +1939,9 @@ describe('removeSession delete review', () => {
         } as never
       }
 
-      if (method === 'session.review_delete') {
-        return { deleted: 'stored-delete', summary: 'review complete' } as never
-      }
-
       return {} as never
     })
-    vi.mocked(getSessionMessages).mockResolvedValue({ messages: [], session_id: 'stored-delete' } as never)
+    vi.mocked(deleteSession).mockResolvedValue(undefined as never)
     setSessions([storedSession({ id: 'stored-delete', message_count: 0 })])
 
     let remove: ((storedSessionId: string) => Promise<void>) | null = null
@@ -2025,11 +1955,7 @@ describe('removeSession delete review', () => {
     await waitFor(() => expect(remove).not.toBeNull())
     await expect(remove!('stored-delete')).resolves.toBeUndefined()
 
-    expect(requestGateway).toHaveBeenCalledWith(
-      'session.review_delete',
-      { runtime_session_id: 'runtime-fresh', session_id: 'stored-delete' },
-      1_800_000
-    )
+    expect(deleteSession).toHaveBeenCalled()
   })
 })
 

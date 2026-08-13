@@ -69,7 +69,7 @@ export function SessionSwitcher() {
               }}
               ref={selected ? activeRef : undefined}
             >
-              <SessionStatusDot className="shrink-0" session={session} storedSessionId={session.id} />
+              <SessionStatusDot className="shrink-0" storedSessionId={session.id} />
               <span className="min-w-0 flex-1 truncate">{sessionTitle(session)}</span>
               {i < 9 && (
                 <span

@@ -3,6 +3,7 @@ import { useStore } from '@nanostores/react'
 import { type FC, type ReactNode, useEffect, useMemo, useState } from 'react'
 
 import { useSessionView } from '@/app/chat/session-view'
+import { ReviewActivityPulse, reviewActivityLabel, type ReviewActivity } from '@/components/chat/review-activity'
 import { toolPresentVerb } from '@/components/assistant-ui/tool/run-summary'
 import { useElapsedSeconds } from '@/components/chat/activity-timer'
 import { ActivityTimerText } from '@/components/chat/activity-timer-text'
@@ -14,7 +15,7 @@ import { cn } from '@/lib/utils'
 import { $backgroundResume } from '@/store/background-delegation'
 import { sessionCompacting } from '@/store/compaction'
 import { sessionAwaitingInput } from '@/store/prompts'
-import { $turnStartedAt } from '@/store/session'
+import { $reviewActivityBySessionId, $turnStartedAt } from '@/store/session'
 import { type DraftingTool, sessionDraftingTool } from '@/store/tool-drafting'
 
 // A status line is scaffolding like any other — "Editing" while the model
@@ -217,6 +218,8 @@ export const StreamStallIndicator: FC = () => {
   // component, which is the whole turn so far.
   const [quietSince, setQuietSince] = useState<number | undefined>(undefined)
   const { awaitingInput, compacting, drafting, turnTimerKey } = useThreadSessionStatus()
+  const sessionId = useStore(useSessionView().$runtimeId)
+  const reviewActivity = sessionId ? (useStore($reviewActivityBySessionId)[sessionId] ?? null) : null
   const hint = useStatusHint(compacting, drafting)
 
   // A tool run at the tail already narrates the wait — its summary counts the
