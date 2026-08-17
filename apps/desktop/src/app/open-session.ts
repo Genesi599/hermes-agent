@@ -126,7 +126,32 @@ export function openSession(
   // otherwise load it into main. From a full page (artifacts, skills, …) a
   // `'main'` hit still has to route back: fronting the workspace tab alone
   // leaves the page showing.
-  if (focusedSessionNeedsRoute(focusOpenSession(storedSessionId), $workspaceIsPage.get())) {
+  //
+  // TAB-BACKED SIDEBAR SWITCH: when main already holds a live conversation and
+  // the clicked session is NOT on screen, open it as its own stacked session
+  // tab instead of replacing main's transcript. Each conversation keeps its
+  // tab (keep-alive preserves the mounted pane + its runtime slice), so going
+  // back and forth between chats fronts tabs instead of re-resuming/re-loading
+  // the same session through main every time — that reload loop was the
+  // switch-flicker. Main stays the surface for the FIRST conversation (and for
+  // every switch while it is only a blank draft), preserving the old
+  // single-pane feel until a second chat is actually involved.
+  const focused = focusOpenSession(storedSessionId)
+
+  if (!focused && spendBlankDraftMainForTile()) {
+    openSessionTile(storedSessionId, 'center')
+
+    return
+  }
+
+  if (focusedSessionNeedsRoute(focused, $workspaceIsPage.get())) {
     navigate(sessionRoute(storedSessionId))
   }
+}
+
+/** True when the main pane holds a real conversation (not a blank draft), so a
+ *  sidebar in-place open should stack a session tab rather than reload main.
+ *  Local to this module's in-place path; `stack` computes its own occupancy. */
+function spendBlankDraftMainForTile(): boolean {
+  return mainChatOccupied($activeSessionId.get(), $selectedStoredSessionId.get())
 }
