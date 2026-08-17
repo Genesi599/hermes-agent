@@ -1049,12 +1049,18 @@ def interruptible_api_call(agent, api_kwargs: dict):
     ):
         _stale_timeout = min(_stale_timeout, _codex_hard_timeout)
 
+    # Reasoning models (gpt-5.6-*) emit NO SSE events while thinking: the
+    # reasoning item's added/done frames arrive as one burst when reasoning
+    # COMPLETES, so a 78k-token context reasoning at high effort legitimately
+    # sits silent for minutes. The old 120s/180s ladder killed those requests
+    # mid-thought and retried the full 78k payload in an infinite loop (each
+    # retry paying full prefill + reasoning again). Scale with context size.
     if _est_tokens_for_codex_watchdog > 100_000:
-        _codex_idle_timeout_default = 180.0
+        _codex_idle_timeout_default = 480.0
     elif _est_tokens_for_codex_watchdog > 50_000:
-        _codex_idle_timeout_default = 120.0
+        _codex_idle_timeout_default = 300.0
     elif _est_tokens_for_codex_watchdog > 10_000:
-        _codex_idle_timeout_default = 60.0
+        _codex_idle_timeout_default = 120.0
     else:
         _codex_idle_timeout_default = 12.0
 
