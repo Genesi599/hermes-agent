@@ -33,7 +33,7 @@ import {
   sessionMatchesStoredId,
   setCurrentUsage
 } from '@/store/session'
-import { $focusedRuntimeId, $focusedSessionState, $focusedStoredSessionId } from '@/store/session-states'
+import { $focusedRuntimeId, $focusedSessionState, $focusedStoredSessionId, $sessionStates } from '@/store/session-states'
 import { $subagentsBySession, activeSubagentCount, failedSubagentCount } from '@/store/subagents'
 import { $gatewayRestarting } from '@/store/system-actions'
 import {
@@ -165,6 +165,20 @@ export function useStatusbarItems({
       .then((usage: UsageStats) => {
         if (usage && (usage.context_max || usage.total)) {
           setCurrentUsage(current => ({ ...current, ...usage }))
+
+          // The statusbar reads the FOCUSED session's slice when a tile has
+          // focus (primaryFocused=false), not the global atom above — so a
+          // cold tile's prefetched usage vanished until its first turn event
+          // landed in the slice. Write the slice directly (merge, never
+          // clobber a live turn's richer counts); a runtime id absent from
+          // the map just adds a stub slice the focus projection picks up.
+          $sessionStates.set({
+            ...$sessionStates.get(),
+            [activeSessionId]: {
+              ...($sessionStates.get()[activeSessionId] ?? {}),
+              usage: { ...usage }
+            }
+          })
         }
       })
       .catch(() => {})
