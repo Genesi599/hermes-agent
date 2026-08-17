@@ -1,7 +1,7 @@
 import { type AppendMessage, AssistantRuntimeProvider, type ThreadMessage } from '@assistant-ui/react'
 import { useStore } from '@nanostores/react'
 import { useQuery } from '@tanstack/react-query'
-import type { ReadableAtom } from 'nanostores'
+import { computed, type ReadableAtom } from 'nanostores'
 import type * as React from 'react'
 import { memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router'
@@ -43,6 +43,7 @@ import {
   sessionPinId,
   shouldMigrateComposerScope
 } from '@/store/session'
+import { $sessionStates } from '@/store/session-states'
 import { isSessionFamilyPinned } from '@/store/session-pins'
 import { $taskStatusRailEnabled, toggleTaskStatusRail } from '@/store/task-status'
 import { isAuxiliaryWindow, isSecondaryWindow, isWatchWindow } from '@/store/windows'
@@ -418,6 +419,42 @@ export const ChatView = memo(function ChatView({
   // waiting for the resume effect (which paints a frame later) to clear them.
   const routeSessionMismatch = isRoutedSessionView && routedSessionId !== selectedSessionId
 
+  // The active runtime's transcript may still belong to the PREVIOUS session
+  // during a warm-cache switch: resumeSession sets selectedStoredSessionId
+  // synchronously at entry but only rebinds activeSessionId after the
+  // profile/gateway awaits, so for that gap $primaryState indexes the old
+  // session's slice and would paint the old conversation under the new route
+  // (the "two contents flash back and forth" flicker). Suppress while the
+  // active slice's stored id doesn't match the selected one — same-conversation
+  // across compression included (lineage-root match).
+  const $activeSliceStoredId = useMemo(
+    () =>
+      computed([$sessionStates, view.$runtimeId], (states, runtimeId) =>
+        runtimeId ? (states[runtimeId]?.storedSessionId ?? null) : null
+      ),
+    [view.$runtimeId]
+  )
+  const activeSliceStoredId = useStore($activeSliceStoredId)
+  const activeTranscriptMatchesSelection = ((): boolean => {
+    if (!activeSessionId || !selectedSessionId || !activeSliceStoredId) {
+      // No runtime yet (cold path clears active before its awaits) or still on
+      // the draft surface — nothing stale to hide, show the loading path.
+      return true
+    }
+
+    if (activeSliceStoredId === selectedSessionId) {
+      return true
+    }
+
+    const familyRootOf = (storedId: string): string => {
+      const row = sessions.find(session => sessionMatchesStoredId(session, storedId))
+
+      return row ? row._lineage_root_id || row.id : storedId
+    }
+
+    return familyRootOf(activeSliceStoredId) === familyRootOf(selectedSessionId)
+  })()
+
   // The compact new-session pop-out skips the wordmark/tagline intro — it's a
   // scratch window, not the full-height empty state.
   const showIntro =
@@ -443,7 +480,9 @@ export const ChatView = memo(function ChatView({
   const resumeExhausted = isPrimary && isRoutedSessionView && resumeExhaustedSessionId === routedSessionId
 
   const loadingSession =
-    !resumeExhausted && isRoutedSessionView && (routeSessionMismatch || (messagesEmpty && !activeSessionId))
+    !resumeExhausted &&
+    isRoutedSessionView &&
+    (routeSessionMismatch || !activeTranscriptMatchesSelection || (messagesEmpty && !activeSessionId))
 
   const threadLoading = threadLoadingState(loadingSession, busy, awaitingResponse, lastVisibleIsUser)
   // Hide the composer in the exhausted error state too: there's no live runtime
@@ -566,7 +605,7 @@ export const ChatView = memo(function ChatView({
         onEdit={onEdit}
         onReload={onReload}
         onThreadMessagesChange={onThreadMessagesChange}
-        suppressMessages={routeSessionMismatch}
+        suppressMessages={routeSessionMismatch || !activeTranscriptMatchesSelection}
       >
         <div
           className="relative flex min-h-0 max-w-full flex-1 overflow-hidden bg-(--ui-chat-surface-background) contain-[layout_paint]"
