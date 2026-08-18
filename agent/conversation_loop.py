@@ -4912,6 +4912,18 @@ def run_conversation(
                 )
                 if _is_zai_coding_overload:
                     max_retries = max(max_retries, zai_coding_overload_retry_ceiling())
+                    # One-shot payload dump for CN-endpoint 1305 diagnosis: the
+                    # EN overload body matches _OVERLOADED_PATTERNS but the CN
+                    # text needed explicit handling, and direct replay of a
+                    # synthetic payload never reproduces the rejection — capture
+                    # the REAL failing request body once per agent so it can be
+                    # replayed offline. Sticky on the agent, not the attempt.
+                    if not getattr(agent, "_dumped_zai_overload", False):
+                        agent._dumped_zai_overload = True
+                        try:
+                            agent._dump_api_request_debug(api_kwargs, reason="zai_coding_overload_1305", error=api_error)
+                        except Exception:
+                            pass
                 _should_fallback = (
                     is_rate_limited
                     or (_is_transport_failure and retry_count >= 2)
