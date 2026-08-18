@@ -193,6 +193,16 @@ _OVERLOADED_PATTERNS = [
     "currently overloaded",
     "at capacity",
     "over capacity",
+    # Zhipu CN endpoint (open.bigmodel.cn) returns a CHINESE overload body on
+    # HTTP 429 code 1305 — same server-overload semantics as the English list,
+    # but the untranslated message never matched, so every 1305 fell through
+    # to rate_limit and exhausted the credential for ALL sessions while the
+    # server was merely busy (the small-request-200 / big-request-1305 split
+    # proved the key itself was healthy). Match the CN phrasing (and the
+    # numeric code) so 1305 takes the transient-overload path: back off and
+    # retry the SAME key, never rotate/lock the pool.
+    "访问量过大",
+    "负载过高",
 ]
 
 # Usage-limit patterns that need disambiguation (could be billing OR rate_limit)
