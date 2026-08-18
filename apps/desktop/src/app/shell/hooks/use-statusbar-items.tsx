@@ -34,6 +34,13 @@ import {
   setCurrentUsage
 } from '@/store/session'
 import { $focusedRuntimeId, $focusedSessionState, $focusedStoredSessionId, $sessionStates } from '@/store/session-states'
+import { atom } from 'nanostores'
+
+/** Stored-id-keyed usage prefetched before a tile's runtime slice exists.
+ *  Cold-open path: sidebar click → tile focus → runtime still null → the
+ *  prefetch RPC answered but had nowhere live to land. Read as a fallback
+ *  under the runtime slice. */
+const $prefetchedUsageByStoredId = atom<Record<string, UsageStats>>({})
 import { $subagentsBySession, activeSubagentCount, failedSubagentCount } from '@/store/subagents'
 import { $gatewayRestarting } from '@/store/system-actions'
 import {
@@ -136,6 +143,12 @@ export function useStatusbarItems({
   // reports new usage — far rarer than a delta — so its reference is a valid
   // bail-out key on its own.
   const focusedUsage = useStoreSelector($focusedSessionState, state => state?.usage ?? null)
+  // Cold-tile fallback: the focused session's runtime slice has no usage yet
+  // (tile just opened, resume in flight) — use the stored-id-keyed prefetch
+  // so context usage shows immediately instead of hiding until first turn.
+  const prefetchedFocusedUsage = useStoreSelector($prefetchedUsageByStoredId, byId =>
+    focusedStoredSessionId ? (byId[focusedStoredSessionId] ?? null) : null
+  )
   const focusedStateCwd = useStoreSelector($focusedSessionState, state => state?.cwd?.trim() || '')
 
   // Runtime slices carry the stored id they were bound for. During a primary
@@ -154,40 +167,61 @@ export function useStatusbarItems({
   // session) the context-usage / cache readouts stay hidden until the next
   // real turn. Pull one authoritative snapshot on mount / active-session
   // change so the status bar shows usage immediately. Once per session id.
+  //
+  // Keyed on the STORED id (not the runtime id): a freshly-opened tile —
+  // sidebar click, a restored branch — has no bound runtime yet
+  // ($focusedRuntimeId is null until its async resume lands), so a
+  // runtime-keyed prefetch sat skipped exactly when the tile needed it and
+  // context usage stayed hidden until the user interacted with the tab. The
+  // stored id works because session.usage resolves it server-side; the slice
+  // write below uses the runtime id when known and defers to the live turn's
+  // own usage write when not.
+  const prefetchUsageKey =
+    activeSessionId ??
+    (focusedStoredSessionId && focusedStoredSessionId !== selectedStoredSessionId ? focusedStoredSessionId : null)
   const prefetchedUsageForRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!activeSessionId || prefetchedUsageForRef.current === activeSessionId) {
+    if (!prefetchUsageKey || prefetchedUsageForRef.current === prefetchUsageKey) {
       return
     }
 
-    prefetchedUsageForRef.current = activeSessionId
-    void requestGateway<UsageStats>('session.usage', { session_id: activeSessionId })
+    prefetchedUsageForRef.current = prefetchUsageKey
+    void requestGateway<UsageStats>('session.usage', { session_id: prefetchUsageKey })
       .then((usage: UsageStats) => {
         if (usage && (usage.context_max || usage.total)) {
           setCurrentUsage(current => ({ ...current, ...usage }))
 
           // The statusbar reads the FOCUSED session's slice when a tile has
-          // focus (primaryFocused=false), not the global atom above — so a
-          // cold tile's prefetched usage vanished until its first turn event
-          // landed in the slice. Write the slice directly (merge, never
-          // clobber a live turn's richer counts); a runtime id absent from
-          // the map just adds a stub slice the focus projection picks up.
-          $sessionStates.set({
-            ...$sessionStates.get(),
-            [activeSessionId]: {
-              ...($sessionStates.get()[activeSessionId] ?? {}),
-              usage: { ...usage }
-            }
-          })
+          // focus (primaryFocused=false), not the global atom above. When the
+          // prefetch key IS the runtime id we can seed the slice directly;
+          // when it is a stored id (tile not yet resumed) the slice does not
+          // exist yet, so seed the global atom AND remember the usage so the
+          // tile's resume path (updateSessionState) can adopt it — simplest
+          // form: stash under the stored id, and the tile-state projection
+          // below falls back to it while no runtime slice exists.
+          if (activeSessionId && prefetchUsageKey === activeSessionId) {
+            $sessionStates.set({
+              ...$sessionStates.get(),
+              [activeSessionId]: {
+                ...($sessionStates.get()[activeSessionId] ?? {}),
+                usage: { ...usage }
+              }
+            })
+          } else if (prefetchUsageKey) {
+            $prefetchedUsageByStoredId.set({
+              ...$prefetchedUsageByStoredId.get(),
+              [prefetchUsageKey]: { ...usage }
+            })
+          }
         }
       })
       .catch(() => {})
-  }, [activeSessionId, requestGateway])
+  }, [prefetchUsageKey, requestGateway])
   const busy = primaryFocused ? primaryBusy : focusedBusy
 
   // EMPTY_USAGE (module constant) keeps the fallback referentially stable —
   // a fresh `{...}` each render would bust the usage-label memos below.
-  const currentUsage = primaryFocused ? primaryUsage : (focusedUsage ?? EMPTY_USAGE)
+  const currentUsage = primaryFocused ? primaryUsage : (focusedUsage ?? prefetchedFocusedUsage ?? EMPTY_USAGE)
 
   const turnStartedAt = primaryFocused ? primaryTurnStartedAt : focusedTurnStartedAt
 
