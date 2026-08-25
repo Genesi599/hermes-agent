@@ -2,10 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ClientSessionState } from '@/app/types'
 import { findGroupOfPane, group, split } from '@/components/pane-shell/tree/model'
-import { $layoutTree } from '@/components/pane-shell/tree/store'
-import { $selectedStoredSessionId } from '@/store/session'
+import { $activeTreeGroup, $layoutTree } from '@/components/pane-shell/tree/store'
+import { $activeSessionId, $selectedStoredSessionId } from '@/store/session'
 import type { SessionTile } from '@/store/session-states'
 import {
+  $focusedRuntimeId,
+  $focusedStoredSessionId,
+  $sessionStates,
+  $sessionTiles,
   blankDraftTile,
   focusedSessionNeedsRoute,
   markSelectionRestore,
@@ -237,5 +241,63 @@ describe('shouldMarkSessionUnread (cron exclusion)', () => {
 
   it('still marks a normal background completion unread', () => {
     expect(shouldMarkSessionUnread('20260811_141303_6536f5', null, true)).toBe(true)
+  })
+})
+
+describe('focused session follows compression tip rotation', () => {
+  const stateFor = (storedSessionId: string): ClientSessionState =>
+    ({ storedSessionId }) as unknown as ClientSessionState
+
+  const focusTilePane = (storedSessionId: string) => {
+    $layoutTree.set(group([tilePane(storedSessionId)], { active: tilePane(storedSessionId), id: 'grp-tile' }))
+    $activeTreeGroup.set('grp-tile')
+  }
+
+  afterEach(() => {
+    $activeTreeGroup.set(null)
+    $layoutTree.set(null)
+    $selectedStoredSessionId.set(null)
+    $activeSessionId.set(null)
+    $sessionTiles.set([])
+    $sessionStates.set({})
+  })
+
+  it('resolves a stale tile pane id to the runtime CURRENT stored id after rotation', () => {
+    $sessionTiles.set([{ runtimeId: 'rt-1', storedSessionId: 'root-1' }])
+    $sessionStates.set({ 'rt-1': stateFor('tip-2') })
+    $selectedStoredSessionId.set('elsewhere')
+    focusTilePane('root-1')
+
+    // The pane name froze 'root-1', the runtime moved on to 'tip-2' — focus
+    // must name the conversation as it exists NOW, not the defunct pane id.
+    expect($focusedStoredSessionId.get()).toBe('tip-2')
+  })
+
+  it('keeps the pane id while the tile runtime has not published a state yet', () => {
+    $sessionTiles.set([{ runtimeId: 'rt-1', storedSessionId: 'root-1' }])
+    focusTilePane('root-1')
+
+    expect($focusedStoredSessionId.get()).toBe('root-1')
+  })
+
+  it('still resolves the tile runtime by the pane id, not the rotated focused id', () => {
+    $sessionTiles.set([{ runtimeId: 'rt-1', storedSessionId: 'root-1' }])
+    $sessionStates.set({ 'rt-1': stateFor('tip-2') })
+    $activeSessionId.set('rt-primary')
+    $selectedStoredSessionId.set('elsewhere')
+    focusTilePane('root-1')
+
+    expect($focusedStoredSessionId.get()).toBe('tip-2')
+    expect($focusedRuntimeId.get()).toBe('rt-1')
+  })
+
+  it('falls back to the primary runtime when no tile pane is focused', () => {
+    $layoutTree.set(group(['workspace'], { active: 'workspace', id: 'grp-main' }))
+    $activeTreeGroup.set('grp-main')
+    $selectedStoredSessionId.set('main-sel')
+    $activeSessionId.set('rt-primary')
+
+    expect($focusedStoredSessionId.get()).toBe('main-sel')
+    expect($focusedRuntimeId.get()).toBe('rt-primary')
   })
 })

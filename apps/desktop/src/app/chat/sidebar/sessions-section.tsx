@@ -18,7 +18,7 @@ import {
 } from '@/lib/session-date-groups'
 import { sessionBucketLabel } from '@/lib/time'
 import { cn } from '@/lib/utils'
-import { sessionPinId } from '@/store/session'
+import { sessionMatchesStoredId, sessionPinId } from '@/store/session'
 import { $sessionDotStateById, hasLiveTurn } from '@/store/session-dot-state'
 
 import { SidebarDateDivider, SidebarSectionMeta } from './chrome'
@@ -251,6 +251,7 @@ export function SidebarSessionsSection({
     () => flattenSessionsWithBranches(sessions, { preserveOrder: pinned }),
     [sessions, pinned]
   )
+
   const childCountByParent = useMemo(() => {
     const counts = new Map<string, number>()
 
@@ -268,16 +269,20 @@ export function SidebarSessionsSection({
   const renderRow = useCallback(
     (session: SessionInfo, draggable: boolean, branchStem?: string) => {
       const childCount = childCountByParent.get(session.id) ?? 0
+      // Compression tip rotation: the row surfaces the LIVE tip id while the
+      // selection/route/tile can still hold the lineage root (or vice versa).
+      // Match on either identity — the same rule pins, unread and the working
+      // set already apply — or the highlight desyncs from the open chat.
+      const isActiveSession = activeSessionId != null && sessionMatchesStoredId(session, activeSessionId)
+
       const rowProps = {
         branchStem,
         isPinned: isSessionPinned?.(session) ?? pinned,
-        isSelected: session.id === activeSessionId,
+        isSelected: isActiveSession,
         onArchive: () => onArchiveSession(session.id),
         onBranch: onBranchSession ? () => onBranchSession(session.id, session.profile) : undefined,
         onCreateBranches:
-          session.id === activeSessionId && onCreateBranchesSession
-            ? () => onCreateBranchesSession(session.id)
-            : undefined,
+          isActiveSession && onCreateBranchesSession ? () => onCreateBranchesSession(session.id) : undefined,
         onDelete: () => onDeleteSession(session.id),
         mergeChildrenCount: childCount,
         onMergeChildren:

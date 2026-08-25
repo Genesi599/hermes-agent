@@ -9,7 +9,7 @@ import { useI18n } from '@/i18n'
 import { type SidebarListRow } from '@/lib/session-date-groups'
 import { sessionBucketLabel } from '@/lib/time'
 import { cn } from '@/lib/utils'
-import { sessionPinId } from '@/store/session'
+import { sessionMatchesStoredId, sessionPinId } from '@/store/session'
 
 import { SidebarDateDivider } from './chrome'
 import { SidebarSessionRow } from './session-row'
@@ -95,6 +95,7 @@ export const VirtualSessionList: FC<VirtualSessionListProps> = ({
   const totalSize = virtualizer.getTotalSize()
   const paddingTop = virtualItems[0]?.start ?? 0
   const paddingBottom = Math.max(0, totalSize - (virtualItems[virtualItems.length - 1]?.end ?? 0))
+
   const entries = listRows
     .filter(row => row.kind !== 'divider')
     .map(row => row.entry)
@@ -133,6 +134,10 @@ export const VirtualSessionList: FC<VirtualSessionListProps> = ({
     const reorderable = sortable && !branchStem
     const childCount = childCountByParent.get(session.id) ?? 0
 
+    // Same identity rule as sessions-section's renderRow: match the highlight
+    // against either the live tip id or the lineage root, never one only.
+    const isActiveSession = activeSessionId != null && sessionMatchesStoredId(session, activeSessionId)
+
     const completedChildren = entries
       .map(item => item.session)
       .filter(child => child.parent_session_id?.trim() === session.id && child.branch_task_status === 'completed')
@@ -140,13 +145,11 @@ export const VirtualSessionList: FC<VirtualSessionListProps> = ({
     const commonProps: SessionRowCommonProps = {
       branchStem,
       isPinned: pinnedSessionIdSet?.has(session.id) ?? pinned,
-      isSelected: session.id === activeSessionId,
+      isSelected: isActiveSession,
       onArchive: () => onArchiveSession(session.id),
       onBranch: onBranchSession ? () => onBranchSession(session.id, session.profile) : undefined,
       onCreateBranches:
-        session.id === activeSessionId && onCreateBranchesSession
-          ? () => onCreateBranchesSession(session.id)
-          : undefined,
+        isActiveSession && onCreateBranchesSession ? () => onCreateBranchesSession(session.id) : undefined,
       onDelete: () => onDeleteSession(session.id),
       mergeChildrenCount: childCount,
       onMergeChildren:

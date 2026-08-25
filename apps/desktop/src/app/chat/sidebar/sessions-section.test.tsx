@@ -27,6 +27,7 @@ vi.mock('@/i18n', () => ({
 }))
 
 const mockVirtualListPropsHistory: VirtualSessionListProps[] = []
+const mockRowPropsHistory: Array<{ isSelected?: boolean; session: SessionInfo }> = []
 
 vi.mock('./virtual-session-list', () => ({
   VirtualSessionList: (props: VirtualSessionListProps) => {
@@ -37,9 +38,11 @@ vi.mock('./virtual-session-list', () => ({
 }))
 
 vi.mock('./session-row', () => ({
-  SidebarSessionRow: ({ session }: { session: SessionInfo }) => (
-    <div data-testid={`session-row-${session.id}`}>{session.id}</div>
-  )
+  SidebarSessionRow: (props: { isSelected?: boolean; session: SessionInfo }) => {
+    mockRowPropsHistory.push(props)
+
+    return <div data-testid={`session-row-${props.session.id}`}>{props.session.id}</div>
+  }
 }))
 
 function makeSession(id: string, startedAt = 1000): SessionInfo {
@@ -175,5 +178,91 @@ describe('SidebarSessionsSection memoization & virtualizer stability', () => {
 
     const thirdRowsRef = mockVirtualListPropsHistory[2].rows
     expect(thirdRowsRef).not.toBe(secondRowsRef)
+  })
+})
+
+describe('sidebar row highlight matches compression lineage', () => {
+  it('highlights the projected tip row when the selection holds the lineage root', () => {
+    mockRowPropsHistory.length = 0
+
+    const sessions = [
+      makeSession('plain-other', 3000),
+      // A compressed conversation: the list row surfaces the continuation TIP
+      // id while remembering its lineage root (sessionPinId's durable key).
+      { ...makeSession('tip-1', 2000), _lineage_root_id: 'root-1' } as SessionInfo,
+      makeSession('plain-third', 1000)
+    ]
+
+    render(
+      <SidebarSessionsSection
+        // The route/tile can legitimately still hold the root identity.
+        activeSessionId="root-1"
+        emptyState={<div>Empty</div>}
+        label="Sessions"
+        onArchiveSession={noop}
+        onDeleteSession={noop}
+        onResumeSession={noop}
+        onToggle={noop}
+        onTogglePin={noop}
+        open={true}
+        pinned={false}
+        sessions={sessions}
+      />
+    )
+
+    const selected = mockRowPropsHistory.filter(row => row.isSelected)
+    expect(selected.map(row => row.session.id)).toEqual(['tip-1'])
+  })
+
+  it('still highlights by live tip id when selection and row agree', () => {
+    mockRowPropsHistory.length = 0
+
+    const sessions = [
+      { ...makeSession('tip-1', 2000), _lineage_root_id: 'root-1' } as SessionInfo,
+      makeSession('plain-other', 1000)
+    ]
+
+    render(
+      <SidebarSessionsSection
+        activeSessionId="tip-1"
+        emptyState={<div>Empty</div>}
+        label="Sessions"
+        onArchiveSession={noop}
+        onDeleteSession={noop}
+        onResumeSession={noop}
+        onToggle={noop}
+        onTogglePin={noop}
+        open={true}
+        pinned={false}
+        sessions={sessions}
+      />
+    )
+
+    const selected = mockRowPropsHistory.filter(row => row.isSelected)
+    expect(selected.map(row => row.session.id)).toEqual(['tip-1'])
+  })
+
+  it('highlights nothing for a null selection', () => {
+    mockRowPropsHistory.length = 0
+
+    const sessions = [{ ...makeSession('tip-1', 2000), _lineage_root_id: 'root-1' } as SessionInfo]
+
+    render(
+      <SidebarSessionsSection
+        activeSessionId={null}
+        emptyState={<div>Empty</div>}
+        label="Sessions"
+        onArchiveSession={noop}
+        onDeleteSession={noop}
+        onResumeSession={noop}
+        onToggle={noop}
+        onTogglePin={noop}
+        open={true}
+        pinned={false}
+        sessions={sessions}
+      />
+    )
+
+    expect(mockRowPropsHistory.filter(row => row.isSelected)).toEqual([])
   })
 })

@@ -32,9 +32,9 @@ import { activeGateway } from '@/store/gateway'
 import { notify, notifyError } from '@/store/notifications'
 import { $projectTree, moveSessionToProject, projectIdForCwd, projectRootCwd } from '@/store/projects'
 import {
-  $activeSessionId,
   $selectedStoredSessionId,
   $sessions,
+  idsShareLineage,
   sessionMatchesStoredId,
   setSessions
 } from '@/store/session'
@@ -63,7 +63,14 @@ export async function renameSessionPreferringRpc(
   title: string,
   profile?: string
 ): Promise<{ title?: string }> {
-  const isFocusedRow = storedSessionId === $focusedStoredSessionId.get()
+  // Lineage-aware: the row can surface the compression tip while the focused
+  // atom (or the route behind it) still holds the lineage root, and a bare ===
+  // would then route the rename away from the focused runtime.
+  const focusedStoredSessionId = $focusedStoredSessionId.get()
+
+  const isFocusedRow =
+    focusedStoredSessionId != null && idsShareLineage(storedSessionId, focusedStoredSessionId, $sessions.get())
+
   const runtimeId = isFocusedRow ? $focusedRuntimeId.get() : null
   const gateway = activeGateway()
 

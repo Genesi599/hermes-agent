@@ -37,7 +37,6 @@ import {
   $activeSessionId,
   $selectedStoredSessionId,
   $sessions,
-  $unreadFinishedSessionIds,
   clearSessionUnread,
   idsShareLineage,
   lineageAliases,
@@ -901,24 +900,44 @@ export function reopenLastClosedTile(): void {
 // timer / model) reads these instead of the primary-only atoms.
 // ---------------------------------------------------------------------------
 
-/** Stored id of the focused session (the interacted zone's tile, else the
- *  primary's selection). Null on a fresh draft. */
-export const $focusedStoredSessionId = computed(
-  [$activeTreeGroup, $layoutTree, $selectedStoredSessionId],
-  (groupId, tree, selected) => {
-    const active = groupId && tree ? findGroup(tree, groupId)?.active : undefined
+/** Stored id naming the interacted zone's session TILE, when the active pane is
+ *  one. The pane name freezes the id the tab was OPENED under — it is not
+ *  rewritten when auto-compression rotates the conversation's stored id. */
+const $focusedTilePaneStoredId = computed([$activeTreeGroup, $layoutTree], (groupId, tree) => {
+  const active = groupId && tree ? findGroup(tree, groupId)?.active : undefined
 
-    return active?.startsWith(TILE_PANE_PREFIX) ? active.slice(TILE_PANE_PREFIX.length) : selected
+  return active?.startsWith(TILE_PANE_PREFIX) ? active.slice(TILE_PANE_PREFIX.length) : null
+})
+
+/** Stored id of the focused session (the interacted zone's tile, else the
+ *  primary's selection). Null on a fresh draft.
+ *
+ *  A tile pane's frozen id goes stale when its conversation auto-compresses
+ *  (the rotation event only follows the PRIMARY route, never a tile), so the
+ *  tile branch resolves the tab's bound runtime to its CURRENT stored id.
+ *  Otherwise every focus-reading surface — the sidebar highlight above all —
+ *  would keep pointing at a defunct id no list row carries. */
+export const $focusedStoredSessionId = computed(
+  [$focusedTilePaneStoredId, $selectedStoredSessionId, $sessionTiles, $sessionStates],
+  (paneStoredId, selected, tiles, states) => {
+    if (paneStoredId == null) {
+      return selected
+    }
+
+    const runtimeId = tiles.find(t => t.storedSessionId === paneStoredId)?.runtimeId
+
+    return (runtimeId ? states[runtimeId]?.storedSessionId : undefined) ?? paneStoredId
   }
 )
 
 /** Live runtime id of the focused session (a tile's bound runtime, else the
- *  primary's active session). */
+ *  primary's active session). Keyed on the pane's own id, not the resolved
+ *  focused id — the tile list still stores the frozen id the pane carries. */
 export const $focusedRuntimeId = computed(
-  [$focusedStoredSessionId, $selectedStoredSessionId, $activeSessionId, $sessionTiles],
-  (focused, selected, primaryRuntime, tiles) => {
-    if (focused && focused !== selected) {
-      return tiles.find(t => t.storedSessionId === focused)?.runtimeId ?? null
+  [$focusedTilePaneStoredId, $selectedStoredSessionId, $activeSessionId, $sessionTiles],
+  (paneStoredId, selected, primaryRuntime, tiles) => {
+    if (paneStoredId != null && paneStoredId !== selected) {
+      return tiles.find(t => t.storedSessionId === paneStoredId)?.runtimeId ?? null
     }
 
     return primaryRuntime
