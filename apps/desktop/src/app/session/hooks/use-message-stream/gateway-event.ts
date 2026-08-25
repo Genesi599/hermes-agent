@@ -1215,7 +1215,9 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
         }
       } else if (event.type === 'status.update') {
         if (sessionId && payload?.kind === 'compacting') {
-          setSessionCompacting(sessionId, true)
+          // Keep the backend's status text (token counts, elapsed heartbeat)
+          // so the status bar shows compaction progress, not a fixed label.
+          setSessionCompacting(sessionId, true, coerceGatewayText(payload?.text))
           compactedTurnRef.current.add(sessionId)
         } else if (sessionId && payload?.kind === 'compacted') {
           setSessionCompacting(sessionId, false)

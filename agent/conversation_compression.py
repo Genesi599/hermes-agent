@@ -100,6 +100,30 @@ COMPACTION_STATUS = (
 
 COMPACTION_DONE_STATUS = "✓ Context compaction complete — continuing turn..."
 
+# custom/hermes-yh (compaction-visibility): richer start/progress lines so the
+# Desktop status bar can show magnitude and liveness instead of a fixed label.
+# Both keep the "Compacting context — summarizing earlier conversation" prefix
+# verbatim: tui_gateway/server.py re-tags any lifecycle line containing
+# COMPACTION_STATUS_MARKER as kind="compacting", and _TELEGRAM_NOISY_STATUS_RE
+# (gateway/run.py) swallows the prefix substring on chat platforms — so these
+# stay routine-noise there exactly like the plain COMPACTION_STATUS line.
+COMPACTION_STATUS_DETAIL_TEMPLATE = (
+    f"🗜️ {COMPACTION_STATUS_MARKER} — summarizing earlier conversation "
+    "(~{tokens:,} tokens, {messages} messages) so I can continue... "
+    "large sessions can take a few minutes."
+)
+COMPACTION_PROGRESS_TEMPLATE = (
+    f"🗜️ {COMPACTION_STATUS_MARKER} — summarizing earlier conversation "
+    "(still working, {elapsed} elapsed)..."
+)
+
+
+def _format_compaction_elapsed(seconds: float) -> str:
+    """Render a compaction duration as a compact ``2m 05s`` / ``45s`` string."""
+    total = max(0, int(seconds))
+    minutes, secs = divmod(total, 60)
+    return f"{minutes}m {secs:02d}s" if minutes else f"{secs}s"
+
 
 def _emit_compaction_done(agent: Any) -> None:
     """Emit the structured terminal edge for a started compaction."""
@@ -168,6 +192,8 @@ CONTEXT_OVERFLOW_BLOCKED_WARNING_TEMPLATE = (
 # same constants the emission sites use) through the gateway noise filter.
 ROUTINE_COMPRESSION_STATUS_SAMPLES = (
     COMPACTION_STATUS,
+    COMPACTION_STATUS_DETAIL_TEMPLATE.format(tokens=123456, messages=461),
+    COMPACTION_PROGRESS_TEMPLATE.format(elapsed="2m 05s"),
     PRE_API_COMPRESSION_STATUS_TEMPLATE.format(tokens=123456),
     PREFLIGHT_COMPRESSION_STATUS_TEMPLATE.format(tokens=120000, threshold=100000),
     IDLE_COMPACTION_STATUS_TEMPLATE.format(idle_seconds=3600, tokens=120000),
@@ -1436,6 +1462,7 @@ class _CompressionActivityHeartbeat:
         if not math.isfinite(interval_seconds):
             interval_seconds = 60.0
         self._interval_seconds = max(0.1, interval_seconds)
+        self._started_at = time.monotonic()
         self._stop = threading.Event()
         self._thread = threading.Thread(
             target=self._run,
@@ -1513,6 +1540,29 @@ class _CompressionActivityHeartbeat:
             if self._should_suppress():
                 return
             self._touch("context compression in progress")
+            self._emit_progress()
+
+    def _emit_progress(self) -> None:
+        """custom/hermes-yh (compaction-visibility): re-emit the compacting
+        status with elapsed time once per heartbeat interval so the Desktop
+        status bar (and CLI) can see the summarization is alive during
+        multi-minute auxiliary calls. Mirrors the plain line's noise-filter
+        and kind-re-tag treatment; never raises."""
+        if self._should_suppress():
+            return
+        emit_status = getattr(self._agent, "_emit_status", None)
+        if not callable(emit_status):
+            return
+        try:
+            emit_status(
+                COMPACTION_PROGRESS_TEMPLATE.format(
+                    elapsed=_format_compaction_elapsed(
+                        time.monotonic() - self._started_at
+                    )
+                )
+            )
+        except Exception:
+            logger.debug("compression progress status emit failed", exc_info=True)
 
 
 class _CompressionLockLeaseRefresher:
@@ -2325,7 +2375,14 @@ def compress_context(
         f"{approx_tokens:,}" if approx_tokens else "unknown", agent.model,
         focus_topic,
     )
+    # custom/hermes-yh (compaction-visibility): prefer the detailed line so the
+    # Desktop status bar shows how big the summarization is; fall back to the
+    # plain marker line when no token estimate reached this call.
     _compaction_status = COMPACTION_STATUS
+    if approx_tokens:
+        _compaction_status = COMPACTION_STATUS_DETAIL_TEMPLATE.format(
+            tokens=approx_tokens, messages=_pre_msg_count
+        )
     if not force:
         _compaction_status = automatic_compaction_status_message(
             agent.context_compressor,
@@ -3760,7 +3817,15 @@ def _compress_context_via_codex_app_server(
         f"{approx_tokens:,}" if approx_tokens else "unknown",
     )
     try:
-        agent._emit_status(COMPACTION_STATUS)
+        agent._emit_status(
+            # custom/hermes-yh (compaction-visibility): detailed line when the
+            # token estimate is available; plain marker line otherwise.
+            COMPACTION_STATUS_DETAIL_TEMPLATE.format(
+                tokens=approx_tokens, messages=len(messages)
+            )
+            if approx_tokens
+            else COMPACTION_STATUS
+        )
     except Exception:
         pass
 
@@ -4138,6 +4203,8 @@ def try_shrink_image_parts_in_messages(
 
 __all__ = [
     "COMPACTION_STATUS",
+    "COMPACTION_STATUS_DETAIL_TEMPLATE",
+    "COMPACTION_PROGRESS_TEMPLATE",
     "COMPACTION_DONE_STATUS",
     "COMPACTION_STATUS_MARKER",
     "check_compression_model_feasibility",

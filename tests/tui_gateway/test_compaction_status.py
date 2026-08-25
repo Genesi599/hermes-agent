@@ -51,6 +51,28 @@ def test_compaction_lifecycle_is_retagged(server, monkeypatch):
     assert events == [{"kind": "compacting", "text": COMPACTION_STATUS}]
 
 
+def test_compaction_detail_and_progress_lifecycle_are_retagged(server, monkeypatch):
+    # custom/hermes-yh (compaction-visibility): the detailed start line and the
+    # per-minute heartbeat line must re-tag exactly like the plain marker line
+    # so the desktop keeps its compacting state and refreshes the visible text.
+    from agent.conversation_compression import (
+        COMPACTION_PROGRESS_TEMPLATE,
+        COMPACTION_STATUS_DETAIL_TEMPLATE,
+    )
+
+    events = _capture(server, monkeypatch)
+    detail = COMPACTION_STATUS_DETAIL_TEMPLATE.format(tokens=414406, messages=461)
+    progress = COMPACTION_PROGRESS_TEMPLATE.format(elapsed="2m 05s")
+
+    server._status_update("sid", "lifecycle", detail)
+    server._status_update("sid", "lifecycle", progress)
+
+    assert events == [
+        {"kind": "compacting", "text": detail},
+        {"kind": "compacting", "text": progress},
+    ]
+
+
 def test_other_lifecycle_status_stays_lifecycle(server, monkeypatch):
     events = _capture(server, monkeypatch)
     server._status_update("sid", "lifecycle", "❌ Rate limited after 5 retries")

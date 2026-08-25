@@ -165,6 +165,37 @@ def test_compression_activity_heartbeat_touches_agent_during_long_compress(tmp_p
     assert db.get_compression_lock_holder(session_id) is None
 
 
+def test_compression_heartbeat_emits_progress_status() -> None:
+    """custom/hermes-yh (compaction-visibility): every heartbeat tick also
+    emits a status line carrying the compaction marker prefix and elapsed
+    time, so the gateway re-tags it kind="compacting" and the desktop status
+    bar shows liveness during multi-minute summarization calls."""
+    import types
+
+    from agent.conversation_compression import _CompressionActivityHeartbeat
+
+    emitted: list[str] = []
+    agent = types.SimpleNamespace(
+        _compression_activity_heartbeat_interval=0.05,
+        _last_activity_provenance=None,
+        _touch_activity=None,
+        _emit_status=lambda text: emitted.append(text),
+    )
+
+    heartbeat = _CompressionActivityHeartbeat(agent).start()
+    try:
+        deadline = time.monotonic() + 1.0
+        while not emitted and time.monotonic() < deadline:
+            time.sleep(0.01)
+    finally:
+        heartbeat.stop()
+
+    assert emitted, "heartbeat never emitted a progress status line"
+    for line in emitted:
+        assert "Compacting context — summarizing earlier conversation" in line
+        assert "(still working, " in line and " elapsed)..." in line
+
+
 def test_compression_activity_heartbeat_stops_on_compress_exception(tmp_path: Path) -> None:
     """Exception paths must stop the heartbeat and release the compression lock."""
     db = SessionDB(db_path=tmp_path / "state.db")

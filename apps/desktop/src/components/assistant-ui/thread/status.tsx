@@ -13,7 +13,7 @@ import { Loader } from '@/components/ui/loader'
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 import { $backgroundResume } from '@/store/background-delegation'
-import { sessionCompacting } from '@/store/compaction'
+import { sessionCompacting, sessionCompactingText } from '@/store/compaction'
 import { sessionAwaitingInput } from '@/store/prompts'
 import { $reviewActivityBySessionId, $turnStartedAt } from '@/store/session'
 import { type DraftingTool, sessionDraftingTool } from '@/store/tool-drafting'
@@ -43,7 +43,10 @@ const StatusRow: FC<{ children: ReactNode; label: string } & React.ComponentProp
   </div>
 )
 
-// Fixed label while auto-compaction runs — decoupled from backend status text.
+// Fixed label while auto-compaction runs — the accessible name and the
+// fallback when the backend sends no status text. When it does (token
+// counts, per-minute elapsed heartbeat), the visible line shows that text
+// instead so the wait is legible; the aria-label stays stable either way.
 const COMPACTION_LABEL = 'Summarizing thread'
 
 const HintText: FC<{ children: ReactNode }> = ({ children }) => (
@@ -57,6 +60,7 @@ function useThreadSessionStatus() {
   const sessionId = useStore(useSessionView().$runtimeId)
   const turnStartedAt = useStore($turnStartedAt)
   const compacting = useStore(useMemo(() => sessionCompacting(sessionId), [sessionId]))
+  const compactionText = useStore(useMemo(() => sessionCompactingText(sessionId), [sessionId]))
   const drafting = useStore(useMemo(() => sessionDraftingTool(sessionId), [sessionId]))
   // A pending clarify / approval / sudo / secret means the turn is paused on the
   // user, not working — so don't resurrect the "thinking" timer while they
@@ -66,6 +70,7 @@ function useThreadSessionStatus() {
   return {
     awaitingInput,
     compacting,
+    compactionText,
     drafting,
     turnTimerKey: sessionId && turnStartedAt ? `turn:${sessionId}:${turnStartedAt}` : undefined
   }
@@ -78,8 +83,14 @@ const DRAFTING_REVEAL_MS = 200
 /**
  * What to call the wait, if it deserves a name. Compaction outranks a draft —
  * it's rarer, slower, and explains a transcript that looks like it reset.
+ * While compacting, prefer the backend's live status text (magnitude +
+ * elapsed heartbeat) over the fixed label.
  */
-function useStatusHint(compacting: boolean, drafting: DraftingTool | null): string {
+function useStatusHint(
+  compacting: boolean,
+  compactionText: string,
+  drafting: DraftingTool | null
+): string {
   const [revealed, setRevealed] = useState(false)
   const name = drafting?.name ?? ''
 
@@ -96,7 +107,7 @@ function useStatusHint(compacting: boolean, drafting: DraftingTool | null): stri
   }, [name])
 
   if (compacting) {
-    return COMPACTION_LABEL
+    return compactionText || COMPACTION_LABEL
   }
 
   return revealed && name ? toolPresentVerb(name) : ''
@@ -135,13 +146,16 @@ export const CenteredThreadSpinner: FC = () => {
 
 export const ResponseLoadingIndicator: FC = () => {
   const { t } = useI18n()
-  const { compacting, drafting, turnTimerKey } = useThreadSessionStatus()
+  const { compacting, compactionText, drafting, turnTimerKey } = useThreadSessionStatus()
   const elapsed = useElapsedSeconds(true, turnTimerKey)
-  const hint = useStatusHint(compacting, drafting)
+  const hint = useStatusHint(compacting, compactionText, drafting)
   const visibleLabel = hint || t.assistant.thread.thinking
 
   return (
-    <StatusRow data-slot="aui_response-loading" label={hint || t.assistant.thread.loadingResponse}>
+    <StatusRow
+      data-slot="aui_response-loading"
+      label={compacting ? COMPACTION_LABEL : (hint || t.assistant.thread.loadingResponse)}
+    >
       <span
         aria-hidden="true"
         className="dither inline-block size-3 rounded-[2px] text-midground/80 motion-safe:animate-pulse"
@@ -217,7 +231,7 @@ export const StreamStallIndicator: FC = () => {
   // what lets the timer read "quiet for 12s" rather than the age of this
   // component, which is the whole turn so far.
   const [quietSince, setQuietSince] = useState<number | undefined>(undefined)
-  const { awaitingInput, compacting, drafting, turnTimerKey } = useThreadSessionStatus()
+  const { awaitingInput, compacting, compactionText, drafting, turnTimerKey } = useThreadSessionStatus()
   const sessionId = useStore(useSessionView().$runtimeId)
   // useStore must run unconditionally: this indicator stays mounted while the
   // runtime unbinds/rebinds (merge-into-parent swaps sessions, tile focus
@@ -225,7 +239,7 @@ export const StreamStallIndicator: FC = () => {
   // renders → React #311 tears down the whole workspace error boundary.
   const reviewActivityById = useStore($reviewActivityBySessionId)
   const reviewActivity = sessionId ? (reviewActivityById[sessionId] ?? null) : null
-  const hint = useStatusHint(compacting, drafting)
+  const hint = useStatusHint(compacting, compactionText, drafting)
 
   // A tool run at the tail already narrates the wait — its summary counts the
   // calls, its ticker names the current one, and it carries its own timer. A
@@ -267,7 +281,10 @@ export const StreamStallIndicator: FC = () => {
   }
 
   return (
-    <StatusRow data-slot="aui_stream-stall" label={hint || 'Hermes is thinking'}>
+    <StatusRow
+      data-slot="aui_stream-stall"
+      label={compacting ? COMPACTION_LABEL : (hint || 'Hermes is thinking')}
+    >
       <span
         aria-hidden="true"
         className="dither inline-block size-3 rounded-[2px] text-midground/80 motion-safe:animate-pulse"

@@ -73,11 +73,11 @@ describe('useMessageStream compaction lifecycle', () => {
     setSessionCompacting(OTHER_SID, true)
 
     emit('status.update', { kind: 'compacting' })
-    expect($compactingSessions.get()).toEqual({ [OTHER_SID]: true, [SID]: true })
+    expect($compactingSessions.get()).toEqual({ [OTHER_SID]: '', [SID]: '' })
 
     emit(type, payload)
 
-    expect($compactingSessions.get()).toEqual({ [OTHER_SID]: true })
+    expect($compactingSessions.get()).toEqual({ [OTHER_SID]: '' })
   })
 
   it('clears the compaction phase on the structured completion edge', async () => {
@@ -87,6 +87,31 @@ describe('useMessageStream compaction lifecycle', () => {
     emit('status.update', { kind: 'compacting' })
     emit('status.update', { kind: 'compacted' })
 
-    expect($compactingSessions.get()).toEqual({ [OTHER_SID]: true })
+    expect($compactingSessions.get()).toEqual({ [OTHER_SID]: '' })
+  })
+
+  it('stores the backend compaction status text and refreshes it on re-emits', async () => {
+    await mountStream()
+
+    emit('status.update', {
+      kind: 'compacting',
+      text: '🗜️ Compacting context — summarizing earlier conversation (~414,406 tokens, 461 messages)...'
+    })
+    expect($compactingSessions.get()).toMatchObject({
+      [SID]: '🗜️ Compacting context — summarizing earlier conversation (~414,406 tokens, 461 messages)...'
+    })
+
+    emit('status.update', {
+      kind: 'compacting',
+      text: '🗜️ Compacting context — summarizing earlier conversation (still working, 2m 05s elapsed)...'
+    })
+    expect($compactingSessions.get()).toMatchObject({
+      [SID]: '🗜️ Compacting context — summarizing earlier conversation (still working, 2m 05s elapsed)...'
+    })
+
+    emit('status.update', { kind: 'compacting' })
+    expect($compactingSessions.get()).toMatchObject({
+      [SID]: '🗜️ Compacting context — summarizing earlier conversation (still working, 2m 05s elapsed)...'
+    })
   })
 })
