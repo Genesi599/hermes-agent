@@ -219,7 +219,12 @@ export const StreamStallIndicator: FC = () => {
   const [quietSince, setQuietSince] = useState<number | undefined>(undefined)
   const { awaitingInput, compacting, drafting, turnTimerKey } = useThreadSessionStatus()
   const sessionId = useStore(useSessionView().$runtimeId)
-  const reviewActivity = sessionId ? (useStore($reviewActivityBySessionId)[sessionId] ?? null) : null
+  // useStore must run unconditionally: this indicator stays mounted while the
+  // runtime unbinds/rebinds (merge-into-parent swaps sessions, tile focus
+  // moves), and gating the hook on sessionId changes the hook count between
+  // renders → React #311 tears down the whole workspace error boundary.
+  const reviewActivityById = useStore($reviewActivityBySessionId)
+  const reviewActivity = sessionId ? (reviewActivityById[sessionId] ?? null) : null
   const hint = useStatusHint(compacting, drafting)
 
   // A tool run at the tail already narrates the wait — its summary counts the

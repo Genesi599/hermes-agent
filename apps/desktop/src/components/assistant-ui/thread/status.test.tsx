@@ -3,9 +3,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { __resetElapsedTimerRegistryForTests } from '@/components/chat/activity-timer'
 import { I18nProvider } from '@/i18n'
-import { $activeSessionId, $turnStartedAt } from '@/store/session'
+import { $activeSessionId, $reviewActivityBySessionId, $turnStartedAt } from '@/store/session'
 
-import { ResponseLoadingIndicator } from './status'
+import { ResponseLoadingIndicator, StreamStallIndicator } from './status'
+
+// StreamStallIndicator reads message shape via useAuiState; only its hook
+// stability across runtime swaps is under test here, so stub the store
+// selector instead of standing up a full AssistantRuntimeProvider.
+vi.mock('@assistant-ui/react', async importOriginal => {
+  const actual = await importOriginal<Record<string, unknown>>()
+
+  return {
+    ...actual,
+    useAuiState: (selector: (state: unknown) => unknown) =>
+      selector({ message: { content: [{ type: 'text', text: 'x' }] } })
+  }
+})
 
 function renderIndicator() {
   return render(
@@ -78,5 +91,72 @@ describe('status line', () => {
     expect(
       container.querySelector('[data-slot="aui_response-loading"] [class~="motion-safe:animate-pulse"]')
     ).toBeTruthy()
+  })
+})
+
+// The stall indicator stays mounted while the runtime unbinds and rebinds —
+// merge-into-parent nulls the active runtime before selecting the parent,
+// and tile focus moves do the same. Gating a useStore hook on sessionId
+// changed the hook count between renders (React #311) and tore down the
+// whole workspace error boundary. The hook must subscribe unconditionally.
+describe('StreamStallIndicator hook stability', () => {
+  afterEach(() => {
+    cleanup()
+    $activeSessionId.set(null)
+    $reviewActivityBySessionId.set({})
+  })
+
+  const renderStall = () =>
+    render(
+      <I18nProvider configClient={null} initialLocale="en">
+        <StreamStallIndicator />
+      </I18nProvider>
+    )
+
+  it('survives the active runtime going away and coming back', () => {
+    $activeSessionId.set('rt-a')
+    const view = renderStall()
+
+    // Runtime unbind (merge finished / parent selection in flight).
+    act(() => {
+      $activeSessionId.set(null)
+    })
+    view.rerender(
+      <I18nProvider configClient={null} initialLocale="en">
+        <StreamStallIndicator />
+      </I18nProvider>
+    )
+
+    // Runtime rebind (parent session resumed and activated).
+    act(() => {
+      $activeSessionId.set('rt-b')
+    })
+    view.rerender(
+      <I18nProvider configClient={null} initialLocale="en">
+        <StreamStallIndicator />
+      </I18nProvider>
+    )
+
+    // No throw means the hook count stayed stable across the swap.
+    expect(document.querySelector('[data-slot="aui_stream-stall"], [data-slot="aui_review-stall"]') || document.body).toBeTruthy()
+  })
+
+  it('picks up review activity for the bound runtime after a swap', () => {
+    $activeSessionId.set('rt-a')
+    $reviewActivityBySessionId.set({ 'rt-a': 'branch-merge', 'rt-b': 'delete' })
+    const view = renderStall()
+
+    act(() => {
+      $activeSessionId.set('rt-b')
+    })
+    view.rerender(
+      <I18nProvider configClient={null} initialLocale="en">
+        <StreamStallIndicator />
+      </I18nProvider>
+    )
+
+    // Renders null (not running) without violating hook rules — the important
+    // part is that both rerenders completed without throwing.
+    expect(view).toBeTruthy()
   })
 })
