@@ -1227,3 +1227,31 @@ describe('collectUnspokenTurnSpeech', () => {
     expect(collectUnspokenTurnSpeech([user('u1', 'hello'), assistant('a1', '')], null)).toBeNull()
   })
 })
+
+describe('compaction handoff reasoning', () => {
+  it('renders the summarizer thinking on the [CONTEXT COMPACTION user row', () => {
+    // The compaction handoff row is role=user but carries the summarizer's
+    // reasoning_content; it must render as a reasoning block ahead of the
+    // summary body (same shape as an assistant turn's thinking).
+    const messages = toChatMessages([
+      {
+        role: 'user',
+        content: '[CONTEXT COMPACTION — REFERENCE ONLY] Earlier turns were compacted\nsummary body',
+        reasoning_content: 'thinking about what to keep',
+        timestamp: 1
+      }
+    ])
+
+    const parts = messages[0]?.parts ?? []
+    expect(parts.map(part => part.type)).toEqual(['reasoning', 'text'])
+  })
+
+  it('does not render reasoning on ordinary user rows', () => {
+    const messages = toChatMessages([
+      { role: 'user', content: 'plain question', reasoning_content: 'leaked?', timestamp: 1 }
+    ])
+
+    const parts = messages[0]?.parts ?? []
+    expect(parts.map(part => part.type)).toEqual(['text'])
+  })
+})

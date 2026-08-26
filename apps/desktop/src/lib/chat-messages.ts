@@ -1051,7 +1051,15 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
       message.reasoning_content ||
       (typeof message.reasoning_details === 'string' ? message.reasoning_details : '')
 
-    if (reasoning && message.role === 'assistant') {
+    // Compaction handoff rows are role="user" but carry the summarizer's
+    // thinking in reasoning_content — render it as the turn's reasoning block
+    // (server-side projection only forwards it for this prefix).
+    const isCompactionHandoff =
+      message.role === 'user' &&
+      typeof message.content === 'string' &&
+      message.content.startsWith('[CONTEXT COMPACTION')
+
+    if (reasoning && (message.role === 'assistant' || isCompactionHandoff)) {
       parts.push(reasoningPart(reasoning))
     }
 

@@ -7853,6 +7853,14 @@ def _history_to_messages(history: list[dict]) -> list[dict]:
             for key in reasoning_keys:
                 if key in m and m.get(key) is not None:
                     msg[key] = m.get(key)
+        elif (
+            role == "user"
+            and m.get("reasoning_content")
+            and content_text.lstrip().startswith("[CONTEXT COMPACTION")
+        ):
+            # Compaction handoff row: carry the summarizer's thinking so the
+            # Desktop renders it as the compaction turn's reasoning block.
+            msg["reasoning_content"] = m.get("reasoning_content")
         # Forward display-only timeline metadata so the TUI can render
         # model switches and delegation completions as events instead of
         # opaque user messages, and hide compaction handoffs entirely.

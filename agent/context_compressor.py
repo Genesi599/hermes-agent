@@ -4247,8 +4247,20 @@ This compaction should PRIORITISE preserving all information related to the focu
             message = response.choices[0].message
             if isinstance(message, dict):
                 content = message.get("content")
+                raw_reasoning = message.get("reasoning_content")
             else:
                 content = getattr(message, "content", message)
+                raw_reasoning = getattr(message, "reasoning_content", None)
+            # The summarizer model's thinking (GLM-5.x emits it in
+            # ``reasoning_content``) used to be dropped here. Keep it for the
+            # handoff row so the Desktop can show HOW the summary was built
+            # (the summary text itself is the turn's content).
+            if isinstance(raw_reasoning, str) and raw_reasoning.strip():
+                self._last_summary_reasoning = _redact_compaction_text(
+                    raw_reasoning.strip()
+                )
+            else:
+                self._last_summary_reasoning = ""
             # Handle cases where content is not a string (e.g., dict from llama.cpp)
             if not isinstance(content, str):
                 content = str(content) if content else ""
@@ -6470,6 +6482,7 @@ This compaction should PRIORITISE preserving all information related to the focu
         self._last_summary_fallback_used = False
         self._last_feasibility_skip = False
         self._last_summary_error = None
+        self._last_summary_reasoning = ""
         self._last_aux_model_failure_error = None
         self._last_aux_model_failure_model = None
         self._last_compress_aborted = False
@@ -7093,14 +7106,19 @@ This compaction should PRIORITISE preserving all information related to the focu
             summary = summary + "\n\n" + _SUMMARY_END_MARKER
 
         if not _merge_summary_into_tail:
-            compressed.append({
+            summary_row = {
                 "role": summary_role,
                 "content": summary,
                 COMPRESSED_SUMMARY_METADATA_KEY: True,
                 COMPRESSED_SUMMARY_HAS_USER_TURN_KEY: bool(
                     self._summary_has_user_turn
                 ),
-            })
+            }
+            # The summarizer's thinking travels on the handoff row (any role)
+            # so the Desktop can render it as the compaction turn's reasoning.
+            if getattr(self, "_last_summary_reasoning", ""):
+                summary_row["reasoning_content"] = self._last_summary_reasoning
+            compressed.append(summary_row)
 
         # Default merge target: literal tail index 0. For an ordinary
         # alternation collision the summary only has to stay *invisible* to

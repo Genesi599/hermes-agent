@@ -17879,3 +17879,24 @@ def test_prompt_submit_truncation_archives_instead_of_deleting(monkeypatch):
         assert captured.get("active_only") is True
     finally:
         server._sessions.pop("archive-trunc-sid", None)
+
+
+def test_history_to_messages_forwards_compaction_reasoning_on_user_row():
+    """The compaction handoff row is role=user but carries the summarizer's
+    thinking in reasoning_content; the display projection must forward it so
+    the Desktop renders it as the compaction turn's reasoning block."""
+    history = [
+        {
+            "role": "user",
+            "content": "[CONTEXT COMPACTION — REFERENCE ONLY] Earlier turns were compacted\nsummary body",
+            "reasoning_content": "thinking about what to keep",
+        },
+        {
+            "role": "user",
+            "content": "plain question",
+            "reasoning_content": "must NOT be forwarded for ordinary user rows",
+        },
+    ]
+    rows = server._history_to_messages(history)
+    assert rows[0]["reasoning_content"] == "thinking about what to keep"
+    assert "reasoning_content" not in rows[1]

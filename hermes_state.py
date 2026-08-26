@@ -8798,7 +8798,12 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
                     msg.get("token_count"),
                     msg.get("finish_reason"),
                     _scrub_surrogates(msg.get("reasoning")) if role == "assistant" else None,
-                    _scrub_surrogates(msg.get("reasoning_content")) if role == "assistant" else None,
+                    # Compaction handoff rows are role="user" but carry the
+                    # summarizer's thinking in reasoning_content; an explicit
+                    # value on a user row is intentionally honored.
+                    _scrub_surrogates(msg.get("reasoning_content"))
+                    if role == "assistant" or (role == "user" and msg.get("reasoning_content"))
+                    else None,
                     reasoning_details_json,
                     codex_items_json,
                     codex_message_items_json,
