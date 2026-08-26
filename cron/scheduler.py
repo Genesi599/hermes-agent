@@ -579,18 +579,219 @@ def _cron_inactivity_seconds() -> float:
     """Parse HERMES_CRON_TIMEOUT (seconds). 0 = unlimited; bad input = 600.
 
     Shared by run_job's inactivity monitor (which maps 0 to "no limit") and
-    the cwd-lock bound below (which keeps the wait bounded regardless) so
-    the two sites cannot drift apart — the lock bound must stay at or above
-    the inactivity limit or waiters would fail while a healthy holder runs.
+    the cwd-lock bound below (which keeps the wait bounded regardless) so the
+    two sites cannot drift apart — the lock bound must stay at or above the
+    inactivity limit or waiters would fail while a healthy holder runs.
     """
     raw = os.getenv("HERMES_CRON_TIMEOUT", "").strip()
     if not raw:
         return 600.0
     try:
         return float(raw)
-    except (ValueError, TypeError):
+    except (Value, TypeError):
         logger.warning("Invalid HERMES_CRON_TIMEOUT=%r; using default 600s", raw)
         return 600.0
+
+
+# ─── Attached-session dialog execution (user directive 2026-08-26) ──────────
+# Cron jobs bound to a conversation (attach_to_session) submit their prompt
+# through the Desktop backend's REST turn endpoint instead of running
+# run_agent directly in the scheduler. The direct path has no stream wiring,
+# so the Desktop rendered a permanent Thinking indicator while the turn
+# quietly progressed; the REST path runs the turn through the standard
+# gateway channel (stream callbacks, interim text, tool events) and streams
+# into whatever client has the conversation open. When the backend is not
+# reachable the caller falls back to the historical direct-run path.
+
+
+def _desktop_backend_port() -> str:
+    return str(os.environ.get("HERMES_DESKTOP_BACKEND_PORT") or "").strip() or "8803"
+
+
+def _desktop_backend_token(port: str) -> str:
+    """Read HERMES_DASHBOARD_SESSION_TOKEN from the process serving ``port``.
+
+    The desktop shell mints a per-boot token and injects it into the backend
+    process env; the same psutil read the dashboard tooling uses. Returns ""
+    when the process or its token cannot be found (caller falls back).
+    """
+    try:
+        import psutil
+    except Exception:
+        return ""
+    needle = int(port)
+    try:
+        for conn in psutil.net_connections(kind="tcp"):
+            if conn.status == psutil.CONN_LISTEN and conn.laddr and conn.laddr.port == needle:
+                try:
+                    env = psutil.Process(conn.pid).environ()
+                except Exception:
+                    continue
+                token = str(env.get("HERMES_DASHBOARD_SESSION_TOKEN") or "").strip()
+                if token:
+                    return token
+    except Exception:
+        logger.debug("desktop backend token discovery failed", exc_info=True)
+    return ""
+
+
+def _submit_attached_prompt_via_backend(
+    target_session_id: str,
+    text: str,
+    *,
+    provider: str = "",
+    model: str = "",
+    timeout_s: float = 20.0,
+) -> dict | None:
+    """POST the turn to the Desktop backend. Returns its JSON response dict
+    ({"status": "streaming"|"queued", "session_id": ...}) or None when the
+    backend is unreachable/refused (caller falls back to the direct path)."""
+    import time as _time
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    port = _desktop_backend_port()
+    token = _desktop_backend_token(port)
+    if not token:
+        return None
+
+    payload = {
+        "text": text,
+        "provider": provider or "",
+        "model": model or "",
+        "queued": True,
+    }
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/api/sessions/{urllib.parse.quote(target_session_id, safe='')}/prompt",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "X-Hermes-Session-Token": token,
+        },
+        method="POST",
+    )
+    # The backend binds loopback only; never let a system proxy intercept it.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(req, timeout=timeout_s) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = ""
+        try:
+            body = exc.read().decode("utf-8", "replace")[:200]
+        except Exception:
+            pass
+        logger.warning(
+            "attached-session submit rejected by desktop backend: HTTP %s %s",
+            exc.code,
+            body,
+        )
+        return None
+    except Exception as exc:
+        logger.info(
+            "attached-session submit: desktop backend not reachable (%s); "
+            "falling back to direct run",
+            exc,
+        )
+        return None
+
+
+def _await_attached_dialog_turn(
+    target_session_id: str,
+    session_db,
+    *,
+    job_id: str,
+    job_name: str,
+    inactivity_limit_s: float,
+    poll_interval_s: float = 5.0,
+) -> dict:
+    """Block until the backend-submitted turn finishes.
+
+    Completion signal: the durable live_status projection returns to idle
+    after having gone working (events message.start/tool.*/message.complete
+    maintain it). Inactivity: while working, no new persisted message for
+    longer than the cron inactivity limit → interrupt via the backend and
+    raise TimeoutError (the standard cron failure path takes over). The final
+    response text is the session's last persisted assistant message.
+    """
+    import time as _time
+
+    deadline_total = _time.monotonic() + 6 * 3600.0  # hard ceiling: 6h
+    saw_working = False
+    last_msg_ts = 0.0
+    last_live_status = ""
+
+    def _snapshot() -> tuple[str, float]:
+        row = session_db.get_session(target_session_id) or {}
+        status = str(row.get("live_status") or "").strip().lower()
+        msg_ts = 0.0
+        try:
+            with session_db._read_ctx() as conn:
+                r = conn.execute(
+                    "SELECT MAX(timestamp) AS t FROM messages WHERE session_id = ?",
+                    (target_session_id,),
+                ).fetchone()
+            msg_ts = float((r["t"] if r is not None else None) or 0.0)
+        except Exception:
+            pass
+        return status, msg_ts
+
+    while True:
+        status, msg_ts = _snapshot()
+        if status != last_live_status:
+            logger.info(
+                "Job '%s': attached dialog turn live_status=%s", job_id, status or "(none)"
+            )
+            last_live_status = status
+        if status == "working":
+            saw_working = True
+            if msg_ts > last_msg_ts:
+                last_msg_ts = msg_ts
+        elif saw_working and status in ("", "idle"):
+            break  # turn finished
+
+        now = _time.monotonic()
+        if now >= deadline_total:
+            raise TimeoutError(
+                f"Cron job '{job_name}' attached dialog turn exceeded the 6h ceiling"
+            )
+        if (
+            saw_working
+            and inactivity_limit_s > 0
+            and msg_ts > 0
+            and (_time.time() - msg_ts) > inactivity_limit_s
+        ):
+            logger.error(
+                "Job '%s': attached dialog turn idle for %.0fs (limit %.0fs); interrupting",
+                job_name,
+                _time.time() - msg_ts,
+                inactivity_limit_s,
+            )
+            raise TimeoutError(
+                f"Cron job '{job_name}' attached dialog turn idle for "
+                f"{int(_time.time() - msg_ts)}s (limit {int(inactivity_limit_s)}s)"
+            )
+        _time.sleep(poll_interval_s)
+
+    final_text = ""
+    try:
+        with session_db._read_ctx() as conn:
+            r = conn.execute(
+                "SELECT content FROM messages WHERE session_id = ? AND role = 'assistant' "
+                "AND active = 1 ORDER BY id DESC LIMIT 1",
+                (target_session_id,),
+            ).fetchone()
+        final_text = str((r["content"] if r is not None else None) or "")
+    except Exception:
+        logger.debug("attached dialog final response read failed", exc_info=True)
+
+    return {
+        "final_response": final_text,
+        "completed": True,
+        "failed": False,
+        "turn_exit_reason": "attached_dialog_turn",
+    }
 
 
 def _cwd_lock_timeout_seconds() -> float:
@@ -3577,6 +3778,84 @@ def run_job(
                 raise RuntimeError(
                     f"Cron job '{job_name}' target Session '{requested_target}' no longer exists."
                 )
+
+            # Dialog-channel execution: submit the turn through the Desktop
+            # backend's REST endpoint so it runs as a NORMAL conversation turn
+            # (streams into the open Desktop window). Falls through to the
+            # historical direct-run path below when the backend is unreachable.
+            agent = None  # defined early: run_job's finally references it
+            _dialog_submit = _submit_attached_prompt_via_backend(
+                _target_session_id,
+                prompt,
+                provider=str(job.get("provider") or "").strip(),
+                model=str(job.get("model") or "").strip(),
+            )
+            if isinstance(_dialog_submit, dict) and _dialog_submit.get("session_id"):
+                logger.info(
+                    "Job '%s': attached turn submitted to the desktop backend "
+                    "(status=%s, session=%s)",
+                    job_id,
+                    _dialog_submit.get("status"),
+                    _dialog_submit.get("session_id"),
+                )
+                _audit_fire_id_dialog = uuid.uuid4().hex
+                _audit_t_start_dialog = time.monotonic()
+                try:
+                    result = _await_attached_dialog_turn(
+                        _target_session_id,
+                        _session_db,
+                        job_id=job_id,
+                        job_name=job_name,
+                        inactivity_limit_s=_cron_inactivity_seconds(),
+                    )
+                except Exception:
+                    _write_usage_audit({
+                        "ts": _utcnow_iso_ms(),
+                        "job_id": job_id,
+                        "fire_id": _audit_fire_id_dialog,
+                        "prompt_tokens": None,
+                        "completion_tokens": None,
+                        "total_tokens": None,
+                        "response_silent": False,
+                        "deliver_target": job.get("deliver"),
+                        "model": str(job.get("model") or "") or None,
+                        "duration_ms": int((time.monotonic() - _audit_t_start_dialog) * 1000),
+                        "error": "attached dialog turn failed",
+                    })
+                    raise
+                final_response = (result.get("final_response") or "").strip()
+                if final_response.strip() == "(No response generated)":
+                    final_response = ""
+                logged_response = final_response if final_response else "(No response generated)"
+                output = f"""# Cron Job: {job_name}
+
+**Job ID:** {job_id}
+**Run Time:** {_hermes_now().strftime('%Y-%m-%d %H:%M:%S')}
+**Schedule:** {job.get('schedule_display', 'N/A')}
+
+## Prompt
+
+{prompt}
+
+## Response
+
+{logged_response}
+"""
+                logger.info("Job '%s' completed (attached dialog turn)", job_name)
+                _write_usage_audit({
+                    "ts": _utcnow_iso_ms(),
+                    "job_id": job_id,
+                    "fire_id": _audit_fire_id_dialog,
+                    "prompt_tokens": result.get("prompt_tokens"),
+                    "completion_tokens": result.get("completion_tokens"),
+                    "total_tokens": result.get("total_tokens"),
+                    "response_silent": _is_cron_silence_response(final_response or ""),
+                    "deliver_target": job.get("deliver"),
+                    "model": str(job.get("model") or "") or None,
+                    "duration_ms": int((time.monotonic() - _audit_t_start_dialog) * 1000),
+                    "error": None,
+                })
+                return True, output, final_response, None
 
             wait_started = time.monotonic()
             last_claim_heartbeat = wait_started

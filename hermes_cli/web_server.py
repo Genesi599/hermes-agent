@@ -6627,6 +6627,147 @@ def set_moa_models(body: MoaConfigPayload, profile: Optional[str] = None):
         raise HTTPException(status_code=500, detail="Failed to save MoA config")
 
 
+class SessionPromptSubmit(BaseModel):
+    """POST /api/sessions/{id}/prompt — submit one turn into a stored session
+    through the STANDARD gateway turn channel (stream callbacks, interim
+    assistant text, tool events — everything a Desktop-typed message gets).
+
+    Used by the cron scheduler for jobs bound to a conversation
+    (``attach_to_session``): the old path ran ``run_agent`` directly in the
+    scheduler with no stream wiring, so the Desktop showed a bare Thinking
+    indicator while the turn quietly progressed. Submitting through here
+    streams into whatever transport the live session already carries — the
+    Desktop window that has the conversation open.
+
+    This endpoint deliberately does NOT touch ``session["transport"]`` (REST
+    contextvars carry no transport binding), so a submitted turn keeps
+    streaming to the client that owns the session. A session that is cold
+    (not live yet) is resumed first; its transport then re-binds naturally
+    the next time the Desktop opens/refreshes the conversation.
+    """
+
+    text: str
+    model: str = ""
+    provider: str = ""
+    queued: bool = True
+
+
+def _submit_session_prompt_sync(session_id: str, body: SessionPromptSubmit) -> dict:
+    """Synchronous body of POST /api/sessions/{id}/prompt (runs off the loop)."""
+    import time as _time
+
+    from tui_gateway import server as gw
+
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text required")
+
+    db = gw._get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="session database unavailable")
+
+    try:
+        target = db.resolve_resume_session_id(session_id) or session_id
+    except Exception:
+        target = session_id
+    if db.get_session(target) is None:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    live = gw._find_live_session_by_key(target)
+    if live is None:
+        # Cold session: resume it (REST context → the payload's transport
+        # fallback is stdio, but the next Desktop open re-binds to its WS).
+        resp = gw.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": f"rest-prompt-{_time.time_ns()}",
+                "method": "session.resume",
+                "params": {"session_id": target, "omit_messages": True},
+            }
+        )
+        if resp.get("error"):
+            raise HTTPException(
+                status_code=502,
+                detail=f"resume failed: {resp['error'].get('message')}",
+            )
+        live = gw._find_live_session_by_key(target)
+        if live is None:
+            raise HTTPException(status_code=502, detail="session did not come live")
+
+    sid, session = live
+
+    with session["history_lock"]:
+        busy = bool(session.get("running"))
+    if busy:
+        if not body.queued:
+            raise HTTPException(status_code=409, detail="session is busy")
+        gw._enqueue_prompt(session, text, session.get("transport"))
+        gw._schedule_queued_prompt_retry(
+            f"rest-prompt-{_time.time_ns()}", sid, session
+        )
+        return {"status": "queued", "session_id": sid}
+
+    # Optional one-turn model pin (job's provider/model): applied before the
+    # turn starts; the session's own model is restored after the turn.
+    if body.provider.strip() and body.model.strip():
+        try:
+            gw._apply_model_switch(
+                sid,
+                session,
+                f"{body.model.strip()} --provider {body.provider.strip()} --once",
+                confirm_expensive_model=True,
+            )
+        except Exception as exc:  # model pin is best-effort; the turn still runs
+            _log.warning(
+                "POST /api/sessions/%s/prompt: model pin failed (continuing): %s",
+                session_id,
+                exc,
+            )
+
+    rid = f"rest-prompt-{_time.time_ns()}"
+
+    # A cold-resumed session is still building its agent (skills/MCP/model
+    # metadata can take a minute). Never call _run_prompt_submit against a
+    # half-built session — the turn thread would crash on the None agent.
+    # Idempotent: resumes that already started the build no-op here.
+    gw._start_agent_build(sid, session)
+    if session.get("agent") is None:
+        def _submit_when_ready() -> None:
+            try:
+                wait_err = gw._wait_agent_for_prompt(session, rid, sid)
+                if wait_err is None:
+                    gw._run_prompt_submit(rid, sid, session, text)
+            except Exception:
+                _log.exception(
+                    "POST /api/sessions/%s/prompt: deferred submit failed", session_id
+                )
+
+        threading.Thread(
+            target=_submit_when_ready,
+            daemon=True,
+            name=f"rest-prompt-{sid}",
+        ).start()
+        return {"status": "deferred", "session_id": sid}
+
+    gw._run_prompt_submit(rid, sid, session, text)
+    return {"status": "streaming", "session_id": sid}
+
+
+@app.post("/api/sessions/{session_id}/prompt")
+async def submit_session_prompt(
+    session_id: str, body: SessionPromptSubmit, request: Request
+):
+    if not _has_valid_session_token(request):
+        raise HTTPException(status_code=401, detail="invalid session token")
+    try:
+        return await asyncio.to_thread(_submit_session_prompt_sync, session_id, body)
+    except HTTPException:
+        raise
+    except Exception:
+        _log.exception("POST /api/sessions/%s/prompt failed", session_id)
+        raise HTTPException(status_code=500, detail="failed to submit prompt")
+
+
 @app.post("/api/model/set")
 async def set_model_assignment(body: ModelAssignment, profile: Optional[str] = None):
     """Assign a model to the main slot or an auxiliary task slot.
