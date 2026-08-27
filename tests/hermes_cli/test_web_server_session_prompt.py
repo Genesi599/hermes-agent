@@ -168,3 +168,26 @@ def test_prompt_cold_session_defers_until_agent_ready(gw):
             break
         time.sleep(0.02)
     assert gw.calls["run_prompt_submit"] == [("rt-1", "cold hello")]
+
+
+def test_prompt_slash_command_routes_to_slash_exec(gw, monkeypatch):
+    _make_live(gw, running=False)
+    slash_calls = []
+    monkeypatch.setattr(
+        __import__("tui_gateway.server", fromlist=["x"]),
+        "_methods",
+        {
+            "slash.exec": lambda rid, params: slash_calls.append(params)
+            or {"jsonrpc": "2.0", "id": rid, "result": {"handled": True}}
+        },
+    )
+    client = _client()
+    resp = client.post(
+        "/api/sessions/stored-1/prompt", json={"text": "/compress"}
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "slash"
+    assert slash_calls == [{"session_id": "rt-1", "command": "compress"}]
+    # A slash submit never reaches the turn channel.
+    assert gw.calls["run_prompt_submit"] == []

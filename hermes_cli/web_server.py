@@ -6698,6 +6698,28 @@ def _submit_session_prompt_sync(session_id: str, body: SessionPromptSubmit) -> d
 
     with session["history_lock"]:
         busy = bool(session.get("running"))
+
+    # Slash commands ("/compress", "/model …") route through the same
+    # slash.exec dispatch prompt.submit uses — submitting one as ordinary text
+    # would just ask the MODEL about the command instead of running it.
+    if text.startswith("/"):
+        slash_exec = getattr(gw, "_methods", {}).get("slash.exec")
+        if slash_exec is not None:
+            resp = slash_exec(
+                f"rest-prompt-{_time.time_ns()}",
+                {"session_id": sid, "command": text[1:].strip()},
+            )
+            if isinstance(resp, dict) and resp.get("error"):
+                raise HTTPException(
+                    status_code=502,
+                    detail=str(resp["error"].get("message") or "slash command failed"),
+                )
+            return {
+                "status": "slash",
+                "session_id": sid,
+                "result": (resp or {}).get("result", {}),
+            }
+
     if busy:
         if not body.queued:
             raise HTTPException(status_code=409, detail="session is busy")
