@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 
 import { finalizeInterruptedMessages } from '@/app/session/hooks/use-prompt-actions/rewind'
 import { createClientSessionState } from '@/lib/chat-runtime'
-import { $changeEventsAvailable, $cronChangeTick, $sessionsChangeTick } from '@/store/live-sync'
+import { $changeEventsAvailable, $cronChangeTick, $sessionsChangeTick, notifySessionsChanged } from '@/store/live-sync'
 import { $onBattery, batteryPollInterval } from '@/store/power'
 import { refreshActiveProfile } from '@/store/profile'
 import { $activeSessionId, $currentCwd, setCurrentCwd } from '@/store/session'
@@ -63,6 +63,21 @@ interface LiveSessionStatusResponse {
 // served by different gateways and never appear in this profile's active_list,
 // so an unscoped reap would dark out every other profile's running rows.
 const liveRuntimeIdsByProfile = new Map<string, Set<string>>()
+
+// Every runtime id this profile's snapshot has EVER reported (until a gateway
+// wipe resets it). The last-seen set above drives the vanish-reap; a backend
+// restart mints fresh runtime ids for the same stored session, so a renderer
+// mirror keyed by the OLD id can go busy again (a resubmit through a stale
+// runtime mapping) and never reappear in any snapshot. Only the cumulative set
+// can reach those orphaned mirrors.
+const knownRuntimeIdsByProfile = new Map<string, Set<string>>()
+
+// A turn submitted moments ago is honestly absent from the snapshot until the
+// backend registers it — the local awaiting flag is newer information (same
+// refusal as the busy merge above). Orphaned mirrors from a backend restart
+// carry their original turnStartedAt, so real submit→register windows stay
+// inside this grace while stuck mirrors (minutes old) are swept.
+const ORPHAN_SETTLE_GRACE_MS = 90_000
 
 /** Restore sidebar liveness after a renderer/backend reconnect. Stream events
  * normally own these states, but events emitted while Desktop was disconnected
@@ -179,6 +194,62 @@ export function rehydrateLiveSessionStatuses(
   }
 
   liveRuntimeIdsByProfile.set(profileKey, seen)
+
+  // Sweep orphaned mirrors: a known runtime the CURRENT snapshot no longer
+  // carries at all, while its renderer state still claims a live turn. This is
+  // the backend-restart shape — the same stored session runs and ends under a
+  // fresh runtime id, so the snapshot's per-entry settle can never reach the
+  // stale mirror and `refreshActiveStoredTranscript` keeps skipping on its
+  // busyRef. Settling here unblocks the transcript re-pull; the notify tick
+  // makes that pull immediate instead of waiting for the next poll slot.
+  const known = knownRuntimeIdsByProfile.get(profileKey)
+  let settledOrphan = false
+
+  if (known) {
+    for (const runtimeSessionId of known) {
+      if (seen.has(runtimeSessionId)) {
+        continue
+      }
+
+      const existing = $sessionStates.get()[runtimeSessionId]
+
+      if (!existing || !(existing.busy || existing.needsInput || existing.awaitingResponse)) {
+        continue
+      }
+
+      const preFirstToken =
+        existing.awaitingResponse &&
+        !existing.sawAssistantPayload &&
+        (existing.turnStartedAt == null || nowMs - existing.turnStartedAt < ORPHAN_SETTLE_GRACE_MS)
+
+      if (preFirstToken) {
+        continue
+      }
+
+      publishSessionState(runtimeSessionId, {
+        ...existing,
+        awaitingResponse: false,
+        busy: false,
+        needsInput: false,
+        messages: finalizeInterruptedMessages(existing.messages, existing.streamId),
+        streamId: null,
+        turnStartedAt: null
+      })
+      settledOrphan = true
+    }
+  }
+
+  const knownSet = known ?? new Set<string>()
+
+  for (const id of seen) {
+    knownSet.add(id)
+  }
+
+  knownRuntimeIdsByProfile.set(profileKey, knownSet)
+
+  if (settledOrphan) {
+    notifySessionsChanged()
+  }
 }
 
 /** Forget every profile's live-runtime bookkeeping. A gateway wipe already
@@ -186,6 +257,7 @@ export function rehydrateLiveSessionStatuses(
  *  only reap runtimes that no longer exist. */
 export function resetLiveRuntimeTracking(): void {
   liveRuntimeIdsByProfile.clear()
+  knownRuntimeIdsByProfile.clear()
 }
 
 interface BackgroundSyncParams {

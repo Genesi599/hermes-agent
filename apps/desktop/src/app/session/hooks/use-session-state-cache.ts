@@ -23,7 +23,7 @@ import {
   setTurnStartedAt,
   setYoloActive
 } from '@/store/session'
-import { publishSessionState } from '@/store/session-states'
+import { $sessionStates, publishSessionState } from '@/store/session-states'
 
 import type { ClientSessionState } from '../../types'
 
@@ -281,6 +281,36 @@ export function useSessionStateCache({
     []
   )
 
+  // Store-level settles (rehydrateLiveSessionStatuses' orphan sweep and
+  // vanish-reap in use-background-sync) publish to $sessionStates WITHOUT this
+  // cache's view sync. If the ACTIVE runtime's state settles busy→false through
+  // such a path while the view still shows busy, busyRef keeps gating
+  // refreshActiveStoredTranscript and the completed transcript never re-pulls —
+  // the backend-restart orphan shape, where the turn ran under a fresh runtime
+  // id whose gateway events can never reach this stale view binding. Bridge the
+  // settle to the view here.
+  useEffect(() => {
+    return $sessionStates.listen(states => {
+      const active = activeSessionIdRef.current
+
+      if (!active) {
+        return
+      }
+
+      const state = states[active]
+
+      if (!state || state.busy || state.needsInput || state.awaitingResponse) {
+        return
+      }
+
+      if (!$busy.get() && !busyRef.current) {
+        return
+      }
+
+      syncSessionStateToView(active, state)
+    })
+  }, [busyRef, syncSessionStateToView])
+
   const updateSessionState = useCallback(
     (
       sessionId: string,
@@ -313,9 +343,11 @@ export function useSessionStateCache({
       // (watchdog, settle grace, unread marker, compression id rotation) inside
       // publishSessionState — no manual transition call needed.
       publishSessionState(sessionId, next)
+
       if (previous.storedSessionId !== next.storedSessionId) {
         setSessionReviewActivity(previous.storedSessionId, null)
       }
+
       setSessionReviewActivity(next.storedSessionId, next.reviewActivity)
       syncSessionStateToView(sessionId, next)
 

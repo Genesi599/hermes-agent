@@ -3,8 +3,10 @@ import { type MutableRefObject, useLayoutEffect } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ChatMessage } from '@/lib/chat-messages'
+import { createClientSessionState } from '@/lib/chat-runtime'
 import {
   $activeSessionStoredIdRotation,
+  $busy,
   $currentFastMode,
   $currentModel,
   $currentProvider,
@@ -14,6 +16,7 @@ import {
   $turnStartedAt,
   setActiveSessionId,
   setActiveSessionStoredIdRotation,
+  setBusy,
   setCurrentFastMode,
   setCurrentModel,
   setCurrentProvider,
@@ -21,6 +24,7 @@ import {
   setCurrentServiceTier,
   setTurnStartedAt
 } from '@/store/session'
+import { clearAllSessionStates, publishSessionState } from '@/store/session-states'
 
 import { useSessionStateCache } from './use-session-state-cache'
 
@@ -362,6 +366,77 @@ describe('useSessionStateCache — refs stay coherent with the committed session
     rerender(<Harness activeSessionId="runtime-B" onReady={c => (cache = c)} selectedStoredSessionId="stored-B" />)
 
     expect(cache.activeSessionIdRef.current).toBe('runtime-B')
+  })
+})
+
+interface ViewBridgeHarnessProps {
+  activeSessionId: string | null
+  onReady: (cache: Cache) => void
+}
+
+function ViewBridgeHarness({ activeSessionId, onReady }: ViewBridgeHarnessProps) {
+  const busyRef: MutableRefObject<boolean> = { current: false }
+
+  const cache = useSessionStateCache({
+    activeSessionId,
+    busyRef,
+    selectedStoredSessionId: 'stored-bridge',
+    setAwaitingResponse: () => undefined,
+    setBusy: next => setBusy(next),
+    setMessages: () => undefined
+  })
+
+  onReady(cache)
+
+  return null
+}
+
+describe('useSessionStateCache — store-settle view bridge', () => {
+  afterEach(() => {
+    cleanup()
+    setActiveSessionId(null)
+    setBusy(false)
+    clearAllSessionStates()
+  })
+
+  it('clears the view busy flag when the active runtime settles straight in the store', () => {
+    // Backend-restart orphan: the turn ran under a fresh runtime id, so the
+    // optimistic submit left the VIEW busy on the stale binding while a
+    // store-level settle (rehydrate orphan sweep) publishes busy=false without
+    // passing through this cache's updateSessionState.
+    let cache!: Cache
+    setActiveSessionId('runtime-bridge')
+    setBusy(true)
+    render(<ViewBridgeHarness activeSessionId="runtime-bridge" onReady={c => (cache = c)} />)
+
+    expect($busy.get()).toBe(true)
+
+    act(() => {
+      publishSessionState('runtime-bridge', {
+        ...createClientSessionState('stored-bridge'),
+        awaitingResponse: false,
+        busy: false,
+        needsInput: false
+      })
+    })
+
+    expect($busy.get()).toBe(false)
+  })
+
+  it('leaves the view alone when the active runtime is still busy in the store', () => {
+    let cache!: Cache
+    setActiveSessionId('runtime-busy')
+    setBusy(true)
+    render(<ViewBridgeHarness activeSessionId="runtime-busy" onReady={c => (cache = c)} />)
+
+    act(() => {
+      publishSessionState('runtime-busy', {
+        ...createClientSessionState('stored-bridge'),
+        busy: true
+      })
+    })
+
+    expect($busy.get()).toBe(true)
   })
 })
 
