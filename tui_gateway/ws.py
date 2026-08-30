@@ -330,6 +330,9 @@ async def handle_ws(ws: Any) -> None:
             # Track this peer for session-less global broadcasts (skin.changed
             # from the background watcher) — write_json can't route those.
             server.register_live_transport(transport)
+            # Sessions parked by a previous WS drop become deliverable on
+            # this new client instead of blackholing until a resume.
+            server.rebind_detached_sessions(transport, peer)
         if not ready_ok:
             disconnect_reason = "ready_send_failed"
             send_failures += 1

@@ -1608,7 +1608,17 @@ def write_json(obj: dict) -> bool:
     """
     if obj.get("method") == "event":
         sid = ((obj.get("params") or {}).get("session_id")) or ""
-        if sid and (t := (_sessions.get(sid) or {}).get("transport")) is not None:
+        t = (_sessions.get(sid) or {}).get("transport") if sid else None
+        if t is _detached_ws_transport:
+            # Parked (WS-detached) session: the drop sink keeps TUI stdio
+            # protocol clean, but under the desktop (stdio == desktop.log,
+            # not a protocol channel) letting frames fall through is the
+            # only diagnostic surface showing turns still execute while
+            # no client receives them.
+            if _resolve_session_platform() != "desktop":
+                return t.write(obj)
+            t = None
+        if t is not None:
             return t.write(obj)
 
     return (current_transport() or _stdio_transport).write(obj)
@@ -1686,6 +1696,31 @@ def register_live_transport(transport: Transport | None) -> None:
         return
     with _live_transports_lock:
         _live_transports.add(transport)
+
+
+def rebind_detached_sessions(transport: Transport | None, peer: str = "") -> int:
+    """Re-attach sessions parked on the detached sink to a fresh WS client.
+
+    WS disconnect parks non-close_on_disconnect sessions on
+    ``_detached_ws_transport`` (a pure drop sink); running sessions are
+    reap-exempt, so without a rebind they stay blackholed until some client
+    happens to ``session.resume`` each one. A newly connected client is the
+    natural new owner — the desktop runs one UI client per backend, and any
+    parked session is by definition unobserved. Scheduled orphan reaps
+    self-cancel: ``_ws_session_is_orphaned`` checks the transport, which
+    this rebind replaces.
+    """
+    if transport is None:
+        return 0
+    rebound = 0
+    with _sessions_lock:
+        for sid, session in _sessions.items():
+            if session.get("transport") is _detached_ws_transport:
+                session["transport"] = transport
+                rebound += 1
+    if rebound:
+        logger.info("rebound %d detached session(s) to new ws peer=%s", rebound, peer)
+    return rebound
 
 
 def unregister_live_transport(transport: Transport | None) -> None:
