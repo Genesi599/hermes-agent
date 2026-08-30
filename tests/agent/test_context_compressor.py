@@ -617,6 +617,85 @@ class TestTailBudgetCodexReplayFields:
         assert c._find_tail_cut_by_tokens(messages, head_end=1, token_budget=150) == 5
 
 
+class TestSummaryReasoningCapture:
+    """The summarizer's thinking must survive BOTH response shapes: a raw SDK
+    message (``reasoning_content``) and auxiliary_client's
+    _ChatStreamAccumulator rebuild of a STREAMED call, which puts the joined
+    deltas on ``reasoning`` — production compression streams, so the
+    accumulator shape is the one real compactions hit."""
+
+    @staticmethod
+    def _response_with(message):
+        response = MagicMock()
+        response.choices = [MagicMock()]
+        response.choices[0].message = message
+        return response
+
+    @staticmethod
+    def _compressor():
+        with patch(
+            "agent.context_compressor.get_model_context_length",
+            return_value=100000,
+        ):
+            return ContextCompressor(model="test", quiet_mode=True)
+
+    def test_stream_aggregator_reasoning_attr_captured(self):
+        from types import SimpleNamespace
+
+        message = SimpleNamespace(
+            role="assistant",
+            content="summary text",
+            reasoning="plan then condense",
+            reasoning_content=None,
+            tool_calls=None,
+        )
+
+        c = self._compressor()
+        with patch(
+            "agent.context_compressor.call_llm",
+            return_value=self._response_with(message),
+        ):
+            c._generate_summary([{"role": "user", "content": "hi"}])
+
+        assert c._last_summary_reasoning == "plan then condense"
+
+    def test_reasoning_content_preferred_when_both_present(self):
+        from types import SimpleNamespace
+
+        message = SimpleNamespace(
+            role="assistant",
+            content="summary text",
+            reasoning="fallback",
+            reasoning_content="primary thinking",
+            tool_calls=None,
+        )
+
+        c = self._compressor()
+        with patch(
+            "agent.context_compressor.call_llm",
+            return_value=self._response_with(message),
+        ):
+            c._generate_summary([{"role": "user", "content": "hi"}])
+
+        assert c._last_summary_reasoning == "primary thinking"
+
+    def test_dict_message_reasoning_fallback(self):
+        message = {
+            "role": "assistant",
+            "content": "summary text",
+            "reasoning": "dict-shaped thinking",
+        }
+
+        c = self._compressor()
+        with patch(
+            "agent.context_compressor.call_llm",
+            return_value=self._response_with(message),
+        ):
+            c._generate_summary([{"role": "user", "content": "hi"}])
+
+        assert c._last_summary_reasoning == "dict-shaped thinking"
+
+
 class TestGenerateSummaryNoneContent:
     """Regression: content=None (from tool-call-only assistant messages) must not crash."""
 

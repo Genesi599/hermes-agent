@@ -4247,10 +4247,19 @@ This compaction should PRIORITISE preserving all information related to the focu
             message = response.choices[0].message
             if isinstance(message, dict):
                 content = message.get("content")
-                raw_reasoning = message.get("reasoning_content")
+                raw_reasoning = message.get("reasoning_content") or message.get("reasoning")
             else:
                 content = getattr(message, "content", message)
-                raw_reasoning = getattr(message, "reasoning_content", None)
+                # Two attribute names exist in the wild: a raw SDK message
+                # carries ``reasoning_content`` (GLM), but auxiliary_client's
+                # _ChatStreamAccumulator rebuilds a STREAMED call's deltas onto
+                # ``reasoning`` — and production compression streams, so
+                # reading only reasoning_content dropped the thinking on every
+                # real compaction (non-streamed probes kept passing).
+                raw_reasoning = (
+                    getattr(message, "reasoning_content", None)
+                    or getattr(message, "reasoning", None)
+                )
             # The summarizer model's thinking (GLM-5.x emits it in
             # ``reasoning_content``) used to be dropped here. Keep it for the
             # handoff row so the Desktop can show HOW the summary was built
