@@ -470,6 +470,11 @@
       "source_commit": "0b357686b9d8",
       "patch_id": "bc9d3f4b418139bc9e9bdb88718912402b38c264",
       "feature": "runtime-status-and-sidebar"
+    },
+    {
+      "source_commit": "d490a5f49a",
+      "patch_id": "d0839607be1fb370f1cf080a91fc2c19df411a7f",
+      "feature": "runtime-status"
     }
   ],
   "features": [
@@ -606,7 +611,8 @@
         "354b9476d0",
         "cabb4b5929",
         "6911929477",
-        "6a46de585a"
+        "6a46de585a",
+        "d490a5f49a"
       ],
       "source_paths": [
         "tui_gateway/server.py",
@@ -617,7 +623,8 @@
       "test_paths": [
         "tests/hermes_state/test_session_live_status.py",
         "apps/desktop/src/app/session/hooks/use-session-actions/utils.test.ts",
-        "apps/desktop/src/components/assistant-ui/thread/status.test.tsx"
+        "apps/desktop/src/components/assistant-ui/thread/status.test.tsx",
+        "tests/tui_gateway/test_ws_rebind_detached.py"
       ]
     },
     {
@@ -859,6 +866,27 @@
         {
           "path": "hermes_state_common.py",
           "pattern": "_PREVIEW_INTERNAL_MESSAGE_FILTER_SQL"
+        }
+      ]
+    },
+    {
+      "id": "compaction-purge",
+      "label": "Delete archived pre-compaction messages (compression.purge_compacted)",
+      "commits": [],
+      "source_paths": [
+        "hermes_state.py"
+      ],
+      "test_paths": [
+        "tests/test_hermes_state_compaction_purge.py"
+      ],
+      "required_patterns": [
+        {
+          "path": "hermes_state.py",
+          "pattern": "_purge_compacted_enabled"
+        },
+        {
+          "path": "hermes_state.py",
+          "pattern": "purge_compacted: deleted %s archived pre-compaction"
         }
       ]
     }
