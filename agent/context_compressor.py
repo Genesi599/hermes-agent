@@ -7188,6 +7188,14 @@ This compaction should PRIORITISE preserving all information related to the focu
                 msg[COMPRESSED_SUMMARY_HAS_USER_TURN_KEY] = bool(
                     self._summary_has_user_turn
                 )
+                # The summarizer's thinking rides the merged carrier row too
+                # (same visibility contract as the standalone handoff row).
+                # Only set it when the carrier has no reasoning of its own —
+                # a real assistant reply's thinking must not be clobbered.
+                if getattr(self, "_last_summary_reasoning", "") and not (
+                    msg.get("reasoning_content") or msg.get("reasoning")
+                ):
+                    msg["reasoning_content"] = self._last_summary_reasoning
                 # Content rewritten → the api_content sidecar (exact bytes
                 # previously sent) is stale; drop it so replay can't resend
                 # the pre-merge bytes without the summary.

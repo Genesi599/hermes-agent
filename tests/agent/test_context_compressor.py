@@ -1718,6 +1718,70 @@ class TestCompressWithClient:
         assert text.index("SUMMARY_BODY") < text.index(end)
         assert text.rstrip().endswith(end)
 
+    def test_merge_into_tail_carries_summarizer_reasoning(self):
+        """The merge-into-tail carrier must carry the summarizer's thinking
+        (stream-aggregator shape: ``reasoning`` attr) like the standalone
+        handoff row — and must NOT clobber a carrier's own reasoning."""
+        from types import SimpleNamespace
+
+        def _msgs_with_carrier_reasoning(carrier_reasoning):
+            carrier = {
+                "role": "user",
+                "content": [{"type": "text", "text": "PRESERVED_TAIL_CONTENT"}],
+            }
+            if carrier_reasoning is not None:
+                carrier["reasoning_content"] = carrier_reasoning
+            return [
+                {"role": "system", "content": "system prompt"},
+                {"role": "user", "content": "msg 1"},
+                {"role": "assistant", "content": "msg 2"},
+                {"role": "user", "content": "msg 3"},
+                {"role": "assistant", "content": "msg 4"},
+                {"role": "user", "content": "msg 5"},
+                carrier,
+                {"role": "assistant", "content": "msg 7"},
+                {"role": "user", "content": "msg 8"},
+            ]
+
+        message = SimpleNamespace(
+            role="assistant",
+            content="SUMMARY_BODY",
+            reasoning="how the summary was built",
+            reasoning_content=None,
+            tool_calls=None,
+        )
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message = message
+
+        def _compress(msgs):
+            with patch(
+                "agent.context_compressor.get_model_context_length",
+                return_value=100000,
+            ):
+                c = ContextCompressor(
+                    model="test", quiet_mode=True, protect_first_n=2, protect_last_n=3
+                )
+            with patch(
+                "agent.context_compressor.call_llm", return_value=mock_response
+            ):
+                return c.compress(msgs)
+
+        merged = next(
+            m
+            for m in _compress(_msgs_with_carrier_reasoning(None))
+            if m.get(COMPRESSED_SUMMARY_METADATA_KEY)
+        )
+        assert merged.get("reasoning_content") == "how the summary was built"
+
+        # A carrier that already has its own reasoning keeps it untouched.
+        merged_own = next(
+            m
+            for m in _compress(_msgs_with_carrier_reasoning("carrier own thinking"))
+            if m.get(COMPRESSED_SUMMARY_METADATA_KEY)
+        )
+        assert merged_own.get("reasoning_content") == "carrier own thinking"
+
     def test_merged_tail_summary_still_detected_and_stripped(self):
         """Regression for #56372 salvage: the merge-into-tail reorder moves the
         summary prefix AFTER the [PRIOR CONTEXT] wrapper, so content-prefix
