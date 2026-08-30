@@ -3495,3 +3495,69 @@ class TestPreLlmFeasibilityCheck:
             feasibility_skip=compressor._last_feasibility_skip,
         )
         assert compressor._fallback_compression_streak == 1
+
+
+class TestLiveReasoningEmitter:
+    """custom/hermes-yh: throttled forwarding of streamed summarizer thinking
+    to the host's live-status hook (compaction thinking visibility)."""
+
+    @staticmethod
+    def _compressor():
+        with patch(
+            "agent.context_compressor.get_model_context_length",
+            return_value=100000,
+        ):
+            return ContextCompressor(model="test", quiet_mode=True)
+
+    def test_no_hook_returns_none(self):
+        c = self._compressor()
+        assert c._reasoning_sink_emitter() is None
+
+    def test_first_piece_emits_immediately_then_throttled(self):
+        c = self._compressor()
+        seen = []
+        c._live_reasoning_status = seen.append
+        sink = c._reasoning_sink_emitter()
+
+        # monotonic values consumed one per sink() call.
+        with patch(
+            "agent.context_compressor.time.monotonic",
+            side_effect=[0.0, 1.0, 1.4, 3.0, 3.1],
+        ):
+            sink("a")  # immediate first emit
+            sink("b")  # throttled (<1.5s)
+            sink("c")  # throttled
+            sink("d")  # 3.0 - 0.0 >= 1.5 → emit accumulated tail
+            sink("e")  # throttled
+        assert seen == ["a", "abcd"]
+
+    def test_tail_sliced_to_cap(self):
+        c = self._compressor()
+        seen = []
+        c._live_reasoning_status = seen.append
+        sink = c._reasoning_sink_emitter()
+
+        big = "x" * 300
+        with patch(
+            "agent.context_compressor.time.monotonic",
+            side_effect=[0.0, 5.0],
+        ):
+            sink(big)
+            sink("y")
+        assert len(seen[-1]) == 240
+        assert seen[-1].endswith("y")
+
+    def test_hook_exception_swallowed(self):
+        c = self._compressor()
+
+        def _boom(_tail):
+            raise RuntimeError("host gone")
+
+        c._live_reasoning_status = _boom
+        sink = c._reasoning_sink_emitter()
+        with patch(
+            "agent.context_compressor.time.monotonic",
+            side_effect=[0.0, 5.0],
+        ):
+            sink("piece")  # must not raise
+            sink("more")

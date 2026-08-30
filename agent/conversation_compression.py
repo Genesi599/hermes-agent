@@ -117,6 +117,36 @@ COMPACTION_PROGRESS_TEMPLATE = (
     "(still working, {elapsed} elapsed)..."
 )
 
+# custom/hermes-yh (compaction thinking visibility): live summarizer-thinking
+# tail streamed during compression. The "(🧠 thinking…) " segment is coupled to
+# the Desktop's splitCompactionThinking marker — keep both in lockstep. Keeps
+# the marker prefix so the gateway re-tag + chat-platform noise filter apply.
+COMPACTION_THINKING_TEMPLATE = (
+    f"🗜️ {COMPACTION_STATUS_MARKER} — summarizing earlier conversation "
+    "(🧠 thinking…) {tail}"
+)
+
+
+def _make_live_reasoning_status_emitter(agent):
+    """custom/hermes-yh: build the compressor's live-thinking forwarder.
+
+    Returns ``None`` when the agent has no ``_emit_status`` (CLI hosts) so the
+    compressor's sink stays a no-op. The emitted line rides the existing
+    compaction status channel — gateway re-tags it kind="compacting" by the
+    marker prefix and chat-platform noise filters swallow it like the rest.
+    """
+    emit_status = getattr(agent, "_emit_status", None)
+    if not callable(emit_status):
+        return None
+
+    def _emit_thinking_tail(tail: str) -> None:
+        try:
+            emit_status(COMPACTION_THINKING_TEMPLATE.format(tail=tail))
+        except Exception:
+            pass
+
+    return _emit_thinking_tail
+
 
 def _format_compaction_elapsed(seconds: float) -> str:
     """Render a compaction duration as a compact ``2m 05s`` / ``45s`` string."""
@@ -194,6 +224,7 @@ ROUTINE_COMPRESSION_STATUS_SAMPLES = (
     COMPACTION_STATUS,
     COMPACTION_STATUS_DETAIL_TEMPLATE.format(tokens=123456, messages=461),
     COMPACTION_PROGRESS_TEMPLATE.format(elapsed="2m 05s"),
+    COMPACTION_THINKING_TEMPLATE.format(tail="先按主题分组再逐段压缩……"),
     PRE_API_COMPRESSION_STATUS_TEMPLATE.format(tokens=123456),
     PREFLIGHT_COMPRESSION_STATUS_TEMPLATE.format(tokens=120000, threshold=100000),
     IDLE_COMPACTION_STATUS_TEMPLATE.format(idle_seconds=3600, tokens=120000),
@@ -2970,6 +3001,16 @@ def compress_context(
                 )
             except Exception:
                 pass
+        # custom/hermes-yh (compaction thinking visibility): let the compressor
+        # forward throttled streamed-thinking tails onto the live compaction
+        # status line (same kind="compacting" channel as the heartbeat). No-op
+        # when the agent has no status emitter (CLI hosts).
+        try:
+            agent.context_compressor._live_reasoning_status = (
+                _make_live_reasoning_status_emitter(agent)
+            )
+        except Exception:
+            pass
         # Incoming-message interrupts and active-turn redirects must not tear an
         # atomic summary in half (#23975). Explicit stop surfaces set a separate
         # Event atomically; never infer cause from the racy message fields.
@@ -3003,6 +3044,10 @@ def compress_context(
                     agent.context_compressor._compression_cancelled_check = None
                 except Exception:
                     pass
+            try:
+                agent.context_compressor._live_reasoning_status = None
+            except Exception:
+                pass
     except AuxiliaryExplicitCancellation:
         try:
             _restore_compressor_attempt_state(
@@ -4204,6 +4249,7 @@ def try_shrink_image_parts_in_messages(
 __all__ = [
     "COMPACTION_STATUS",
     "COMPACTION_STATUS_DETAIL_TEMPLATE",
+    "COMPACTION_THINKING_TEMPLATE",
     "COMPACTION_PROGRESS_TEMPLATE",
     "COMPACTION_DONE_STATUS",
     "COMPACTION_STATUS_MARKER",

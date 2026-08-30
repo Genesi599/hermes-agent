@@ -68,3 +68,38 @@ class TestCompressionWarrantsAnotherPreflightPass:
             threshold_tokens=272_000,
         ) is False
 
+
+
+# custom/hermes-yh (compaction thinking visibility): live streamed-thinking
+# status emitter -----------------------------------------------------------
+
+def test_live_reasoning_status_emitter_keeps_compaction_marker():
+    """The live thinking tail rides the compaction status channel — the line
+    must keep the gateway re-tag marker and the Desktop's thinking segment."""
+    from agent.conversation_compression import (
+        COMPACTION_THINKING_TEMPLATE,
+        _make_live_reasoning_status_emitter,
+    )
+
+    class _Agent:
+        seen = None
+
+        def _emit_status(self, text):
+            self.seen = text
+
+    agent = _Agent()
+    cb = _make_live_reasoning_status_emitter(agent)
+    assert callable(cb)
+    cb("先按主题分组再逐段压缩……")
+    assert "Compacting context — summarizing earlier conversation" in agent.seen
+    assert "(🧠 thinking…) " in agent.seen
+    assert agent.seen.endswith("先按主题分组再逐段压缩……")
+
+
+def test_live_reasoning_status_emitter_none_without_emit_status():
+    from agent.conversation_compression import _make_live_reasoning_status_emitter
+
+    class _BareAgent:
+        pass
+
+    assert _make_live_reasoning_status_emitter(_BareAgent()) is None

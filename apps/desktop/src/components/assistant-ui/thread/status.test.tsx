@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { __resetElapsedTimerRegistryForTests } from '@/components/chat/activity-timer'
 import { I18nProvider } from '@/i18n'
+import { setSessionCompacting } from '@/store/compaction'
 import { $activeSessionId, $reviewActivityBySessionId, $turnStartedAt } from '@/store/session'
 
 import { ResponseLoadingIndicator, StreamStallIndicator } from './status'
@@ -158,5 +159,37 @@ describe('StreamStallIndicator hook stability', () => {
     // Renders null (not running) without violating hook rules — the important
     // part is that both rerenders completed without throwing.
     expect(view).toBeTruthy()
+  })
+})
+
+// custom/hermes-yh (compaction thinking visibility): the live compaction
+// status may carry a thinking tail after the "(🧠 thinking…) " marker; the
+// base line stays the status hint and the tail renders in its own block.
+describe('compaction live thinking tail', () => {
+  afterEach(() => {
+    cleanup()
+    $activeSessionId.set(null)
+    setSessionCompacting(null, false)
+  })
+
+  it('splits the thinking tail out of the status line', () => {
+    $activeSessionId.set('session-live')
+    setSessionCompacting('session-live', true, '🗜️ Compacting context — summarizing earlier conversation (🧠 thinking…) 先按主题分组再逐段压缩')
+    const { container } = renderIndicator()
+
+    expect(container.querySelector('[data-slot="aui_compaction-thinking"]')?.textContent).toContain('先按主题分组再逐段压缩')
+    // The status hint is the base line WITHOUT the marker/tail…
+    expect(screen.getAllByText((_, node) => node?.textContent === '🗜️ Compacting context — summarizing earlier conversation').length).toBeGreaterThan(0)
+    // …and the accessible name stays the stable compaction label.
+    expect(container.querySelector('[role="status"]')?.getAttribute('aria-label')).toBe('Summarizing thread')
+  })
+
+  it('renders no thinking block for marker-free status text', () => {
+    $activeSessionId.set('session-plain')
+    setSessionCompacting('session-plain', true, '🗜️ Compacting context — summarizing earlier conversation (~123,456 tokens, 461 messages) so I can continue... large sessions can take a few minutes.')
+    const { container } = renderIndicator()
+
+    expect(container.querySelector('[data-slot="aui_compaction-thinking"]')).toBeNull()
+    expect(screen.getByText(/123,456 tokens/)).toBeTruthy()
   })
 })

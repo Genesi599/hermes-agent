@@ -440,6 +440,40 @@ def _aux_progress_active() -> bool:
     return getattr(_aux_progress, "hook", None) is not None
 
 
+# custom/hermes-yh (compaction thinking visibility): thread-local sink that
+# receives each streamed REASONING delta (the summarizer's thinking), mirroring
+# the no-arg progress hook above. Same thread-local topology — the aux call and
+# its stream consumption run synchronously on the installing thread (the
+# protected-call worker forwards it, see _run_protected_sync_provider_call).
+_aux_reasoning = threading.local()
+
+
+def _notify_aux_reasoning(piece: str) -> None:
+    """Forward one reasoning delta to the installed sink, if any. Never raises."""
+    sink = getattr(_aux_reasoning, "sink", None)
+    if sink is None:
+        return
+    try:
+        sink(piece)
+    except Exception:
+        logger.debug("aux reasoning sink failed", exc_info=True)
+
+
+@contextlib.contextmanager
+def aux_reasoning_sink(sink):
+    """Install *sink* as the current thread's streamed-reasoning callback.
+
+    ``sink=None`` follows the same convention as :func:`aux_progress_hook`
+    (a non-callable keeps the previous hook). Re-entrant-safe.
+    """
+    prev = getattr(_aux_reasoning, "sink", None)
+    _aux_reasoning.sink = sink if callable(sink) else prev
+    try:
+        yield
+    finally:
+        _aux_reasoning.sink = prev
+
+
 @contextlib.contextmanager
 def aux_progress_hook(hook):
     """Install *hook* as the current thread's aux forward-progress callback.
@@ -492,7 +526,12 @@ def _run_protected_sync_provider_call(
 
     def _provider_worker() -> None:
         try:
-            with aux_progress_hook(progress_hook), aux_interrupt_protection(
+            # The reasoning sink is thread-local like the progress hook; forward
+            # the installer's sink so streamed thinking still reaches the host
+            # while the provider call runs on this daemon worker.
+            with aux_progress_hook(progress_hook), aux_reasoning_sink(
+                getattr(_aux_reasoning, "sink", None)
+            ), aux_interrupt_protection(
                 cancel_check=cancel_check
             ):
                 outcome["result"] = callback(kwargs)
@@ -8761,6 +8800,7 @@ class _ChatStreamAccumulator:
         )
         if reasoning_piece and isinstance(reasoning_piece, str):
             self.reasoning_parts.append(reasoning_piece)
+            _notify_aux_reasoning(reasoning_piece)
         for tc in (getattr(delta, "tool_calls", None) or []):
             idx = getattr(tc, "index", 0) or 0
             acc = self.tool_calls_acc.setdefault(

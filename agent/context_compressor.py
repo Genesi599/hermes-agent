@@ -29,6 +29,7 @@ from agent.auxiliary_client import (
     AuxiliaryExplicitCancellation,
     _is_connection_error,
     aux_interrupt_protection,
+    aux_reasoning_sink,
     call_llm,
 )
 from agent.context_engine import ContextEngine, sanitize_memory_context
@@ -3883,6 +3884,34 @@ Summary generation was unavailable, so this is a best-effort deterministic fallb
         self.summary_model = ""  # empty = use main model
         self._clear_compression_failure_cooldown()  # no cooldown — retry immediately
 
+    # custom/hermes-yh (compaction thinking visibility): forward the streamed
+    # summarizer thinking to the host's live-status hook, throttled. The host
+    # (conversation_compression) installs ``_live_reasoning_status`` per
+    # compression attempt; nothing is emitted when no hook is installed.
+    _LIVE_REASONING_MIN_INTERVAL_S = 1.5
+    _LIVE_REASONING_TAIL_CHARS = 240
+
+    def _reasoning_sink_emitter(self):
+        """Build a throttled sink for streamed reasoning deltas, or None."""
+        hook = getattr(self, "_live_reasoning_status", None)
+        if not callable(hook):
+            return None
+        state = {"last": float("-inf"), "buf": []}
+
+        def _on_piece(piece: str) -> None:
+            now = time.monotonic()
+            state["buf"].append(piece)
+            if now - state["last"] < self._LIVE_REASONING_MIN_INTERVAL_S:
+                return
+            state["last"] = now
+            tail = "".join(state["buf"])[-self._LIVE_REASONING_TAIL_CHARS:]
+            try:
+                hook(tail)
+            except Exception:
+                pass
+
+        return _on_piece
+
     def _generate_summary(
         self,
         turns_to_summarize: List[Dict[str, Any]],
@@ -4226,7 +4255,9 @@ This compaction should PRIORITISE preserving all information related to the focu
             # retry (_generate_summary recursion) re-enters harmlessly.
             _aux_call_start = time.monotonic()
             try:
-                with aux_interrupt_protection():
+                with aux_interrupt_protection(), aux_reasoning_sink(
+                    self._reasoning_sink_emitter()
+                ):
                     response = call_llm(**call_kwargs)
             finally:
                 self._record_aux_compression_call(
@@ -5909,7 +5940,9 @@ This compaction should PRIORITISE preserving all information related to the focu
             })
 
         try:
-            with aux_interrupt_protection():
+            with aux_interrupt_protection(), aux_reasoning_sink(
+                self._reasoning_sink_emitter()
+            ):
                 response = call_llm(**call_kwargs)
         except Exception as exc:
             logger.info("micro-summarization call failed: %s", exc)

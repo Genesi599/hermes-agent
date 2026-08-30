@@ -357,3 +357,30 @@ class TestAsyncStreamAggregation:
         )
         assert calls[0]["stream"] is True
         assert result.choices[0].message.content == "ok"
+
+
+# ---------------------------------------------------------------------------
+# custom/hermes-yh: streamed reasoning-delta sink (compaction thinking)
+# ---------------------------------------------------------------------------
+
+def test_streamed_reasoning_deltas_reach_installed_sink():
+    from agent.auxiliary_client import _ChatStreamAccumulator, aux_reasoning_sink
+
+    acc = _ChatStreamAccumulator(model="m1")
+    pieces = []
+    with aux_reasoning_sink(pieces.append):
+        acc.feed(_chunk(reasoning="think "))
+        acc.feed(_chunk(reasoning="hard"))
+        # Content deltas are not reasoning — they must not reach the sink.
+        acc.feed(_chunk(content="the answer"))
+    assert pieces == ["think ", "hard"]
+    # The reconstructed message still carries the joined reasoning.
+    assert acc.finish().choices[0].message.reasoning == "think hard"
+
+
+def test_accumulator_feed_without_sink_is_noop():
+    from agent.auxiliary_client import _ChatStreamAccumulator
+
+    acc = _ChatStreamAccumulator(model="m1")
+    acc.feed(_chunk(reasoning="no sink installed"))
+    assert acc.finish().choices[0].message.reasoning == "no sink installed"

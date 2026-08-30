@@ -49,6 +49,9 @@ from typing import Awaitable, Callable, Dict, Optional, Any, List, Tuple, Union,
 from agent.async_utils import consume_detached_task_result, safe_schedule_threadsafe
 from agent.conversation_compression import (
     COMPACTION_STATUS,
+    COMPACTION_PROGRESS_TEMPLATE,
+    COMPACTION_STATUS_DETAIL_TEMPLATE,
+    COMPACTION_THINKING_TEMPLATE,
     COMPRESSION_RETRY_CONTEXT_REDUCED_STATUS_TEMPLATE,
     COMPRESSION_RETRY_MESSAGES_STATUS_TEMPLATE,
     COMPRESSION_RETRY_TOKENS_STATUS_TEMPLATE,
@@ -281,6 +284,11 @@ def _record_hygiene_cooldown(
         logger.debug("session hygiene cooldown persist failed: %s", exc)
 
 
+# Placeholders the emit sites format as free text (not ints / ``{:,}``):
+# ``{elapsed}`` renders "2m 05s", ``{tail}`` carries the live thinking tail.
+_FREE_TEXT_STATUS_PLACEHOLDERS = {"elapsed", "tail"}
+
+
 def _status_template_to_regex(template: str) -> str:
     """Compile a compression status template constant into a regex source.
 
@@ -288,10 +296,21 @@ def _status_template_to_regex(template: str) -> str:
     agent/conversation_compression.py cannot silently diverge from this
     matcher — the constants ARE the wording) and each ``{field}`` format
     placeholder is replaced with a numeric-ish pattern covering every value
-    the emit sites format in (ints, ``{:,}`` thousands separators).
+    the emit sites format in (ints, ``{:,}`` thousands separators), except
+    the known free-text fields (see ``_FREE_TEXT_STATUS_PLACEHOLDERS``)
+    which match any non-empty run.
     """
-    parts = re.split(r"\{[^{}]*\}", template)
-    return r"[\d,]+".join(re.escape(part) for part in parts)
+    parts = re.split(r"\{([^{}]*)\}", template)
+    out = []
+    for index, part in enumerate(parts):
+        if index % 2:
+            name = part.split(":")[0]
+            out.append(
+                r".+?" if name in _FREE_TEXT_STATUS_PLACEHOLDERS else r"[\d,]+"
+            )
+        elif part:
+            out.append(re.escape(part))
+    return "".join(out)
 
 
 # ROUTINE compression progress statuses, derived from the SAME template
@@ -308,6 +327,9 @@ _COMPRESSION_PROGRESS_STATUS_RE = re.compile(
         _status_template_to_regex(_template)
         for _template in (
             COMPACTION_STATUS,
+            COMPACTION_STATUS_DETAIL_TEMPLATE,
+            COMPACTION_PROGRESS_TEMPLATE,
+            COMPACTION_THINKING_TEMPLATE,
             PRE_API_COMPRESSION_STATUS_TEMPLATE,
             PREFLIGHT_COMPRESSION_STATUS_TEMPLATE,
             IDLE_COMPACTION_STATUS_TEMPLATE,

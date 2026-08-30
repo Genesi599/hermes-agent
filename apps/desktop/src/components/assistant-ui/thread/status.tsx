@@ -3,10 +3,10 @@ import { useStore } from '@nanostores/react'
 import { type FC, type ReactNode, useEffect, useMemo, useState } from 'react'
 
 import { useSessionView } from '@/app/chat/session-view'
-import { ReviewActivityPulse, reviewActivityLabel, type ReviewActivity } from '@/components/chat/review-activity'
 import { toolPresentVerb } from '@/components/assistant-ui/tool/run-summary'
 import { useElapsedSeconds } from '@/components/chat/activity-timer'
 import { ActivityTimerText } from '@/components/chat/activity-timer-text'
+import { type ReviewActivity, reviewActivityLabel, ReviewActivityPulse } from '@/components/chat/review-activity'
 import { SCAFFOLD_LABEL_CLASS } from '@/components/chat/scaffold-row'
 import { Codicon } from '@/components/ui/codicon'
 import { Loader } from '@/components/ui/loader'
@@ -49,6 +49,25 @@ const StatusRow: FC<{ children: ReactNode; label: string } & React.ComponentProp
 // instead so the wait is legible; the aria-label stays stable either way.
 const COMPACTION_LABEL = 'Summarizing thread'
 
+// Coupled to the backend's COMPACTION_THINKING_TEMPLATE segment
+// (agent/conversation_compression.py) — keep both in lockstep. The live
+// thinking tail rides the same compaction status text, separated by this
+// marker; the base line and the thinking block render apart.
+const COMPACTION_THINKING_MARKER = '(🧠 thinking…) '
+
+function splitCompactionThinking(text: string): { hint: string; thinking: string } {
+  const idx = text.indexOf(COMPACTION_THINKING_MARKER)
+
+  if (idx === -1) {
+    return { hint: text || COMPACTION_LABEL, thinking: '' }
+  }
+
+  return {
+    hint: text.slice(0, idx).trim() || COMPACTION_LABEL,
+    thinking: text.slice(idx + COMPACTION_THINKING_MARKER.length).trim()
+  }
+}
+
 const HintText: FC<{ children: ReactNode }> = ({ children }) => (
   <span className={cn(SCAFFOLD_LABEL_CLASS, 'shimmer min-w-0 flex-1 truncate')}>{children}</span>
 )
@@ -83,14 +102,15 @@ const DRAFTING_REVEAL_MS = 200
 /**
  * What to call the wait, if it deserves a name. Compaction outranks a draft —
  * it's rarer, slower, and explains a transcript that looks like it reset.
- * While compacting, prefer the backend's live status text (magnitude +
- * elapsed heartbeat) over the fixed label.
+ * While compacting, prefer the backend's live status text (magnitude,
+ * elapsed heartbeat, or a live thinking tail) over the fixed label; a
+ * thinking tail splits out into its own streaming block below the line.
  */
 function useStatusHint(
   compacting: boolean,
   compactionText: string,
   drafting: DraftingTool | null
-): string {
+): { hint: string; thinking: string } {
   const [revealed, setRevealed] = useState(false)
   const name = drafting?.name ?? ''
 
@@ -107,11 +127,25 @@ function useStatusHint(
   }, [name])
 
   if (compacting) {
-    return compactionText || COMPACTION_LABEL
+    return splitCompactionThinking(compactionText)
   }
 
-  return revealed && name ? toolPresentVerb(name) : ''
+  return { hint: revealed && name ? toolPresentVerb(name) : '', thinking: '' }
 }
+
+// Live summarizer-thinking tail streamed while auto-compaction runs (backend
+// throttles to a ~240-char tail per ~1.5s). A quiet clipped block under the
+// status line — the status row already names the wait accessibly.
+const CompactionThinkingBlock: FC<{ text: string }> = ({ text }) => (
+  <div
+    aria-hidden="true"
+    className="mt-1 max-h-24 self-start overflow-hidden rounded-sm bg-midground/10 px-2 py-1 text-[0.6875rem] leading-5 break-words text-muted-foreground/70"
+    data-slot="aui_compaction-thinking"
+  >
+    <span aria-hidden="true" className="shimmer mr-1">🧠</span>
+    {text}
+  </div>
+)
 
 const ReviewActivityIndicator: FC<{ activity: ReviewActivity; elapsed: number }> = ({ activity, elapsed }) => (
   <>
@@ -148,21 +182,24 @@ export const ResponseLoadingIndicator: FC = () => {
   const { t } = useI18n()
   const { compacting, compactionText, drafting, turnTimerKey } = useThreadSessionStatus()
   const elapsed = useElapsedSeconds(true, turnTimerKey)
-  const hint = useStatusHint(compacting, compactionText, drafting)
+  const { hint, thinking } = useStatusHint(compacting, compactionText, drafting)
   const visibleLabel = hint || t.assistant.thread.thinking
 
   return (
-    <StatusRow
-      data-slot="aui_response-loading"
-      label={compacting ? COMPACTION_LABEL : (hint || t.assistant.thread.loadingResponse)}
-    >
-      <span
-        aria-hidden="true"
-        className="dither inline-block size-3 rounded-[2px] text-midground/80 motion-safe:animate-pulse"
-      />
-      <HintText>{visibleLabel}</HintText>
-      <ActivityTimerText seconds={elapsed} />
-    </StatusRow>
+    <>
+      <StatusRow
+        data-slot="aui_response-loading"
+        label={compacting ? COMPACTION_LABEL : (hint || t.assistant.thread.loadingResponse)}
+      >
+        <span
+          aria-hidden="true"
+          className="dither inline-block size-3 rounded-[2px] text-midground/80 motion-safe:animate-pulse"
+        />
+        <HintText>{visibleLabel}</HintText>
+        <ActivityTimerText seconds={elapsed} />
+      </StatusRow>
+      {compacting && thinking ? <CompactionThinkingBlock text={thinking} /> : null}
+    </>
   )
 }
 
@@ -239,7 +276,7 @@ export const StreamStallIndicator: FC = () => {
   // renders → React #311 tears down the whole workspace error boundary.
   const reviewActivityById = useStore($reviewActivityBySessionId)
   const reviewActivity = sessionId ? (reviewActivityById[sessionId] ?? null) : null
-  const hint = useStatusHint(compacting, compactionText, drafting)
+  const { hint, thinking } = useStatusHint(compacting, compactionText, drafting)
 
   // A tool run at the tail already narrates the wait — its summary counts the
   // calls, its ticker names the current one, and it carries its own timer. A
@@ -281,16 +318,19 @@ export const StreamStallIndicator: FC = () => {
   }
 
   return (
-    <StatusRow
-      data-slot="aui_stream-stall"
-      label={compacting ? COMPACTION_LABEL : (hint || 'Hermes is thinking')}
-    >
-      <span
-        aria-hidden="true"
-        className="dither inline-block size-3 rounded-[2px] text-midground/80 motion-safe:animate-pulse"
-      />
-      <HintText>{hint || t.assistant.thread.thinking}</HintText>
-      <ActivityTimerText seconds={elapsed} />
-    </StatusRow>
+    <>
+      <StatusRow
+        data-slot="aui_stream-stall"
+        label={compacting ? COMPACTION_LABEL : (hint || 'Hermes is thinking')}
+      >
+        <span
+          aria-hidden="true"
+          className="dither inline-block size-3 rounded-[2px] text-midground/80 motion-safe:animate-pulse"
+        />
+        <HintText>{hint || t.assistant.thread.thinking}</HintText>
+        <ActivityTimerText seconds={elapsed} />
+      </StatusRow>
+      {compacting && thinking ? <CompactionThinkingBlock text={thinking} /> : null}
+    </>
   )
 }
