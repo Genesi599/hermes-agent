@@ -520,6 +520,9 @@ def _run_protected_sync_provider_call(
         raise AuxiliaryExplicitCancellation()
 
     progress_hook = getattr(_aux_progress, "hook", None)
+    # Capture the reasoning sink on THIS thread — the worker below reads its
+    # own thread-local, which would always be empty.
+    reasoning_sink = getattr(_aux_reasoning, "sink", None)
     provider_context = contextvars.copy_context()
     done = threading.Event()
     outcome: dict[str, Any] = {}
@@ -530,7 +533,7 @@ def _run_protected_sync_provider_call(
             # the installer's sink so streamed thinking still reaches the host
             # while the provider call runs on this daemon worker.
             with aux_progress_hook(progress_hook), aux_reasoning_sink(
-                getattr(_aux_reasoning, "sink", None)
+                reasoning_sink
             ), aux_interrupt_protection(
                 cancel_check=cancel_check
             ):
