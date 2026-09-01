@@ -407,7 +407,6 @@ export function ChatSidebar({
   const [messagingLoadMorePending, setMessagingLoadMorePending] = useState<Record<string, boolean>>({})
   const [recentsLoadMorePending, setRecentsLoadMorePending] = useState(false)
   const [branchBatchOpen, setBranchBatchOpen] = useState(false)
-  const [runningOpen, setRunningOpen] = useState(false)
 
   const openBranchBatchForSession = useCallback(
     (sessionId: string) => {
@@ -601,19 +600,6 @@ export function ChatSidebar({
     () => sortedSessions.filter(session => runningFamilySessionIds.has(session.id) && !isPinnedSession(session)),
     [isPinnedSession, runningFamilySessionIds, sortedSessions]
   )
-
-  const pinnedSessionPinIdSet = useMemo(() => new Set(expandedPinnedSessionIds), [expandedPinnedSessionIds])
-
-  const runningPinnedSessionIdSet = useMemo(
-    () =>
-      new Set(
-        runningSessions
-          .filter(session => pinnedSessionPinIdSet.has(sessionPinId(session)))
-          .map(session => session.id)
-      ),
-    [pinnedSessionPinIdSet, runningSessions]
-  )
-
 
   // What the project tree drops: pins (they live in their own section) plus
   // anything the active filters exclude, so filtering works the same whether
@@ -1595,30 +1581,6 @@ export function ChatSidebar({
               />
             )}
 
-            {!trimmedQuery && runningSessions.length > 0 && (
-              <SidebarSessionsSection
-                activeSessionId={activeSidebarSessionId}
-                contentClassName={cn('flex max-h-56 flex-col gap-px rounded-lg pb-2 pt-1', GROUP_BODY)}
-                emptyState={null}
-                label={s.running}
-                onArchiveSession={onArchiveSession}
-                onBranchSession={onBranchSession}
-                onDeleteSession={onDeleteSession}
-                onMergeChildrenSession={onMergeChildrenSession}
-                onMergeSession={onMergeSession}
-                onResumeSession={onResumeSession}
-                onToggle={() => setRunningOpen(!runningOpen)}
-                onTogglePin={toggleSessionFamilyPin}
-                open={runningOpen}
-                pinned={false}
-                pinnedSessionIdSet={runningPinnedSessionIdSet}
-                rootClassName="shrink-0 p-0 pb-1"
-                sessions={runningSessions}
-                showProfileTags={showAllProfiles}
-                workingSessionIdSet={workingSessionIdSet}
-              />
-            )}
-
             {!trimmedQuery && (
               runningSessions.length > 0 ? (
                 <SidebarSessionsSection
@@ -1626,7 +1588,7 @@ export function ChatSidebar({
                   contentClassName="flex max-h-[50vh] flex-col gap-px rounded-lg pb-2 pt-1"
                   emptyState={null}
                   isSessionPinned={isPinnedSession}
-                  label="运行中"
+                  label={s.running}
                   onArchiveSession={onArchiveSession}
                   onBranchSession={onBranchSession}
                   onCreateBranchesSession={openBranchBatchForSession}
