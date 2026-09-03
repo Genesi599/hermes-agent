@@ -1048,12 +1048,57 @@ def _append_task_status_nudge(api_messages: list, enabled: bool) -> None:
         return
 
 
+# custom/hermes-yh: mirrors apps/desktop/src/lib/task-status.ts
+# TASK_STATUS_BLOCK_RE. With agent.task_status_guidance=false the block is
+# unwanted everywhere, but long sessions carry dozens/hundreds of historical
+# examples that models keep imitating even after the instruction is gone.
+_TASK_STATUS_BLOCK_RE = re.compile(
+    r"[ \t]*\[HERMES_TASK_STATUS\].*?\[/HERMES_TASK_STATUS\]",
+    re.DOTALL,
+)
+
+
+def strip_task_status_blocks(text: str) -> str:
+    """Remove every [HERMES_TASK_STATUS]...[/HERMES_TASK_STATUS] block."""
+    if "HERMES_TASK_STATUS" not in text:
+        return text
+    cleaned = _TASK_STATUS_BLOCK_RE.sub("", text)
+    if cleaned != text:
+        cleaned = cleaned.rstrip()
+    return cleaned
+
+
+def _strip_task_status_from_history(api_messages: list) -> None:
+    """custom/hermes-yh: strip task-status blocks from the request copy.
+
+    Used only when agent.task_status_guidance is disabled: the surviving
+    blocks in historical assistant turns are the last signal teaching the
+    model to emit one, so remove them from api_messages (request-level only,
+    same semantics as _append_task_status_nudge — the persisted transcript is
+    untouched). Assistant-role only; user/tool messages are never modified.
+    """
+    for am in api_messages:
+        if am.get("role") != "assistant":
+            continue
+        content = am.get("content")
+        if isinstance(content, str):
+            am["content"] = strip_task_status_blocks(content)
+        elif isinstance(content, list):
+            for part in content:
+                if (
+                    isinstance(part, dict)
+                    and part.get("type") == "text"
+                    and isinstance(part.get("text"), str)
+                ):
+                    part["text"] = strip_task_status_blocks(part["text"])
+
+
 def _canonicalize_api_tool_calls(api_messages) -> None:
     """Canonicalize tool-call argument JSON on the send-path message copy.
 
     Rewrites each message's ``tool_calls`` in place (copy-on-write for the
     tool-call dicts it canonicalizes; the persisted history is untouched).
-    The pass still traverses every message and tool call each iteration;
+    The pass traverses every message and tool call each iteration;
     the memo above bounds the JSON parse/serialize work to one round-trip
     per UNIQUE argument string instead of one per string per iteration —
     the quadratic part of the cost. The remaining traversal is pointer
@@ -2060,8 +2105,12 @@ def run_conversation(
         # Task-status rail: nudge the live user turn so even small models
         # (deepseek-v4-flash) emit the [HERMES_TASK_STATUS] block.  Idempotent,
         # request-level only — the stored transcript is not modified.
+        # custom/hermes-yh: guidance OFF — strip historical blocks from the
+        # request copy instead, so imitated emissions die at the source.
         if getattr(agent, "_task_status_guidance", True):
             _append_task_status_nudge(api_messages, True)
+        else:
+            _strip_task_status_from_history(api_messages)
 
         if moa_config:
             try:

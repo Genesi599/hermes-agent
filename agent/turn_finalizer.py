@@ -92,6 +92,15 @@ def finalize_turn(
     """
     from agent.conversation_loop import logger
 
+    # custom/hermes-yh: with agent.task_status_guidance disabled, never
+    # persist/return a leftover [HERMES_TASK_STATUS] block — long histories
+    # can still make the model imitate one. Belt-and-braces next to the
+    # send-path history strip in conversation_loop.
+    if final_response and not getattr(agent, "_task_status_guidance", True):
+        from agent.conversation_loop import strip_task_status_blocks
+
+        final_response = strip_task_status_blocks(final_response)
+
     budget_exhausted = (
         api_call_count >= agent.max_iterations
         or agent.iteration_budget.remaining <= 0
