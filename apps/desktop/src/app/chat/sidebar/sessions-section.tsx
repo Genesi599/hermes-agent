@@ -103,6 +103,7 @@ interface SidebarSessionsSectionProps {
   onDeleteSession: (sessionId: string) => void
   onArchiveSession: (sessionId: string) => void
   onBranchSession?: (sessionId: string, profile?: string) => void
+  onDuplicateSession?: (sessionId: string, profile?: string) => void
   onCreateBranchesSession?: (sessionId: string) => void
   onMergeChildrenSession?: (sessionId: string) => Promise<void> | void
   onMergeSession?: (sessionId: string, profile?: string) => Promise<void> | void
@@ -181,6 +182,7 @@ export function SidebarSessionsSection({
   onDeleteSession,
   onArchiveSession,
   onBranchSession,
+  onDuplicateSession,
   onCreateBranchesSession,
   onMergeChildrenSession,
   onMergeSession,
@@ -281,6 +283,7 @@ export function SidebarSessionsSection({
         isSelected: isActiveSession,
         onArchive: () => onArchiveSession(session.id),
         onBranch: onBranchSession ? () => onBranchSession(session.id, session.profile) : undefined,
+        onDuplicate: onDuplicateSession ? () => onDuplicateSession(session.id, session.profile) : undefined,
         onCreateBranches:
           isActiveSession && onCreateBranchesSession ? () => onCreateBranchesSession(session.id) : undefined,
         onDelete: () => onDeleteSession(session.id),
@@ -307,6 +310,7 @@ export function SidebarSessionsSection({
       childCountByParent,
       onArchiveSession,
       onBranchSession,
+      onDuplicateSession,
       onCreateBranchesSession,
       onDeleteSession,
       onMergeChildrenSession,
@@ -493,6 +497,7 @@ export function SidebarSessionsSection({
         dividerAction={dividerAction}
         onArchiveSession={onArchiveSession}
         onBranchSession={onBranchSession}
+        onDuplicateSession={onDuplicateSession}
         onCreateBranchesSession={onCreateBranchesSession}
         onDeleteSession={onDeleteSession}
         onMergeChildrenSession={onMergeChildrenSession}

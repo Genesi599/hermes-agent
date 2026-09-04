@@ -1153,12 +1153,14 @@ function BranchHarness({
   activeSessionId = null,
   navigate = vi.fn(),
   onCurrentReady,
+  onDuplicateReady,
   onReady,
   requestGateway
 }: {
   activeSessionId?: string | null
   navigate?: ReturnType<typeof vi.fn>
   onCurrentReady?: (branchCurrentSession: (messageId?: string) => Promise<boolean>) => void
+  onDuplicateReady?: (duplicateStoredSession: (storedSessionId: string, sessionProfile?: string | null) => Promise<boolean>) => void
   onReady: (branchStoredSession: (storedSessionId: string, sessionProfile?: string | null) => Promise<boolean>) => void
   requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
 }) {
@@ -1186,7 +1188,8 @@ function BranchHarness({
   useEffect(() => {
     onReady(actions.branchStoredSession)
     onCurrentReady?.(actions.branchCurrentSession)
-  }, [actions.branchCurrentSession, actions.branchStoredSession, onCurrentReady, onReady])
+    onDuplicateReady?.(actions.duplicateStoredSession)
+  }, [actions.branchCurrentSession, actions.branchStoredSession, actions.duplicateStoredSession, onCurrentReady, onDuplicateReady, onReady])
 
   return null
 }
@@ -1269,6 +1272,51 @@ describe('branchStoredSession desktop source tagging', () => {
       source: 'desktop',
       title: 'draft: branch #1'
     })
+  })
+
+  it('duplicates a stored session standalone — no parent link, copy title, opens as a tab', async () => {
+    let createParams: Record<string, unknown> | undefined
+
+    const requestGateway = vi.fn(async (method: string, params?: Record<string, unknown>) => {
+      if (method === 'session.create') {
+        createParams = params
+
+        return { session_id: 'dup-runtime', stored_session_id: 'dup-stored' } as never
+      }
+
+      return {} as never
+    })
+
+    setSessions([storedSession({ id: 'stored-src', message_count: 2 })])
+    setSelectedStoredSessionId('stored-src')
+    vi.mocked(getAllSessionMessages).mockResolvedValue({
+      messages: [
+        { content: 'copy me', role: 'user', timestamp: 1 },
+        { content: 'duplicated', role: 'assistant', timestamp: 2 }
+      ],
+      session_id: 'stored-src'
+    } as never)
+
+    let duplicateStoredSession: ((storedSessionId: string) => Promise<boolean>) | null = null
+    render(
+      <BranchHarness
+        onDuplicateReady={fn => (duplicateStoredSession = fn)}
+        onReady={() => undefined}
+        requestGateway={requestGateway}
+      />
+    )
+    await waitFor(() => expect(duplicateStoredSession).not.toBeNull())
+
+    await expect(duplicateStoredSession!('stored-src')).resolves.toBe(true)
+
+    // Standalone copy: seeded via session.create with NO parent_session_id —
+    // unlike the branch it never joins the source's branch tree.
+    expect(createParams).toBeDefined()
+    expect(createParams!.parent_session_id).toBeUndefined()
+    expect(createParams!.messages).toContainEqual({ content: 'copy me', role: 'user' })
+    expect(String(createParams!.title)).toContain('(copy)')
+    // The copy opened as its own tab, mirroring the branch UX.
+    expect($sessionTiles.get().some(tile => tile.storedSessionId === 'dup-stored')).toBe(true)
   })
 
   it('branches an open live chat via session.branch with a trimmed message count (bug #1/#3 fix)', async () => {

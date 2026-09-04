@@ -283,6 +283,7 @@ interface ChatSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onMergeSession?: (sessionId: string, profile?: string) => Promise<void> | void
   onArchiveSession: (sessionId: string) => void
   onBranchSession: (sessionId: string) => void
+  onDuplicateSession?: (sessionId: string) => void
   onNewSessionInWorkspace: (path: null | string) => void
   /** Create a brand-new session and open it as a tile on `dir`. */
   onNewSessionSplit: (dir: SplitDir) => void
@@ -301,6 +302,7 @@ export function ChatSidebar({
   onMergeSession,
   onArchiveSession,
   onBranchSession,
+  onDuplicateSession,
   onNewSessionInWorkspace,
   onNewSessionSplit,
   onManageCronJob,
@@ -1566,6 +1568,7 @@ export function ChatSidebar({
                 label={s.results}
                 onArchiveSession={onArchiveSession}
                 onBranchSession={onBranchSession}
+                onDuplicateSession={onDuplicateSession}
                 onCreateBranchesSession={openBranchBatchForSession}
                 onDeleteSession={onDeleteSession}
                 onMergeChildrenSession={onMergeChildrenSession}
@@ -1591,6 +1594,7 @@ export function ChatSidebar({
                   label={s.running}
                   onArchiveSession={onArchiveSession}
                   onBranchSession={onBranchSession}
+                  onDuplicateSession={onDuplicateSession}
                   onCreateBranchesSession={openBranchBatchForSession}
                   onDeleteSession={onDeleteSession}
                   onMergeChildrenSession={onMergeChildrenSession}
@@ -1617,6 +1621,7 @@ export function ChatSidebar({
                 label={s.pinned}
                 onArchiveSession={onArchiveSession}
                 onBranchSession={onBranchSession}
+                onDuplicateSession={onDuplicateSession}
                 onCreateBranchesSession={openBranchBatchForSession}
                 onDeleteSession={onDeleteSession}
                 onMergeChildrenSession={onMergeChildrenSession}
@@ -1771,6 +1776,7 @@ export function ChatSidebar({
                 manualOrderIds={agentOrderManual ? agentOrderIds : sortOrderIds}
                 onArchiveSession={onArchiveSession}
                 onBranchSession={onBranchSession}
+                onDuplicateSession={onDuplicateSession}
                 onCreateBranchesSession={openBranchBatchForSession}
                 onDeleteSession={onDeleteSession}
                 onEnterProject={onEnterProject}

@@ -1682,6 +1682,7 @@ export interface Translations {
       copyId: string
       export: string
       branchFrom: string
+      duplicate: string
       mergeBranch: string
       mergeChildren: (count: number) => string
       mergeChildrenDeferred: string
@@ -2545,6 +2546,9 @@ export interface Translations {
     branchNoText: string
     branchTitle: (n: number) => string
     branchFailed: string
+    duplicateTitle: (title: string) => string
+    duplicateFailed: string
+    nothingToDuplicate: string
     deleteFailed: string
     archived: string
     archiveFailed: string

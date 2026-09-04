@@ -16,6 +16,7 @@ type SessionStateCache = ReturnType<typeof useSessionStateCache>
 interface SessionTileDelegateParams {
   archiveSession: (storedSessionId: string) => Promise<unknown>
   branchStoredSession: (storedSessionId: string) => Promise<unknown>
+  duplicateStoredSession: (storedSessionId: string) => Promise<unknown>
   executeSlashCommand: ReturnType<typeof usePromptActions>['executeSlashCommand']
   removeSession: (storedSessionId: string) => Promise<unknown>
   requestGateway: GatewayRequester
@@ -34,6 +35,7 @@ interface SessionTileDelegateParams {
 export function useSessionTileDelegate({
   archiveSession,
   branchStoredSession,
+  duplicateStoredSession,
   executeSlashCommand,
   removeSession,
   requestGateway,
@@ -77,6 +79,9 @@ export function useSessionTileDelegate({
       },
       branchSession: async storedSessionId => {
         await branchStoredSession(storedSessionId)
+      },
+      duplicateSession: async storedSessionId => {
+        await duplicateStoredSession(storedSessionId)
       },
       deleteSession: async storedSessionId => {
         await removeSession(storedSessionId)

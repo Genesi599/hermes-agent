@@ -1436,6 +1436,90 @@ export function useSessionActions({
     [copy, forkBranch]
   )
 
+  // Duplicate any listed session into a STANDALONE copy — the full transcript
+  // re-seeded via session.create with NO parent_session_id, so unlike the
+  // branch it never joins the source's branch tree (no nesting, no family
+  // pinning, no merge-back). Reads the stored transcript directly like
+  // branchStoredSession, so it works from right-click on any listed session.
+  const duplicateStoredSession = useCallback(
+    async (storedSessionId: string, sessionProfile?: string | null): Promise<boolean> => {
+      clearNotifications()
+
+      // Same cross-profile discipline as branchStoredSession (#67603): the
+      // copy must land on the source's OWNING profile, not the live one.
+      const stored =
+        $sessions.get().find(session => sessionMatchesStoredId(session, storedSessionId)) ??
+        (sessionProfile ? undefined : await resolveStoredSession(storedSessionId))
+
+      const profile = sessionProfile ?? stored?.profile
+
+      try {
+        await ensureGatewayProfile(profile)
+        const { messages } = await getAllSessionMessages(storedSessionId, profile)
+        // Boundary-cut only trims a possibly-in-flight trailing turn on a
+        // working session; an idle session keeps its exact transcript.
+        const dupMessages = branchMessagesAtStableBoundary(toChatMessages(messages), stored?.status === 'working')
+
+        if (!dupMessages.length) {
+          notify({ kind: 'warning', title: copy.nothingToDuplicate, message: copy.branchNeedsChat })
+
+          return false
+        }
+
+        const title = copy.duplicateTitle(stored?.title?.trim() || storedSessionId)
+        const cwd = stored?.cwd?.trim()
+
+        const created = await requestGateway<SessionCreateResponse>('session.create', {
+          cols: 96,
+          source: 'desktop',
+          title,
+          ...(cwd && { cwd }),
+          ...(profile ? { profile } : {}),
+          messages: dupMessages.map(({ content, role }) => ({ content, role }))
+        })
+
+        const routedSessionId = created.stored_session_id ?? created.session_id
+        const preview = dupMessages.map(({ content }) => content).find(Boolean) ?? null
+
+        // No parent id → the copy lists as a top-level session at its own
+        // recency (it IS new activity), not nested under the source.
+        upsertOptimisticSession(created, routedSessionId, title, preview, null, undefined)
+        ensureSessionState(created.session_id, routedSessionId)
+        updateSessionState(
+          created.session_id,
+          state => ({
+            ...state,
+            messages: dupMessages.map(({ source }) => source),
+            busy: false,
+            awaitingResponse: false
+          }),
+          routedSessionId
+        )
+
+        const runtimeInfo = applyRuntimeInfo(created.info, { foreground: false })
+        patchSessionWorkspace(routedSessionId, runtimeInfo?.cwd)
+
+        if (runtimeInfo) {
+          updateSessionState(created.session_id, state => ({ ...state, ...runtimeInfo }), routedSessionId)
+        }
+
+        // Open the copy as its own tile and switch to it, mirroring the
+        // branch UX (openSessionTile no-ops when already primary).
+        openSessionTile(routedSessionId, 'center')
+        patchSessionTile(routedSessionId, { runtimeId: created.session_id })
+        revealTreePane(`session-tile:${routedSessionId}`)
+        broadcastSessionsChanged()
+
+        return true
+      } catch (err) {
+        notifyError(err, copy.duplicateFailed)
+
+        return false
+      }
+    },
+    [copy]
+  )
+
   const mergeBranchIntoParent = useCallback(
     async (storedSessionId: string, sessionProfile?: string | null): Promise<MergeBranchResponse> => {
       clearNotifications()
@@ -1919,6 +2003,7 @@ export function useSessionActions({
     archiveSession,
     branchCurrentSession,
     branchStoredSession,
+    duplicateStoredSession,
     closeSettings,
     createBackendSessionForSend,
     openNewSessionTile,

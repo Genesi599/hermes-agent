@@ -524,6 +524,7 @@ export function SessionTabMenu({
       <SessionContextMenu
         onArchive={() => void sessionTileDelegate()?.archiveSession(storedSessionId)}
         onBranch={() => void sessionTileDelegate()?.branchSession(storedSessionId)}
+        onDuplicate={() => void sessionTileDelegate()?.duplicateSession(storedSessionId)}
         onClose={onClose}
         onDelete={() => void sessionTileDelegate()?.deleteSession(storedSessionId)}
         onHideTabBar={onHideTabBar}

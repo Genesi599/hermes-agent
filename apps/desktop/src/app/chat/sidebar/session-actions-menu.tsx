@@ -101,6 +101,7 @@ interface SessionActions {
   profile?: string
   onPin?: () => void
   onBranch?: () => void
+  onDuplicate?: () => void
   onCreateBranches?: () => void
   mergeChildrenCount?: number
   onMergeChildren?: () => Promise<void> | void
@@ -189,6 +190,7 @@ function useSessionActions({
   profile,
   onPin,
   onBranch,
+  onDuplicate,
   onCreateBranches,
   mergeChildrenCount = 0,
   onMergeChildren,
@@ -299,6 +301,17 @@ function useSessionActions({
           })
         ]
       : []),
+    // Standalone full copy — unlike 分支 it never joins the source's branch
+    // tree (no parent link, no family pin/merge semantics).
+    spec({
+      disabled: !onDuplicate,
+      icon: 'copy',
+      label: r.duplicate,
+      onSelect: () => {
+        triggerHaptic('selection')
+        onDuplicate?.()
+      }
+    }),
     spec({
       disabled: !sessionId,
       icon: 'cloud-download',
