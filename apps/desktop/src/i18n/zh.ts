@@ -3151,6 +3151,7 @@ export const zh: Translations = {
     duplicateTitle: title => `${title} 副本`,
     duplicateFailed: '复制对话失败',
     nothingToDuplicate: '没有可复制的内容——请先发送一条消息',
+    deleteDuringCompaction: '该对话正在压缩（Summarizing thread），等压缩完成（几分钟内）后再删除。',
     deleteFailed: '删除失败',
     archived: '已归档',
     archiveFailed: '归档失败',

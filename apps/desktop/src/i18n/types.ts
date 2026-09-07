@@ -2549,6 +2549,7 @@ export interface Translations {
     duplicateTitle: (title: string) => string
     duplicateFailed: string
     nothingToDuplicate: string
+    deleteDuringCompaction: string
     deleteFailed: string
     archived: string
     archiveFailed: string

@@ -2995,6 +2995,7 @@ export const en: Translations = {
     duplicateTitle: title => `${title} (copy)`,
     duplicateFailed: 'Duplicate failed',
     nothingToDuplicate: 'Nothing to duplicate — send a message first',
+    deleteDuringCompaction: 'This conversation is compacting (Summarizing thread); retry the delete once it finishes (a few minutes).',
     deleteFailed: 'Delete failed',
     archived: 'Archived',
     archiveFailed: 'Archive failed',

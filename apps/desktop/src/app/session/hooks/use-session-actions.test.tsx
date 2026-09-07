@@ -16,6 +16,7 @@ import {
 } from '@/hermes'
 import { createClientSessionState } from '@/lib/chat-runtime'
 import { clearSessionDraft, stashSessionDraft, takeSessionDraft } from '@/store/composer'
+import { $compactingSessions } from '@/store/compaction'
 import { $activeGatewayProfile, $newChatProfile, ensureGatewayProfile } from '@/store/profile'
 import { $projectScope, $projectTree, ALL_PROJECTS } from '@/store/projects'
 import {
@@ -1155,6 +1156,7 @@ function BranchHarness({
   onCurrentReady,
   onDuplicateReady,
   onReady,
+  onRemoveReady,
   requestGateway
 }: {
   activeSessionId?: string | null
@@ -1162,6 +1164,7 @@ function BranchHarness({
   onCurrentReady?: (branchCurrentSession: (messageId?: string) => Promise<boolean>) => void
   onDuplicateReady?: (duplicateStoredSession: (storedSessionId: string, sessionProfile?: string | null) => Promise<boolean>) => void
   onReady: (branchStoredSession: (storedSessionId: string, sessionProfile?: string | null) => Promise<boolean>) => void
+  onRemoveReady?: (removeSession: (storedSessionId: string) => Promise<void>) => void
   requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
 }) {
   const ref = <T,>(value: T): MutableRefObject<T> => ({ current: value })
@@ -1189,7 +1192,8 @@ function BranchHarness({
     onReady(actions.branchStoredSession)
     onCurrentReady?.(actions.branchCurrentSession)
     onDuplicateReady?.(actions.duplicateStoredSession)
-  }, [actions.branchCurrentSession, actions.branchStoredSession, actions.duplicateStoredSession, onCurrentReady, onDuplicateReady, onReady])
+    onRemoveReady?.(actions.removeSession)
+  }, [actions.branchCurrentSession, actions.branchStoredSession, actions.duplicateStoredSession, actions.removeSession, onCurrentReady, onDuplicateReady, onReady, onRemoveReady])
 
   return null
 }
@@ -1201,6 +1205,7 @@ describe('branchStoredSession desktop source tagging', () => {
     setSessions([])
     $sessionTiles.set([])
     setSelectedStoredSessionId(null)
+    $compactingSessions.set({})
     vi.restoreAllMocks()
   })
 
@@ -1317,6 +1322,35 @@ describe('branchStoredSession desktop source tagging', () => {
     expect(String(createParams!.title)).toContain('(copy)')
     // The copy opened as its own tab, mirroring the branch UX.
     expect($sessionTiles.get().some(tile => tile.storedSessionId === 'dup-stored')).toBe(true)
+  })
+
+  // 2026-09-07 frontend hang guard: deleting a session while its compaction
+  // (and the post-compaction transcript re-sync) is still in flight wedged the
+  // renderer. The delete must refuse instead of tearing the runtime down
+  // mid-compression, and must send NO RPC.
+  it('refuses to delete a session that is mid-compression and sends no RPC', async () => {
+    const requestGateway = vi.fn(async () => ({} as never))
+
+    setSessions([storedSession({ id: 'stored-busy', message_count: 1 })])
+    $compactingSessions.set({ 'stored-busy': '🗜️ Compacting context' })
+
+    let removeSession: ((storedSessionId: string) => Promise<void>) | null = null
+    render(
+      <BranchHarness
+        onReady={() => undefined}
+        onRemoveReady={fn => (removeSession = fn)}
+        requestGateway={requestGateway}
+      />
+    )
+    await waitFor(() => expect(removeSession).not.toBeNull())
+
+    await act(async () => {
+      await removeSession!('stored-busy')
+    })
+
+    // No delete RPC, and the optimistic sidebar removal never happened either.
+    expect(requestGateway).not.toHaveBeenCalled()
+    expect($sessions.get().some(session => session.id === 'stored-busy')).toBe(true)
   })
 
   it('branches an open live chat via session.branch with a trimmed message count (bug #1/#3 fix)', async () => {

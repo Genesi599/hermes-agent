@@ -9,6 +9,7 @@ import { type ChatMessage, preserveLocalAssistantErrors, toChatMessages } from '
 import { isMissingRpcMethod } from '@/lib/gateway-rpc'
 import { recoverInFlightTurnJournal } from '@/lib/inflight-turn-journal'
 import { setSessionYolo } from '@/lib/yolo-session'
+import { $compactingSessions } from '@/store/compaction'
 import { migrateSessionDraft } from '@/store/composer'
 import { clearQueuedPrompts, migrateQueuedPrompts } from '@/store/composer-queue'
 import { $pinnedSessionIds } from '@/store/layout'
@@ -1840,6 +1841,27 @@ export function useSessionActions({
   const removeSession = useCallback(
     async (storedSessionId: string) => {
       clearNotifications()
+
+      // Deleting a session mid-compression tears its runtime down while the
+      // post-compaction transcript re-sync is still in flight — the
+      // 2026-09-07 frontend hang landed exactly on that seam (renderer went
+      // silent the second a purge-compaction finished under a pending
+      // delete). Refuse with a notice instead; compression finishes within
+      // minutes and the delete can simply be retried. Check BOTH the
+      // runtime id (what the compaction events key on) and the stored id.
+      {
+        const targetRuntimeId = runtimeIdByStoredSessionIdRef.current.get(storedSessionId)
+        const compacting = $compactingSessions.get()
+
+        if (
+          (targetRuntimeId && targetRuntimeId in compacting) ||
+          storedSessionId in compacting
+        ) {
+          notify({ kind: 'warning', title: copy.sessionBusy, message: copy.deleteDuringCompaction })
+
+          return
+        }
+      }
 
       const removed = $sessions.get().find(session => sessionMatchesStoredId(session, storedSessionId))
       const previousPinned = $pinnedSessionIds.get()
