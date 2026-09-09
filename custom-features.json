@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "baseline_commit": "46d277505d89a15cd27e66711421603a6978f4eb",
+  "baseline_commit": "a3bcb2c23265dd6bc571fd7522ca4f6475c1b9a6",
   "guard_paths": [
     "custom-features.json",
     "scripts/Verify-HermesCustomFeatures.ps1"
@@ -887,6 +887,52 @@
         {
           "path": "hermes_state.py",
           "pattern": "purge_compacted: deleted %s archived pre-compaction"
+        }
+      ]
+    },
+    {
+      "id": "vision-native-base-url-fallback",
+      "label": "Native image routing for session-scoped providers via base-URL reverse lookup",
+      "commits": [
+        "924aa5c014"
+      ],
+      "source_paths": [
+        "agent/image_routing.py"
+      ],
+      "test_paths": [
+        "tests/agent/test_image_routing.py"
+      ],
+      "required_patterns": [
+        {
+          "path": "agent/image_routing.py",
+          "pattern": "2c. Base-URL reverse lookup"
+        },
+        {
+          "path": "agent/image_routing.py",
+          "pattern": "tried_names = set(dict.fromkeys(provider_candidates))"
+        }
+      ]
+    },
+    {
+      "id": "vision-max-tokens-config",
+      "label": "Configurable auxiliary.vision.max_tokens (default 2000)",
+      "commits": [
+        "782ac99aba"
+      ],
+      "source_paths": [
+        "tools/vision_tools.py"
+      ],
+      "test_paths": [
+        "tests/agent/test_vision_max_tokens.py"
+      ],
+      "required_patterns": [
+        {
+          "path": "tools/vision_tools.py",
+          "pattern": "vision_max_tokens = 2000"
+        },
+        {
+          "path": "tools/vision_tools.py",
+          "pattern": "vision_max_tokens = int(_vmt)"
         }
       ]
     }
