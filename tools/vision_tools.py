@@ -1483,8 +1483,13 @@ async def vision_analyze_tool(
         # Call the vision API via centralized router.
         # Read timeout from config.yaml (auxiliary.vision.timeout), default 120s.
         # Local vision models (llama.cpp, ollama) can take well over 30s.
+        # max_tokens is also configurable (auxiliary.vision.max_tokens): reasoning
+        # vision models (glm-5.3-flash, deepseek-v4.1) spend most of the budget on
+        # reasoning tokens, so the 2000 default truncates the actual description
+        # (finish_reason=length with a short body).
         vision_timeout = 120.0
         vision_temperature = 0.1
+        vision_max_tokens = 2000
         try:
             from hermes_cli.config import cfg_get, load_config
             _cfg = load_config()
@@ -1495,13 +1500,16 @@ async def vision_analyze_tool(
             _vtemp = _vision_cfg.get("temperature")
             if _vtemp is not None:
                 vision_temperature = float(_vtemp)
+            _vmt = _vision_cfg.get("max_tokens")
+            if _vmt is not None:
+                vision_max_tokens = int(_vmt)
         except Exception:
             pass
         call_kwargs = {
             "task": "vision",
             "messages": messages,
             "temperature": vision_temperature,
-            "max_tokens": 2000,
+            "max_tokens": vision_max_tokens,
             "timeout": vision_timeout,
         }
         if model:
