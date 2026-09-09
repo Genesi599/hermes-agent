@@ -7,474 +7,1059 @@
   ],
   "tracked_patches": [
     {
-      "source_commit": "b661b77fff",
-      "patch_id": "2a45b442d2a78d0d152d421d040e4c7fe61a1fde",
+      "source_commit": "bb64ecd2c2",
+      "patch_id": "a7f11a6e4b61fcc9d06a715777e15a0a197b776e",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "bc0bece882",
-      "patch_id": "6394153a42dcc293ad824d55aff0ea8cacfd42b6",
+      "source_commit": "1a3d6330ca",
+      "patch_id": "6c272727df5216dd734922c26a85e8badb48ec86",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "02ce977f21",
-      "patch_id": "bdba2621c169938264f300a614756202b0e08c43",
+      "source_commit": "05b97c8e74",
+      "patch_id": "7b2d0a4c6662416ce1a562a8c63ceb9649446bdc",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "c43496adfe",
-      "patch_id": "e59ad786087ecc5530385e0e96ab2881087f26a3",
+      "source_commit": "084fa7003c",
+      "patch_id": "66236165fceffbf62c7afcd9676d263d3f68a8e7",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "ea12834de3",
-      "patch_id": "eaeab5950412dff967e722419974ec6a7a7b32e7",
-      "feature": "v2026.8.3-port"
+      "source_commit": "75410b4298",
+      "patch_id": "0e51eb9411c38b9095452e443a698fde7c016066",
+      "feature": "post-rebase-20260812"
     },
     {
-      "source_commit": "7ea5d76869",
-      "patch_id": "af989f521f5cf298ed7625e7a5d66b58e0f22011",
-      "feature": "v2026.8.3-port"
+      "source_commit": "19e1ca6879",
+      "patch_id": "520f6618883bc67aecfc8aeb31a40740e8df5182",
+      "feature": "post-rebase-20260812"
     },
     {
-      "source_commit": "4747106e42",
+      "source_commit": "e14dfde6a9",
       "patch_id": "1dc6add99092570b3d4f68cabea6a44899696407",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "01ba32ff1a",
+      "source_commit": "8e570f74a8",
       "patch_id": "daabbb1c3ca0f3e872346235f83aab39f5355a2b",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "5968dc2245",
-      "patch_id": "2a645d57c9c287224e78fceda1c58a0175e1e38a",
+      "source_commit": "e4c80fab76",
+      "patch_id": "6e8664e8ddf00ce115cd89941a26104dae748621",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "1c49236fd8",
-      "patch_id": "a6a417ba706bc147597fd3e5f179872de8a9d7ee",
+      "source_commit": "83e8ae742b",
+      "patch_id": "6709602cfe79f6aaf1872cb9f7ce0cda376a18ac",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "1ab3f4e024",
-      "patch_id": "859b72d2c7c495ebc0210d63bd5cc850bdf24a4c",
+      "source_commit": "00dc274949",
+      "patch_id": "b249e20e63a999154cd4e552f9ac2ce533b30f46",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "8c1c99c57e",
+      "patch_id": "3432ceccbf4c54d269249fb2d0cef28bbb154834",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "2bc1ff2a94",
-      "patch_id": "871539bfe849a15f2df5e2df061a73e776eb6a42",
+      "source_commit": "a997fce361",
+      "patch_id": "f219c8dee8bc8f5abd1b1c9d210ed201036aedf5",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "cdb49aeba9",
-      "patch_id": "1352bb40cf917c2a0a4cc931824bcdd1c45b64f3",
+      "source_commit": "77f8f4702b",
+      "patch_id": "4239f2735cc4bb05579b45eeb504a44479b583ac",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "b0036ae1e6",
+      "source_commit": "801d85d817",
+      "patch_id": "f5dbc651152bb5fd320f6db41722b0e9af306e76",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "7d25717f99",
+      "patch_id": "4667f939e247eebfd8f8b16e8de07054d5977333",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "e5cf4eeae0",
+      "patch_id": "b54e82bede6176797d316305e355672b7d245994",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "a392c6b26f",
+      "patch_id": "dc36e4f9304cc8de596396a3f6ec0905a45829f9",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "7774f39197",
+      "patch_id": "a37f053508dfa9bea0764c5b26bb94122ffb8008",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "1dfee194a3",
+      "patch_id": "f9db6208ebf8c28e96ccb170e5797fc27f972121",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "38d7e3bdbe",
+      "patch_id": "8dd2fde52fb7b2f76478787e43e3cfedc48e6663",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "792e05bc15",
+      "patch_id": "a270ce5883d941ed1b89ec177e3624aeea478cfb",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "fac2fc3bf3",
+      "patch_id": "e6c0545334f7366f782bda3d08b630c3440a3dc9",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "0056a8f343",
+      "patch_id": "ef32b81fb1adc7cbb691f497803ed9e481ab24b2",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "2fc9464def",
+      "patch_id": "82c123822f90a92967c1dd147ea6b8c203018a8b",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "1d13b232b4",
+      "patch_id": "75657eeeac5ae9a7eacb0f02f9314118e3ac91da",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "2c9327b30e",
+      "patch_id": "909a65d3573871be5b754b739c48ff0db1d9104e",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "fd475fdfb7",
+      "patch_id": "6877810bd30b149003337de9c0b9856abc3a6a04",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "c58a775508",
+      "patch_id": "666e3ca726bd7c6598fec5355bce10801d4c487f",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "2a317a09fd",
+      "patch_id": "d81476e7b75085f6b9473b3c747ee5f63750e506",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "970552077d",
+      "patch_id": "5a47506dd539c68cd08473d168cb433a067eefb4",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "7014535375",
+      "patch_id": "44cc4fb93e86dd53159b7abd5f22c2508f0b9401",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "a1d964845a",
+      "patch_id": "6e6fa24b09bdd5caaf3cdce7aa3d1d90627f2b01",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "b751c8330e",
+      "patch_id": "54343be4e5bcfb28346188eed5cc7b2a73bf97cc",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "28f2ee38e9",
+      "patch_id": "6015f713a65fee470fa0d6f1dcb7723eb14677b1",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "cc4512ef63",
+      "patch_id": "7c321cf9e3a5211412e5e467dce4e577467bd82f",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "53ebc45905",
+      "patch_id": "7998eb2ea61312bb5c729d09bbf2ec9f2506f555",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "7f92c4a1ff",
+      "patch_id": "fe581a93c8588b2ab9281af200d4b78a3d6eab35",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "11b1651565",
+      "patch_id": "b2cacc8d3ea13b9581bcabe4ce44e1332a499b72",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "120e16fe29",
+      "patch_id": "faaad7d5d03a099cb07e5a1d5467a1576097d552",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "a5992cbd40",
+      "patch_id": "40afd565c12b9b754c51a53ac5480b795e9816d9",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "2c00f76274",
+      "patch_id": "5af5c8179e58be271015033a59483481137b7865",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "f4e525ef01",
       "patch_id": "16b6563729b80072d0a6137fc196830e8ff55ee4",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "caff5a8589",
-      "patch_id": "909b1e917fc508136c1d4210e6a04963a3e9f82c",
+      "source_commit": "cde0e9bb51",
+      "patch_id": "942328ce8b48c4e248657b20b2cd51070efcf7de",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "365c5801ce",
+      "patch_id": "8ea2c8eee56b6cb3dfa4638ca5899c81c1a0d78f",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "cc9aca72ca",
-      "patch_id": "1bd44239829c8791110e42a28ac00139a172e4f6",
+      "source_commit": "11be573196",
+      "patch_id": "a7c0bd23ba04923b9876526d3c6a392633d5eb1b",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "09b44e6bc6",
+      "patch_id": "ac9139be1c84d474ba3b503ad1f2d8b9c5492044",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "4f50e8616b",
-      "patch_id": "e0feba26d069e33558ff40d297f5ed41ca19ea00",
-      "feature": "v2026.8.3-port"
+      "source_commit": "59a66cf8c4",
+      "patch_id": "763e16e45b243590e222bc7f77236c606ec31f7f",
+      "feature": "post-rebase-20260812"
     },
     {
-      "source_commit": "cf82577b70",
-      "patch_id": "65790e4b7538bde4d17b4207437c58675813f229",
-      "feature": "v2026.8.3-port"
+      "source_commit": "b846bf636d",
+      "patch_id": "5c94a7080f4ce62e096d6ba0a2e8d61b95330399",
+      "feature": "post-rebase-20260812"
     },
     {
-      "source_commit": "0e8a43045c",
-      "patch_id": "872cadf58f5b86bd518cdc6dab35d0e144e276a0",
-      "feature": "v2026.8.3-port"
-    },
-    {
-      "source_commit": "f6dc7eb5de",
-      "patch_id": "81ee81b94535fe336803f5330d033bbf2830aad4",
-      "feature": "v2026.8.3-port"
-    },
-    {
-      "source_commit": "2cfa08cdeb",
-      "patch_id": "483a8e7d835fe867f93322c1cd2eb420e9950e87",
-      "feature": "v2026.8.3-port"
-    },
-    {
-      "source_commit": "d839fab7d6",
-      "patch_id": "09b90ef5620d668d5c8cacfd0c74048e0b0d4d5b",
-      "feature": "v2026.8.3-port"
-    },
-    {
-      "source_commit": "b17d6b9b23",
-      "patch_id": "fb2e4b02e0f9cdb6f7d825390c549b76b70a992a",
-      "feature": "v2026.8.3-port"
-    },
-    {
-      "source_commit": "078680b785",
-      "patch_id": "163d453ec93f67fbee69104bb1a35344264e6c8d",
-      "feature": "v2026.8.3-port"
-    },
-    {
-      "source_commit": "953eeda844",
-      "patch_id": "b608f66156cc0ef70d112c6c70e993dcf28b6a3d",
-      "feature": "v2026.8.3-port"
-    },
-    {
-      "source_commit": "83f4da0907",
-      "patch_id": "c188a8bcd852caade514b42bc2ee146ebd68c5cd",
-      "feature": "v2026.8.3-port"
-    },
-    {
-      "source_commit": "01ba7361e4",
-      "patch_id": "2c646240efb4081375eaf4f7d58a6242d5abab9b",
-      "feature": "v2026.8.3-port"
-    },
-    {
-      "source_commit": "aaa9f8ff11",
-      "patch_id": "a045d4dc50fbcd3b19a9db94a9ece3a0530416b3",
-      "feature": "v2026.8.3-port"
-    },
-    {
-      "source_commit": "2528548da4",
-      "patch_id": "6600c000a5afc459bea10b54c00fa0589eac73c0",
-      "feature": "v2026.8.3-port"
-    },
-    {
-      "source_commit": "cef754cb36",
-      "patch_id": "a9b0b055577a08d4bb134243800f78eebcd403f0",
-      "feature": "v2026.8.3-port"
-    },
-    {
-      "source_commit": "63f98126a2",
-      "patch_id": "8c21645dba053ea683ed9b5ba7d80caf8a079324",
-      "feature": "v2026.8.3-port"
-    },
-    {
-      "source_commit": "6f41288a6d",
-      "patch_id": "79c29b588b8e230a9b9115e2d88332ecd32ed6ba",
-      "feature": "v2026.8.3-port"
-    },
-    {
-      "source_commit": "bd29af49ba",
-      "patch_id": "8234cee28a6cab9219e548e445d02361b9e1b93b",
-      "feature": "v2026.8.3-port"
-    },
-    {
-      "source_commit": "d7d8de4bae",
-      "patch_id": "74c521db458b79505603b0189b235661ef79701b",
-      "feature": "v2026.8.3-port"
-    },
-    {
-      "source_commit": "fc617c6540",
-      "patch_id": "03357ec189c3a73885131a024fa2c379a9cec96a",
-      "feature": "v2026.8.3-port"
-    },
-    {
-      "source_commit": "9cedbcf6d3",
-      "patch_id": "0fa1348d33a41f56106cf56a9f120db3d4f98896",
-      "feature": "v2026.8.3-port"
-    },
-    {
-      "source_commit": "d88e08df6d",
-      "patch_id": "bda579077e0a6364fd1ad0c068f4369db7004a80",
-      "feature": "v2026.8.3-port"
-    },
-    {
-      "source_commit": "9ed9093764",
+      "source_commit": "92bff48dbd",
       "patch_id": "bfe58fd90731092feb8063f04283557c16ff6ff7",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "971bd6268c",
+      "source_commit": "4b48804b2a",
+      "patch_id": "289e0c4cda3b5601aca9f70cb368b015c8352735",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "ea9999d622",
+      "patch_id": "3c4fbdfec6edc0d8693ac6d0b0b756ef6501d041",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "ada20542e7",
+      "patch_id": "d182d0008f3450a443491ab5c9c161fe85361090",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "9e1185dc28",
+      "patch_id": "3e97d6a336710cc9c06fe212bb3eee2a07ca3fdb",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "4b1a361ce4",
+      "patch_id": "74c84c7d37d4cb8e3ad6e87f0203301062ad3009",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "99e45bd53b",
+      "patch_id": "17f912760b37ee5666af8c23e2681871b2e59248",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "f25f107e1c",
+      "patch_id": "9109460ab3d52c4d8ab0fb4532345480d01b361b",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "3df7ead349",
+      "patch_id": "410d00ca310f19e873bf753c5a47661e7c19523f",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "b5c6d6f237",
+      "patch_id": "0f8f66e284025409d70255d36de5f1ea39a0237c",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "3b0c8d165d",
+      "patch_id": "a7488ad1eb2e08b9938903d083d18f8ecd33e3fe",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "3836c14af7",
+      "patch_id": "e4d16b3da62e46ea10257f13ef5989e1cffbeed0",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "8ab8d852a5",
+      "patch_id": "178993e8b7c335a9d0d0fa878e4ef22ada401148",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "b6dd1ea6ca",
+      "patch_id": "d831b73025e528b9f2e087c4076bf12a787fd7dd",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "db5f2646df",
+      "patch_id": "e59ad786087ecc5530385e0e96ab2881087f26a3",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "655bc2ba71",
+      "patch_id": "eaeab5950412dff967e722419974ec6a7a7b32e7",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "e7895bf52a",
+      "patch_id": "af989f521f5cf298ed7625e7a5d66b58e0f22011",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "2eec8c153e",
+      "patch_id": "2a645d57c9c287224e78fceda1c58a0175e1e38a",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "8cd41633bd",
+      "patch_id": "eab36925c09178de383d1f2ee2446f1bea259968",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "7a16c7b95e",
+      "patch_id": "871539bfe849a15f2df5e2df061a73e776eb6a42",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "4f62c2a90e",
+      "patch_id": "e0d2945d28fc5a509c5eb8402334bc086e6ab51a",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "ea0748f7b1",
+      "patch_id": "8772b63d702beff3fe1086608dfad2fdefe33f49",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "969da6acf3",
+      "patch_id": "d34d3dcd1685c6f754175150858a6381a13caa18",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "35ca7704bb",
+      "patch_id": "9cd3239f8ec554d10f5d66e82de3960145a26481",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "119900fe39",
+      "patch_id": "6c2229ef3923f466943ad091336846fd9c49c6d1",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "1638658771",
+      "patch_id": "872cadf58f5b86bd518cdc6dab35d0e144e276a0",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "f6275375c9",
+      "patch_id": "fc58aecc5686e392d36816a847138d0ece3fdcc3",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "e5a85edd82",
+      "patch_id": "17a5e1ededd2df97cb6f91f671e6743b2279ebfc",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "62de25508d",
+      "patch_id": "04defd4e9c9095c06e355666afc562608af84e7f",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "07cf1d8184",
+      "patch_id": "eb4702625d9b825857e1baf44add13eb495dfab3",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "bc0c6958ec",
+      "patch_id": "163d453ec93f67fbee69104bb1a35344264e6c8d",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "8c8e48128f",
+      "patch_id": "b608f66156cc0ef70d112c6c70e993dcf28b6a3d",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "63c7bbd8d8",
+      "patch_id": "4fa000cf4e5d1a28f0046c15c915aaed90a4eba5",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "45b190c7df",
+      "patch_id": "666bbd4538f95b26b644d9c763e215d6f0eadc93",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "2e0b30fdae",
+      "patch_id": "a045d4dc50fbcd3b19a9db94a9ece3a0530416b3",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "c7196bbf49",
+      "patch_id": "6600c000a5afc459bea10b54c00fa0589eac73c0",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "32a5c28776",
+      "patch_id": "476e34f71ae7de29c9e6b8fbeea1d849f595210c",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "39a5efd764",
+      "patch_id": "62f195220fdb338d53004960195bcf7fc986fa44",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "48b6cbcf3c",
+      "patch_id": "ee7cf4f14871f84870b2fc4a98cca47b2098011f",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "f89fae499d",
+      "patch_id": "f146f27cf452daa0556f62ce8a07e1aafd052351",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "d7158faf23",
+      "patch_id": "6b593ed0f61fc336a55c428d62d9808741db6ae3",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "7fad615156",
+      "patch_id": "4f496fc3cf96522990981e7a22f49485a59b3288",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "3e131a84b8",
+      "patch_id": "5ddbd24737b561e384a8bdb3cb882c264fcdc78b",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "b75f47f2cc",
+      "patch_id": "47a112c9d12a5ffd84f1f40b5ef0c35fbce2a2e3",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "19b9941598",
       "patch_id": "07ecceb2abda8f5d5e411986cb4080cd63e728bc",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "54f9207b82",
+      "source_commit": "1ce9f8e03c",
       "patch_id": "e46f4401eb112aaa8a0b18bd29016c9c77910c55",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "6fa4b6426c",
-      "patch_id": "b6aa774f4b382bfa2b39a855c1b207084f098ccf",
+      "source_commit": "b9411c53a9",
+      "patch_id": "fbbd7ffe6dc0fe4d89f1ff9cf1b33e4afeac0998",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "7e7d131715",
+      "source_commit": "a5a9c21fa5",
       "patch_id": "c28f9fb41f781e8b8a83c8a07e1e45179f95d37e",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "7d37dc181d",
-      "patch_id": "3eb4212e212479258eb1fd7bd133da93809bd2c9",
+      "source_commit": "d5cb64fad0",
+      "patch_id": "6985869cd8cd4ccb83d2abda660139c9cde9f14a",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "5dd10bbfcb",
-      "patch_id": "1c255c7436d0bd5c193c15436b05207952ff5f9b",
+      "source_commit": "d5e1b447df",
+      "patch_id": "ca8b6be40bb2948e44d764e5c1cd99093ca330b4",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "7a24b0f9be",
+      "source_commit": "cc1612a5f6",
       "patch_id": "0e44bb4685aa9dd75262b916f32f362dfca417c5",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "7be9d74d20",
-      "patch_id": "49b6737d90855c9b0c33ab46490766b89c4adbd9",
+      "source_commit": "fc968de512",
+      "patch_id": "4c8056ef9c5a24baf2d395d871b2578f19bf3769",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "16a4458abc",
-      "patch_id": "1cf2a667dd604021fd9733c81743f260bd73b7a5",
+      "source_commit": "837854249e",
+      "patch_id": "f206571d470d20dc97719b60efcbc9d02129129a",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "3bb70734cd",
-      "patch_id": "a4df4645f3b05f0bee1f1e0069be01613896448a",
+      "source_commit": "213cdd94cd",
+      "patch_id": "015d6824d2afab067f9a2603f77a264d0f8367df",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "bbb8aa509c",
-      "patch_id": "113118bf915287822fe7e4bdc0f60ec77762c524",
+      "source_commit": "797cbcb7bb",
+      "patch_id": "9b0bec58a6d9f3ad7a8e3be6f46ad58e1d0acae8",
       "feature": "v2026.8.3-port"
     },
     {
-      "source_commit": "cabb4b5929",
-      "patch_id": "4b79bf740fef3e68680e87720dec3ab6b7010103",
+      "source_commit": "674215221b",
+      "patch_id": "9ee50a0f25c2c5f5bda07a9f56eba42bac7bf008",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "fb074f0ed1",
+      "patch_id": "3e14a1dbe47fac5c3553936195c3f8d98bf6d2a5",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "d63d14cde3",
+      "patch_id": "ab350688fcaa50085ea538a3463cf6c28a430a1e",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "1acd7535c9",
+      "patch_id": "87251230396a5f78e86818639378f49b80ce3404",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "e4bc3ad697",
+      "patch_id": "c195f7e62f826b2728864697ac5b673aa0f530bf",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "009e1466df",
+      "patch_id": "e182c46a48b67781eb09b44cb63d7bc1c9387c50",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "8bd7c5725a",
+      "patch_id": "ec04c4dbc27a7dd4bd5802f526bc626270734abe",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "4f24dd72b7",
+      "patch_id": "dfb86302ec53860365700924001b3c36e5c437aa",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "feabc79d8e",
+      "patch_id": "f258cf4d3726e1c40479fbf842b73e1c1eb19b11",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "2bea57c7bc",
+      "patch_id": "888be829d0fb6f418555587b8aec430463915cc6",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "1e83c27517",
+      "patch_id": "27201180f38c63aefd24514e052e4966be745297",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "8eea02919e",
+      "patch_id": "9660c44f2398debd1497c585f84e51d1f0d5635c",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "ced9292950",
+      "patch_id": "f60dfb984a16af1ee6dc6e8205694a1b48c5256d",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "13ba8d2003",
+      "patch_id": "b38ed4f9d9779ce53cd441f08e75a73e47791867",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "d41c76f484",
+      "patch_id": "a9147fff2f502875a599c98b12cd5664f21b3aeb",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "869b401584",
+      "patch_id": "a5c17d5efc26fb08918ba07f80349c1a386d902c",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "7ee008e80f",
+      "patch_id": "4f9218dd980d9caf2be167d15d943094293f00d5",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "15e651bf7b",
+      "patch_id": "fb322ffb2ba9f2ffca103d5f0f83e51ff229006d",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "717117ce9a",
+      "patch_id": "79b570aa7010b3d76d54352fc35b6c42458c2a71",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "50d45c75dc",
+      "patch_id": "f350d26af4b8c2030da9e0f4b87d30900bfc4e00",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "2e48ab0d3b",
+      "patch_id": "e2e36da932f2449f8c5201911029e050c74e8969",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "e05ab91b22",
+      "patch_id": "c652edd950c93bdb2a44cc09b1407a430494996c",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "55af9806f0",
+      "patch_id": "a7773395bd9149e13314bced69a2390c31ecdb49",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "5207f4e061",
+      "patch_id": "335c9a7e318f5bdf579e36327f50cb12a7d7958a",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "73054363a2",
+      "patch_id": "7ea3912956ebc968a58ef73a9fc4bbd2d46b6d56",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "6803b00959",
+      "patch_id": "b7d1b51cd606b252ea39c16edcef56915db8793f",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "79e3370923",
+      "patch_id": "8fd3fb487a1ce4da615f9cbfd5d45bfb33678d98",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "f4ee3221ee",
+      "patch_id": "c056ed4ee71e7f278fe0e2ce61f0efb7f6795e13",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "cb65659792",
+      "patch_id": "dc7d298aed8ca08241230650d2ebbcb41717f4b6",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "d8b8b91147",
+      "patch_id": "0337505578bbeb45b6bedef0397d00d8d6aec606",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "c949239676",
+      "patch_id": "41245e5ede206a55da8051b6ec7da0391171f0fa",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "6de3b6a249",
+      "patch_id": "34970030147bd8f5cce64089e5fe1ebaa6a65d81",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "333e08e779",
+      "patch_id": "f9aaf413d46752cc41454b2132f2effc4f4a9120",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "b01873b5bd",
+      "patch_id": "c499c4001b24d1be3de5c67224e1c28afa8fd137",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "5b236283a9",
+      "patch_id": "ad323b6c993e0a304f62437a1aea3b06a6913edb",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "d0a6e9dc29",
+      "patch_id": "7afb33b85db1b6daeba7ec7ccbfc4646c8c5158f",
+      "feature": "v2026.8.3-port"
+    },
+    {
+      "source_commit": "755749cee7",
+      "patch_id": "7a2c72036bbf03bdac1c786b377594217dc34b59",
       "feature": "runtime-status-and-sidebar"
     },
     {
-      "source_commit": "6911929477",
+      "source_commit": "9ad613e9f3",
       "patch_id": "e6ea4fad9132e83a1549db55c0c6a388fd8634ed",
       "feature": "runtime-status"
     },
     {
-      "source_commit": "42ac6056fd",
-      "patch_id": "3ac858855911a114e3e9208e22c2aed0a1d95b36",
+      "source_commit": "edc2abcf81",
+      "patch_id": "142527cefc54b6e018f4f1fd6d71d7434847a533",
       "feature": "transient-retry"
     },
     {
-      "source_commit": "6a46de585a",
+      "source_commit": "94430b4ea4",
       "patch_id": "ab8898e089d57a1796b999e46cbe647be9c2e15c",
       "feature": "runtime-status"
     },
     {
-      "source_commit": "c589d827d0",
-      "patch_id": "910259c4c8a419e16f1e8bf50650bd12990e6d5a",
+      "source_commit": "7865929aab",
+      "patch_id": "fe53d0c0e3df7345f538058a6856ca02407072fc",
       "feature": "transient-retry"
     },
     {
-      "source_commit": "c6eb13088e",
-      "patch_id": "85b2344b539f4ba4856626fd8d3f8dc4f9495ada",
+      "source_commit": "e161f5e82e",
+      "patch_id": "5741c20e908048a401cdd664d76ce075a06b2f31",
       "feature": "runtime-status"
     },
     {
-      "source_commit": "d29cca702e",
-      "patch_id": "d4216b86db4d329cacd578ef4f689b5975d6e1f5",
+      "source_commit": "dd83db1db9",
+      "patch_id": "3a8c6fc66f048541e18fc28935151fa5cd6f9658",
       "feature": "branch-merge"
     },
     {
-      "source_commit": "3f2042cf9e",
-      "patch_id": "3e24caafc4b2b7a97d8ce5114ac16f07dba99a85",
+      "source_commit": "34c9f139cd",
+      "patch_id": "a48fc0cc91b0c2d04d32ee66ce6554f6ada5c882",
       "feature": "branch-merge"
     },
     {
-      "source_commit": "3d5d9a6fa5",
-      "patch_id": "b457a5b3967e14aa6e711d84418690accc4305a8",
+      "source_commit": "a3f6ee9880",
+      "patch_id": "782f48cc74a7240566836a7f6812b81fa3053c89",
       "feature": "transient-retry"
     },
     {
-      "source_commit": "457c32d69b",
-      "patch_id": "2d92f303c0c07e9cb15325e4b942cae3c902b551",
+      "source_commit": "1eb78b2505",
+      "patch_id": "414ed8bdf23b5a831e82075ef2df60b322f47e4d",
       "feature": "transient-retry"
     },
     {
-      "source_commit": "0436d1fac5",
-      "patch_id": "77a779587c0517d8a3066029d46cac641933423a",
+      "source_commit": "fed301a8d1",
+      "patch_id": "d87555d6ac8163cc3f030fe2d45065884f6033e0",
       "feature": "transient-retry"
     },
     {
-      "source_commit": "e570751e4d",
-      "patch_id": "559b92683f8a7f0be86c431eda885f2eae40efff",
+      "source_commit": "f531013d91",
+      "patch_id": "477feecd35493f424b074baf68a24948869d6f5e",
       "feature": "transient-retry"
     },
     {
-      "source_commit": "dd0841e85f",
-      "patch_id": "4c1c77bee9b042b1d700c75ccbd4513fee8c0f0a",
+      "source_commit": "411c43054b",
+      "patch_id": "7c6f434e1cefd0853288be00e37b0734f3323fee",
       "feature": "transient-retry"
     },
     {
-      "source_commit": "65d658edf2",
-      "patch_id": "53ec0ac377e52d6fcb4ba1646803b2d4cd758838",
-      "feature": "desktop-ui"
-    },
-    {
-      "source_commit": "f4268252f3",
+      "source_commit": "a032448b11",
       "patch_id": "2f231cada8f2405be6194bbedfdbf8561f141cd9",
       "feature": "desktop-ui"
     },
     {
-      "source_commit": "d0d7fdabf9",
-      "patch_id": "c6335fc035beef158fb60de143159b8961ef7c5c",
+      "source_commit": "fda82810c7",
+      "patch_id": "2b5f6287d8a09c5a9472d52ef5c1423328bfa410",
+      "feature": "cross-device-session"
+    },
+    {
+      "source_commit": "b7f1411d2e",
+      "patch_id": "fa15dc08245e90ef947b54a8e79b5af5bd0c52f0",
       "feature": "desktop-ui"
     },
     {
-      "source_commit": "c33be1a696",
+      "source_commit": "800e32b873",
+      "patch_id": "a95f98dc89b96c38790ed8e7ad03194ff52dc1b0",
+      "feature": "title-preview"
+    },
+    {
+      "source_commit": "9357924d57",
       "patch_id": "bbe8cbea86dec13ed9dfc6ed3baf757348621c70",
       "feature": "desktop-ui"
     },
     {
-      "source_commit": "281c7ebb2b",
+      "source_commit": "7f31fe61ba",
       "patch_id": "935bc8159be5167762ec050484be720e1642b15e",
       "feature": "desktop-ui"
     },
     {
-      "source_commit": "0863f2c756",
-      "patch_id": "4e06a24aeebef72bd042a2bfef47590688cc8afd",
+      "source_commit": "71b6506a68",
+      "patch_id": "3dd724db0bf0134919070ae2e1926353d55837a3",
       "feature": "desktop-ui"
     },
     {
-      "source_commit": "c6a8c670b1",
+      "source_commit": "b7ad2c5329",
       "patch_id": "55789ffb894b36c48b731b3f778efddf9c95b342",
       "feature": "desktop-ui"
     },
     {
-      "source_commit": "8b481318a9",
+      "source_commit": "730b6a7507",
       "patch_id": "c378eb30d2206319612e325a5d407ee2d9fe60f2",
       "feature": "desktop-ui"
     },
     {
-      "source_commit": "13167531d4",
-      "patch_id": "bb11a6f6180afb165d20b4f7227f1433bc23e2f0",
+      "source_commit": "50c192347d",
+      "patch_id": "41bdf955fcfdac046973aff5a9674c4a4db7d277",
       "feature": "desktop-ui"
     },
     {
-      "source_commit": "edd7d12d0d",
-      "patch_id": "40ac11cca111acd05f2dfbd94d37336d775ae8f3",
-      "feature": "cross-device-session"
-    },
-    {
-      "source_commit": "49c6927dc3",
-      "patch_id": "ee3f96e2776fd0db05c9206ab0a57c85d0913978",
-      "feature": "title-preview"
-    },
-    {
-      "source_commit": "b8e5dce7f1e5",
-      "patch_id": "3fea961e79af500566b1196da27ea7e5f868d332",
+      "source_commit": "4fb0279f56",
+      "patch_id": "11299e3c59c2133c79f804647cd5330168903413",
       "feature": "conversation-branches"
     },
     {
-      "source_commit": "a9337601ec6f",
-      "patch_id": "b216ad1a640b68b5f0de90152e0f1047f50cd9cd",
+      "source_commit": "dfc4f9264e",
+      "patch_id": "afdda9f954d527861cfe6e383a0b8d0664f51ec5",
       "feature": "desktop-ui"
     },
     {
-      "source_commit": "d3e5f1727a2b",
+      "source_commit": "b79dfb8271",
       "patch_id": "937b568409c25cb3b623f71c099ed484f2aca42b",
       "feature": "desktop-ui"
     },
     {
-      "source_commit": "09301b3df2de",
-      "patch_id": "20a7a94c44f445fec4790d254e00352b33d21f06",
+      "source_commit": "70c5157f17",
+      "patch_id": "e6f0646e166f3182dc914c349e163cf3641197bc",
       "feature": "desktop-ui"
     },
     {
-      "source_commit": "7db44f985306",
+      "source_commit": "7f727bd666",
       "patch_id": "a96ae4e1aeb0ad0ec506cecf8543359a75926413",
       "feature": "desktop-ui"
     },
     {
-      "source_commit": "416535093a90",
+      "source_commit": "458f8c44cb",
       "patch_id": "6710d1743a78269dd4659b675b3002a117be286c",
       "feature": "desktop-ui"
     },
     {
-      "source_commit": "52f8babccae7",
+      "source_commit": "fe2b45503b",
       "patch_id": "c03f110bb9d6edadf674b3b6bf5fd5e2812f75db",
       "feature": "desktop-ui"
     },
     {
-      "source_commit": "e89f0022c887",
+      "source_commit": "c08ea658cf",
       "patch_id": "19da0c2dcb72f2c3bb88eb34824118f80891281f",
       "feature": "desktop-ui"
     },
     {
-      "source_commit": "00251804bd7a",
+      "source_commit": "eaf969b40b",
       "patch_id": "17f707f5dbb0698e158ff2d8b3f100420e89c987",
       "feature": "desktop-ui"
     },
     {
-      "source_commit": "cbacd67fb543",
+      "source_commit": "592a3379e8",
       "patch_id": "a84999908e46c48ef03728b1a981c48d81810fae",
       "feature": "transient-retry"
     },
     {
-      "source_commit": "2706a11970cb",
+      "source_commit": "2c0aa97dd3",
       "patch_id": "31e51b34e3d90ee7ce831de7092d8f3b7094449f",
       "feature": "desktop-ui"
     },
     {
-      "source_commit": "f94f7d17c00c",
+      "source_commit": "61a981f832",
       "patch_id": "cc9392c27d4ece3a867a6fd73639b52b57a63651",
       "feature": "desktop-ui"
     },
     {
-      "source_commit": "b3a9e25e3b69",
+      "source_commit": "47922e4811",
       "patch_id": "022b1ed6d2f4a6295d1cb34a5de695a649b0256c",
       "feature": "desktop-ui"
     },
     {
-      "source_commit": "636635d84dfe",
+      "source_commit": "335ce44079",
       "patch_id": "e46e35fb11e58ae5f0f76d06bf18f7c5063c4ce0",
       "feature": "desktop-ui"
     },
     {
-      "source_commit": "afcb7df9c7e8",
+      "source_commit": "c890f6ae16",
       "patch_id": "6916b252abdfa6f21fba9efd49968d2f242e0e1d",
       "feature": "transient-retry"
     },
     {
-      "source_commit": "4aa0a8e77b71",
-      "patch_id": "739b82225e4f8c4619d3cba17460bbe483df35c9",
+      "source_commit": "07c5bc015f",
+      "patch_id": "2081710ee79e6eb60fd7754c63a0827905d21db2",
       "feature": "runtime-status-and-sidebar"
     },
     {
-      "source_commit": "591d13373435",
-      "patch_id": "250cf681c13dd51089bd7db98dab4b2eda511993",
+      "source_commit": "1826b0d598",
+      "patch_id": "1251889ff2a3fda4b2eef7aca6683c798c08d21a",
       "feature": "runtime-status-and-sidebar"
     },
     {
-      "source_commit": "b943149d7425",
+      "source_commit": "85d372c59f",
       "patch_id": "fbd913f1c755a0dbd7b7376e2cbdc68f02a0cd90",
       "feature": "runtime-status-and-sidebar"
     },
     {
-      "source_commit": "f1d56a65bd9b",
-      "patch_id": "baa425cfaedf334667e36d0a46c77929f8c695bc",
+      "source_commit": "7dab4a484d",
+      "patch_id": "58494f50d0473cab6cd3104b5c41ab9d07ffa4e7",
       "feature": "runtime-status-and-sidebar"
     },
     {
-      "source_commit": "0b357686b9d8",
+      "source_commit": "b711654015",
       "patch_id": "bc9d3f4b418139bc9e9bdb88718912402b38c264",
       "feature": "runtime-status-and-sidebar"
+    },
+    {
+      "source_commit": "54ceac22d2",
+      "patch_id": "aaea43df518ca0f775e97d2e8f46f61a3e79378b",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "274128d15f",
+      "patch_id": "9f2a3112f5c9a484a1c8477566831ca568527803",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "4f55163756",
+      "patch_id": "928d029b819cc9ea556deefcb89626db43affee1",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "ab35bf0ded",
+      "patch_id": "a2766e9859943048a46b037437faba838ff37344",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "ed2bdc7084",
+      "patch_id": "23052f4db18f45219af109ef0e59c14b779ac4bd",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "5f8206ed7e",
+      "patch_id": "84eb9448b67fb2037cdaa7074975364268b4eff3",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "b4996ec840",
+      "patch_id": "04b29681be00a2531f1fa74b4d3b7216e873489a",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "e705180cda",
+      "patch_id": "7faeb179d2659c131adccd56b4aed078a5fc4ddc",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "9aaf2493ee",
+      "patch_id": "0d44f8c702a144e24d39a109e6db808be07f3dfd",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "8013284391",
+      "patch_id": "1b09d064b612b81762cb5dfb83c55b0639e90fe1",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "557270b76b",
+      "patch_id": "7b34219562aea9278ba9458d9240093288424482",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "191aad30dd",
+      "patch_id": "c147e63b06a5f1ae5740d27f9393ffe1a7318d7f",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "aab59643f6",
+      "patch_id": "7e7107eeea5379c317dad96b2f6b68982f971eb8",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "66907c67ba",
+      "patch_id": "5327a5981a591ddfe2ea29759eff55323d87298f",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "7e98c8b18d",
+      "patch_id": "699854ff6c0544cf1a2ba048c71d43888ac51a18",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "85e2f6db75",
+      "patch_id": "cfc2eb1dd4b4f3de0076cfb940bd24bff8ac6be3",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "7289183fa3",
+      "patch_id": "0b30fd27b56f84cd958f822f565e14ad34bcfed0",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "4e3b9ef972",
+      "patch_id": "34c09d1b9e593c46afde9f6693b7d66ff6e9026e",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "fa95a2a924",
+      "patch_id": "53ecf5a82a6a65266e9e5f5403e10ad0703bd561",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "9c3cf5c946",
+      "patch_id": "0d23dca1f52e13581aae742731ff082a6cb99c18",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "bf80516270",
+      "patch_id": "017df6b4e9293abd49f988c637aebe2e9b247d45",
+      "feature": "post-rebase-20260812"
     },
     {
       "source_commit": "d490a5f49a",
       "patch_id": "d0839607be1fb370f1cf080a91fc2c19df411a7f",
       "feature": "runtime-status"
+    },
+    {
+      "source_commit": "29a894dbfd",
+      "patch_id": "7cd04381a3d69bcb8c88de9442904d1032c3a18c",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "02b45ee1d6",
+      "patch_id": "6a1450e5303ed19fea36f5d111b22a689a9354fa",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "ff11006db1",
+      "patch_id": "a1a05a5b41f14158dde503eea23a7f2490026914",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "b97c1b2de4",
+      "patch_id": "b3972608dddef848257b0c61b9710a0de843884f",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "924aa5c014",
+      "patch_id": "6d99853be320fcd4cc01e1fd64b628b4dbf4afec",
+      "feature": "post-rebase-20260812"
+    },
+    {
+      "source_commit": "782ac99aba",
+      "patch_id": "987a44cded22dbee21ffb05d69f40911dba2eb1d",
+      "feature": "post-rebase-20260812"
     }
   ],
   "features": [
