@@ -270,6 +270,34 @@ def _supports_vision_override(
                 if coerced is not None:
                     return coerced
 
+    # 2c. Base-URL reverse lookup (last resort). Runtime canonicalizes named
+    # custom providers to provider="custom", and the top-level ``model.provider``
+    # shortcut can point at an unrelated default (e.g. "glm-coding" while the
+    # session runs "deepseek_api"), so a session-scoped model override may end
+    # up with none of its declared provider names among the candidates above.
+    # Match the active inference base URL against ``providers.*.base_url`` to
+    # recover the entry and read its per-model ``supports_vision``. Entries
+    # already tried by name are skipped so this stays a pure fallback.
+    active_base_url = _resolve_inference_base_url(cfg, provider)
+    if active_base_url:
+        normalized_base = active_base_url.strip().rstrip("/").lower()
+        tried_names = set(dict.fromkeys(provider_candidates))
+        for name, entry_raw in providers_cfg.items():
+            if name in tried_names or not isinstance(entry_raw, dict):
+                continue
+            entry_base = str(entry_raw.get("base_url") or "").strip().rstrip("/").lower()
+            if not entry_base or entry_base != normalized_base:
+                continue
+            models_raw = entry_raw.get("models")
+            models_cfg = models_raw if isinstance(models_raw, dict) else {}
+            per_model_raw = models_cfg.get(model)
+            per_model = per_model_raw if isinstance(per_model_raw, dict) else {}
+            coerced = _coerce_capability_bool(
+                per_model.get("supports_vision", per_model.get("vision"))
+            )
+            if coerced is not None:
+                return coerced
+
     return None
 
 

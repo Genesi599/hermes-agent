@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 
+from agent.auxiliary_client import scoped_runtime_main
 from agent.image_routing import (
     _coerce_capability_bool,
     _coerce_mode,
@@ -506,3 +507,92 @@ class TestCustomProviderVisionAlias:
             ]
         }
         assert _supports_vision_override(cfg, "custom:my-vllm", "other") is None
+
+
+# ─── base-URL reverse lookup for session-scoped provider overrides ───────────
+
+
+class TestSupportsVisionBaseUrlFallback:
+    """Session-scoped model overrides run under runtime ``provider="custom"``.
+
+    When the top-level ``model.provider`` shortcut points at an unrelated
+    default (e.g. ``glm-coding`` while the session runs ``deepseek_api``),
+    none of the name candidates match the entry that declares
+    ``supports_vision``. The resolver must then fall back to matching the
+    active inference base URL against ``providers.*.base_url``.
+    """
+
+    CFG = {
+        "model": {
+            "provider": "glm-coding",
+            "base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
+        },
+        "providers": {
+            "glm-coding": {
+                "base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
+                "models": {"glm-5.3": {}},
+            },
+            "deepseek_api": {
+                "base_url": "https://api.deepseek.com/v1",
+                "models": {
+                    "deepseek-v4.1-flash-expires-on-0910": {"supports_vision": True}
+                },
+            },
+        },
+    }
+    MODEL = "deepseek-v4.1-flash-expires-on-0910"
+
+    def _runtime(self, base_url):
+        return {
+            "provider": "custom",
+            "requested_provider": "custom",
+            "model": self.MODEL,
+            "base_url": base_url,
+        }
+
+    def test_native_when_runtime_base_url_matches_declared_provider(self):
+        with scoped_runtime_main(self._runtime("https://api.deepseek.com/v1")):
+            assert _supports_vision_override(
+                self.CFG, "custom", self.MODEL, requested_provider="custom"
+            ) is True
+            assert decide_image_input_mode(
+                "custom", self.MODEL, self.CFG, requested_provider="custom"
+            ) == "native"
+
+    def test_text_when_base_url_unknown(self):
+        with scoped_runtime_main(self._runtime("https://api.example.invalid/v1")):
+            assert _supports_vision_override(
+                self.CFG, "custom", self.MODEL, requested_provider="custom"
+            ) is None
+            assert decide_image_input_mode(
+                "custom", self.MODEL, self.CFG, requested_provider="custom"
+            ) == "text"
+
+    def test_trailing_slash_and_case_insensitive(self):
+        with scoped_runtime_main(self._runtime("HTTPS://API.DeepSeek.com/v1/")):
+            assert _supports_vision_override(
+                self.CFG, "custom", self.MODEL, requested_provider="custom"
+            ) is True
+
+    def test_name_candidates_win_over_base_url_scan(self):
+        """An entry already tried by name must not be re-read via base URL."""
+        cfg = {
+            "model": {"provider": "my-vllm"},
+            "providers": {
+                "my-vllm": {
+                    "base_url": "https://vllm.internal/v1",
+                    "models": {"llava": {"vision": True}},
+                }
+            },
+        }
+        with scoped_runtime_main(self._runtime("https://vllm.internal/v1")):
+            assert _supports_vision_override(cfg, "custom", "llava") is True
+
+    def test_text_only_model_stays_text(self):
+        """A model with no declared capability must not become native."""
+        with scoped_runtime_main(
+            self._runtime("https://open.bigmodel.cn/api/coding/paas/v4")
+        ):
+            assert _supports_vision_override(
+                self.CFG, "custom", "glm-5.3", requested_provider="custom"
+            ) is None
