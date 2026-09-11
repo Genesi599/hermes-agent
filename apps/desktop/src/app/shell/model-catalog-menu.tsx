@@ -104,13 +104,13 @@ interface ProviderGroup {
 /**
  * custom/hermes-yh: is this family row the CURRENT model?
  *
- * A live session on a CUSTOM provider reports `provider: 'custom'` from
- * session.info — never the catalog's named slug ('glm-coding', 'deepseek_api',
- * …) — so the old slug-only match marked nothing for those sessions, and the
- * profile-default model (custom providers here) showed NO highlight in the
- * list at all. When the current provider is not a catalog slug, fall back to
- * matching by model id alone; model ids are unique across the curated
- * catalog, so at most one row checks.
+ * The backend reports a named custom provider session as the durable
+ * `custom:<name>` menu key (bare `custom` only on older builds) — strip the
+ * prefix so the provider-group slug matches EXACTLY. That matters when the
+ * same model id lives in two provider groups: only the row of the provider
+ * actually serving the session may light up. Bare `custom` (legacy) falls
+ * back to matching by model id alone — ambiguous in the duplicate-name case,
+ * but it is the best an old backend offers.
  */
 export function modelFamilyIsCurrent(
   current: Pick<ModelChoice, 'model' | 'provider'>,
@@ -118,7 +118,11 @@ export function modelFamilyIsCurrent(
   slug: string,
   family: Pick<ModelFamily, 'fastId' | 'id'>
 ): boolean {
-  if (!current.provider || current.provider === 'moa') {
+  const providerSlug = current.provider.startsWith('custom:')
+    ? current.provider.slice('custom:'.length)
+    : current.provider
+
+  if (!providerSlug || providerSlug === 'moa') {
     return false
   }
 
@@ -129,7 +133,7 @@ export function modelFamilyIsCurrent(
     return false
   }
 
-  return current.provider === slug || !catalogProviderSlugs.includes(current.provider)
+  return providerSlug === slug || !catalogProviderSlugs.includes(providerSlug)
 }
 
 /**

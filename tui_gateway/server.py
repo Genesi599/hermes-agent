@@ -5468,10 +5468,35 @@ def _session_info(agent, session: dict | None = None) -> dict:
     pending_switch = (session or {}).get("pending_model_switch") or {}
     pending_model = str(pending_switch.get("display_model") or "").strip()
     pending_provider = str(pending_switch.get("display_provider") or "").strip()
+    info_model = pending_model or mirror.get("model", getattr(agent, "model", ""))
+    info_provider = pending_provider or mirror.get(
+        "provider", getattr(agent, "provider", "")
+    )
+    # custom/hermes-yh: a named custom provider resolves to the bare billing
+    # class "custom" at runtime, which tells the Desktop nothing about WHICH
+    # providers: entry serves the session — its model menu then cannot mark
+    # the current model exactly when the same model id lives in two provider
+    # groups. Upgrade to the durable custom:<name> menu key with the same
+    # identity recovery the DB-restore path uses (base_url first, model
+    # second; see canonical_custom_identity).
+    if str(info_provider).strip().lower() == "custom" and agent is not None:
+        try:
+            from hermes_cli.runtime_provider import canonical_custom_identity
+
+            healed = canonical_custom_identity(
+                base_url=str(getattr(agent, "base_url", "") or "").strip() or None,
+                model=str(info_model or getattr(agent, "model", "")).strip() or None,
+            )
+            if healed:
+                info_provider = healed
+        except Exception:
+            logger.debug(
+                "session.info custom provider identity recovery failed",
+                exc_info=True,
+            )
     info: dict = {
-        "model": pending_model or mirror.get("model", getattr(agent, "model", "")),
-        "provider": pending_provider
-        or mirror.get("provider", getattr(agent, "provider", "")),
+        "model": info_model,
+        "provider": info_provider,
         "reasoning_effort": reasoning_effort,
         "service_tier": service_tier,
         "fast": service_tier == "priority",

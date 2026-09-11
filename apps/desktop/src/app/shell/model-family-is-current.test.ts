@@ -52,4 +52,16 @@ describe('modelFamilyIsCurrent (custom-provider highlight fallback)', () => {
     expect(modelFamilyIsCurrent({ model: 'glm-5.3', provider: '' }, SLUGS, 'glm-coding', family)).toBe(false)
     expect(modelFamilyIsCurrent({ model: 'glm-5.3', provider: 'moa' }, SLUGS, 'glm-coding', family)).toBe(false)
   })
+
+  it('custom:<name> matches ONLY the owning group when the same model id lives in two groups', () => {
+    // The backend's durable menu key (custom:glm-coding) — the identity the
+    // session actually runs on. Both groups serve glm-5.3; only glm-coding's
+    // row may light up.
+    const slugs = ['glm-coding', 'zai-payg']
+    const family = { id: 'glm-5.3', fastId: null }
+
+    expect(modelFamilyIsCurrent({ model: 'glm-5.3', provider: 'custom:glm-coding' }, slugs, 'glm-coding', family)).toBe(true)
+    expect(modelFamilyIsCurrent({ model: 'glm-5.3', provider: 'custom:glm-coding' }, slugs, 'zai-payg', family)).toBe(false)
+    expect(modelFamilyIsCurrent({ model: 'glm-5.3', provider: 'custom:zai-payg' }, slugs, 'zai-payg', family)).toBe(true)
+  })
 })
