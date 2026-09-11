@@ -10,7 +10,7 @@ import {
   clearUnreadSessionIds,
   markSessionUnread
 } from '@/store/session'
-import { $focusedStoredSessionId } from '@/store/session-states'
+import { $focusedStoredSessionId, $workingSessionIds } from '@/store/session-states'
 import type { SessionInfo } from '@/types/hermes'
 
 type SetTaskbarBadgeCount = (count: number) => void
@@ -55,7 +55,8 @@ function isNewerSession(candidate: UnreadSessionRow, current: UnreadSessionRow):
  */
 export function canonicalUnreadSessionIds(
   unreadIds: readonly string[],
-  sessions: readonly UnreadSessionRow[]
+  sessions: readonly UnreadSessionRow[],
+  liveWorkingIds: ReadonlySet<string> = new Set($workingSessionIds.get())
 ): string[] {
   const currentByLineage = new Map<string, UnreadSessionRow>()
   const byId = new Map<string, UnreadSessionRow>()
@@ -63,7 +64,12 @@ export function canonicalUnreadSessionIds(
   for (const session of sessions) {
     const id = session.id.trim()
 
-    if (!id || session.archived || session.status === 'working') {
+    // A row counts as "working" only when the LIVE event-driven set says so.
+    // The list's `status` is a backend snapshot that lags a just-finished
+    // turn by a refresh cycle — trusting it here demoted the session out of
+    // the canonical map, which the reconcile then treated as STALE and
+    // wiped, erasing the green dot moments after it lit.
+    if (!id || session.archived || (liveWorkingIds.has(id) && session.status === 'working')) {
       continue
     }
 
@@ -151,8 +157,19 @@ export function subscribeFocusedSessionRead(): () => void {
 
 export function subscribeWorkingSessionsRead(): () => void {
   return $sessions.subscribe(sessions => {
+    // Gate on the LIVE working set (event-driven, keyed by stored id): the
+    // list's `status` snapshot lags a turn that just finished, and $sessions
+    // refreshes constantly in multi-agent setups — clearing unread off the
+    // lag wiped the green dot within one refresh of it lighting. The
+    // busy→true transition in session-states already clears unread when a
+    // new turn genuinely starts, so this stays a boot-time hygiene pass for
+    // sessions the live set confirms are running.
+    const liveWorking = new Set($workingSessionIds.get())
+
     const workingAliases = sessions.flatMap(session =>
-      session.status === 'working' ? [session.id, session._lineage_root_id] : []
+      session.status === 'working' && liveWorking.has(session.id)
+        ? [session.id, session._lineage_root_id]
+        : []
     )
 
     if (workingAliases.length) {

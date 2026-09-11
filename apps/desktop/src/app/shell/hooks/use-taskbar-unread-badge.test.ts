@@ -4,7 +4,9 @@ import { group } from '@/components/pane-shell/tree/model'
 import { $activeTreeGroup, $layoutTree } from '@/components/pane-shell/tree/store'
 import type * as HermesApi from '@/hermes'
 import { listAllProfileSessions } from '@/hermes'
+import { createClientSessionState } from '@/lib/chat-runtime'
 import { $selectedStoredSessionId, $unreadFinishedSessionIds, setSessions } from '@/store/session'
+import { $sessionStates, publishSessionState } from '@/store/session-states'
 
 import {
   canonicalUnreadSessionIds,
@@ -29,6 +31,7 @@ describe('subscribeTaskbarUnreadBadge', () => {
     $activeTreeGroup.set(null)
     $layoutTree.set(null)
     setSessions([])
+    $sessionStates.set({})
     vi.clearAllMocks()
   })
 
@@ -76,11 +79,28 @@ describe('subscribeTaskbarUnreadBadge', () => {
 
   it('does not count a previous completion while the session is working again', () => {
     expect(
-      canonicalUnreadSessionIds(['working', 'idle'], [
-        { id: 'working', last_active: 20, started_at: 10, status: 'working' },
-        { id: 'idle', last_active: 10, started_at: 10, status: 'idle' }
-      ])
+      canonicalUnreadSessionIds(
+        ['working', 'idle'],
+        [
+          { id: 'working', last_active: 20, started_at: 10, status: 'working' },
+          { id: 'idle', last_active: 10, started_at: 10, status: 'idle' }
+        ],
+        new Set(['working'])
+      )
     ).toEqual(['idle'])
+  })
+
+  it('keeps a just-finished session unread when only the STALE snapshot says working', () => {
+    // Green-dot regression: the list's status lags the turn end by a refresh
+    // cycle while the live set already knows it finished — the unread (and
+    // its dot) must survive that lag instead of being demoted to stale.
+    expect(
+      canonicalUnreadSessionIds(
+        ['just-finished'],
+        [{ id: 'just-finished', last_active: 20, started_at: 10, status: 'working' }],
+        new Set()
+      )
+    ).toEqual(['just-finished'])
   })
 
   it('migrates a lineage-root unread alias to the current tip', () => {
@@ -163,12 +183,26 @@ describe('subscribeTaskbarUnreadBadge', () => {
     ])
     const unsubscribe = subscribeWorkingSessionsRead()
 
+    // The live event flips busy first; the list row then catches up.
+    publishSessionState('rt-working', { ...createClientSessionState('tip'), busy: true })
     setSessions([
       { id: 'tip', _lineage_root_id: 'root', status: 'working' } as never,
       { id: 'idle', status: 'idle' } as never
     ])
 
     expect($unreadFinishedSessionIds.get()).toEqual(['idle'])
+    unsubscribe()
+  })
+
+  it('does NOT wipe unread when only the stale snapshot says working (green-dot regression)', () => {
+    $unreadFinishedSessionIds.set(['tip'])
+    const unsubscribe = subscribeWorkingSessionsRead()
+
+    // Snapshot lag: the list still says working, but the live set knows the
+    // turn ended (empty). The just-finished unread must survive the refresh.
+    setSessions([{ id: 'tip', status: 'working' } as never])
+
+    expect($unreadFinishedSessionIds.get()).toEqual(['tip'])
     unsubscribe()
   })
 
