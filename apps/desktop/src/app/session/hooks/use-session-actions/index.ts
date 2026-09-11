@@ -1898,18 +1898,24 @@ export function useSessionActions({
 
         let runtimeSessionId = currentRuntimeForDelete()
 
-        if (!runtimeSessionId) {
-          navigate(sessionRoute(storedSessionId))
-          await resumeSession(storedSessionId, true)
-          runtimeSessionId = currentRuntimeForDelete()
-        } else {
-          await ensureGatewayProfile(removed?.profile)
-        }
+        // Cold (or cross-wired) target: DELETE straight from the stored id.
+        // The old navigate+resume detour here was the pre-review-flow
+        // leftover — worse than useless: the resume's resolveStoredSession
+        // cache-misses (we just optimistically removed the row), refetches it
+        // and upserts it back at the TOP of $sessions, which ignores the
+        // tombstone — the single-click 消失→闪回→再消失 flicker (the row
+        // only drops again on the next tombstone-honoring refresh). REST
+        // delete is a pure stored-id DB op and needs no live runtime, and it
+        // could also time out on big transcripts (15s/30s defaults) and roll
+        // the whole delete back.
+        await ensureGatewayProfile(removed?.profile)
 
         await deleteSession(storedSessionId, removed?.profile)
         clearUnreadSessionIds(removedIds)
         clearQueuedPrompts(storedSessionId)
-        clearQueuedPrompts(runtimeSessionId)
+        if (runtimeSessionId) {
+          clearQueuedPrompts(runtimeSessionId)
+        }
 
         // A tiled copy of this session must not outlive it.
         const tiledRuntimeId = runtimeIdByStoredSessionIdRef.current.get(storedSessionId)
