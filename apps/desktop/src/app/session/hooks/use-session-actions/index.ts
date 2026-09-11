@@ -1474,6 +1474,10 @@ export function useSessionActions({
           cols: 96,
           source: 'desktop',
           title,
+          // Standalone copy, but the model identity comes from the SOURCE —
+          // the backend reads its durable model_config so a manual model
+          // switch carries into the copy (same inheritance as a branch).
+          inherit_model_from: storedSessionId,
           ...(cwd && { cwd }),
           ...(profile ? { profile } : {}),
           messages: dupMessages.map(({ content, role }) => ({ content, role }))

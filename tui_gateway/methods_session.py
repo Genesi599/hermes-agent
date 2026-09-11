@@ -11,6 +11,47 @@ method = _registry.method
 _profile_scoped = _registry.profile_scoped
 
 
+def _inherited_model_overrides(db, source_key: str) -> dict:
+    """custom/hermes-yh: model identity a branch/duplicate inherits from its source.
+
+    Upstream fell back to the CONFIG DEFAULT model on every branch, silently
+    dropping the parent's manual model switch. The source's durable row
+    carries everything worth inheriting: the ``model`` column plus the
+    model_config JSON's provider/base_url/api_mode/reasoning_config/
+    service_tier. Branch lineage bookkeeping keys are stripped so a
+    grandchild never inherits stale markers. Returns {} when the row is
+    unreadable (callers keep the configured-default behavior).
+    """
+    import json as _json
+
+    try:
+        row = db.get_session(source_key) if db is not None else None
+    except Exception:
+        return {}
+    if not row:
+        return {}
+    raw_cfg = row.get("model_config")
+    cfg = {}
+    if isinstance(raw_cfg, str) and raw_cfg.strip():
+        try:
+            parsed = _json.loads(raw_cfg)
+            if isinstance(parsed, dict):
+                cfg = parsed
+        except Exception:
+            cfg = {}
+    elif isinstance(raw_cfg, dict):
+        cfg = dict(raw_cfg)
+    cfg = {
+        k: v
+        for k, v in cfg.items()
+        if k not in ("_branched_from", "_branch_seed_message_count")
+    }
+    model = str(row.get("model") or cfg.get("model") or "").strip()
+    if not model:
+        return {}
+    return {"model": model, "model_config": cfg}
+
+
 @method("session.create")
 def _(rid, params: dict) -> dict:
     sid = uuid.uuid4().hex[:8]
@@ -69,6 +110,52 @@ def _(rid, params: dict) -> dict:
         create_service_tier_override = (
             "priority" if is_truthy_value(params.get("fast")) else ""
         )
+
+    # custom/hermes-yh: seeded branches (parent_session_id) and duplicates
+    # (inherit_model_from) inherit the SOURCE session's model identity when the
+    # caller didn't pin one explicitly — upstream silently fell back to the
+    # config default here, so a parent's manual model switch never carried
+    # into its child conversation.
+    inherit_model_from = str(params.get("inherit_model_from") or "").strip() or None
+    if not create_model and (parent_session_id or inherit_model_from):
+        try:
+            from hermes_state import SessionDB
+
+            _src_key = parent_session_id or inherit_model_from
+            _own_db = None
+            if profile_home is not None:
+                _own_db = SessionDB(db_path=Path(profile_home) / "state.db")
+            _inh_db = _own_db if _own_db is not None else _get_db()
+            try:
+                inherited = _inherited_model_overrides(_inh_db, _src_key)
+            finally:
+                if _own_db is not None:
+                    _own_db.close()
+        except Exception:
+            inherited = {}
+            logger.debug("session.create model inheritance failed", exc_info=True)
+        if inherited:
+            _inh_cfg = inherited.get("model_config", {})
+            create_model = inherited["model"]
+            session_model_override = {
+                "model": create_model,
+                "provider": str(_inh_cfg.get("provider") or "").strip() or None,
+            }
+            if create_reasoning_override is None and isinstance(_inh_cfg.get("reasoning_config"), dict):
+                _rc = _inh_cfg["reasoning_config"]
+                _effort = "none" if _rc.get("enabled") is False else str(_rc.get("effort") or "").strip()
+                if _effort:
+                    try:
+                        from hermes_constants import parse_reasoning_effort
+
+                        create_reasoning_override = parse_reasoning_effort(_effort)
+                    except Exception:
+                        pass
+            if (
+                create_service_tier_override is None
+                and str(_inh_cfg.get("service_tier") or "").strip().lower() == "priority"
+            ):
+                create_service_tier_override = "priority"
 
     ready = threading.Event()
     now = time.time()
@@ -2806,10 +2893,16 @@ def _(rid, params: dict) -> dict:
                     if hasattr(db, "get_next_title_in_lineage")
                     else f"{current} (branch)"
                 )
+            inherited_model = _inherited_model_overrides(db, old_key)
             db.create_session(
                 new_key,
                 source=source,
-                model=_resolve_model(),
+                # custom/hermes-yh: a branch inherits its parent's model
+                # identity (model + provider/base_url/effort from the parent's
+                # durable model_config) instead of silently falling back to the
+                # config default — the parent's manual model switch must carry
+                # into the child conversation.
+                model=inherited_model.get("model") or _resolve_model(),
                 # Stable _branched_from marker so list_sessions_rich() keeps the
                 # branch visible in /resume and /sessions. The TUI branch leaves
                 # the parent live (no end_reason='branched'), so the legacy
@@ -2818,6 +2911,7 @@ def _(rid, params: dict) -> dict:
                 # _branch_seed_message_count lets branch-merge isolate only the
                 # child's new turns (see conversation_branches.fork).
                 model_config={
+                    **inherited_model.get("model_config", {}),
                     "_branched_from": old_key,
                     "_branch_seed_message_count": len(history),
                 },
