@@ -102,6 +102,37 @@ interface ProviderGroup {
 }
 
 /**
+ * custom/hermes-yh: is this family row the CURRENT model?
+ *
+ * A live session on a CUSTOM provider reports `provider: 'custom'` from
+ * session.info — never the catalog's named slug ('glm-coding', 'deepseek_api',
+ * …) — so the old slug-only match marked nothing for those sessions, and the
+ * profile-default model (custom providers here) showed NO highlight in the
+ * list at all. When the current provider is not a catalog slug, fall back to
+ * matching by model id alone; model ids are unique across the curated
+ * catalog, so at most one row checks.
+ */
+export function modelFamilyIsCurrent(
+  current: Pick<ModelChoice, 'model' | 'provider'>,
+  catalogProviderSlugs: ReadonlyArray<string>,
+  slug: string,
+  family: Pick<ModelFamily, 'fastId' | 'id'>
+): boolean {
+  if (!current.provider || current.provider === 'moa') {
+    return false
+  }
+
+  const modelMatches =
+    current.model === family.id || (Boolean(family.fastId) && current.model === family.fastId)
+
+  if (!modelMatches) {
+    return false
+  }
+
+  return current.provider === slug || !catalogProviderSlugs.includes(current.provider)
+}
+
+/**
  * THE model catalog menu: searchable, provider-grouped, `-fast` families
  * collapsed to one row, per-row hover submenu for thinking/effort/fast, full
  * keyboard selection. Shared verbatim by the composer's model pill and by
@@ -159,6 +190,10 @@ export function ModelCatalogMenu({
   )
 
   const current = controller.current
+
+  const catalogSlugs = useMemo(() => pickerProviders.map(provider => provider.slug), [pickerProviders])
+  const familyIsCurrent = (slug: string, family: ModelFamily) =>
+    modelFamilyIsCurrent(current, catalogSlugs, slug, family)
 
   // Resolve visibility HERE, against the catalog we actually fetched: an empty
   // provider list would otherwise resolve to an empty key set that reads as
@@ -249,7 +284,9 @@ export function ModelCatalogMenu({
     ? kbRows.length > 0
       ? 0
       : -1
-    : kbRows.findIndex(row => row.key === currentKey || (row.kind === 'family' && row.family.fastId === current.model))
+    : kbRows.findIndex(
+        row => row.key === currentKey || (row.kind === 'family' && familyIsCurrent(row.provider.slug, row.family))
+      )
 
   const kbIndex = kbOverride !== null && kbOverride < kbRows.length ? kbOverride : autoIndex
   const kbActiveKey = kbIndex >= 0 ? kbRows[kbIndex].key : null
@@ -382,14 +419,12 @@ export function ModelCatalogMenu({
                 {!collapsed &&
                   group.families.map(family => {
                     // The active id may be the base or its -fast sibling; either
-                    // way this one family row represents both.
-                    const activeId =
-                      group.provider.slug === current.provider &&
-                      (current.model === family.id || current.model === family.fastId)
-                        ? current.model
-                        : null
-
-                    const isCurrent = activeId !== null
+                    // way this one family row represents both. Custom-provider
+                    // sessions (provider='custom') still match by model id —
+                    // modelFamilyIsCurrent's fallback — so the current model is
+                    // checked/highlighted for them too.
+                    const isCurrent = familyIsCurrent(group.provider.slug, family)
+                    const activeId = isCurrent ? current.model : null
                     const name = modelDisplayParts(family.id).name
                     const caps = group.provider.capabilities?.[family.id]
 
