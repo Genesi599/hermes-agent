@@ -462,6 +462,12 @@ DEFAULT_CONTEXT_LENGTHS = {
     "deepseek-v4-flash": 1_000_000,
     "deepseek-chat": 1_000_000,
     "deepseek-reasoner": 1_000_000,
+    # custom/hermes-yh: bare ``deepseek-flash`` is another server-side alias
+    # of deepseek-v4-flash (some proxies list it without the -v4- infix) —
+    # without this entry it fell through to the 128K catch-all, showing a
+    # 128K window AND compressing at ~96K on a 1M-context model (2026-09-13
+    # 星阶 session).
+    "deepseek-flash": 1_000_000,
     "deepseek": 128000,
     # Meta
     "llama": 131072,
