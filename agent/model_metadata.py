@@ -493,6 +493,11 @@ DEFAULT_CONTEXT_LENGTHS = {
     # (5, 5.1, 5-turbo) are ~202K.  Longest-key-first substring matching
     # ensures "glm-5.2" resolves to 1M while older variants still hit the
     # generic 202K fallback.
+    # GLM-5.3 (and 5.3-Flash) are 1M by default too — official model page:
+    # "支持 1M 上下文窗口，最大输出 Tokens 为 128K" (2026-09-14), no [1m]
+    # variant exists. Without these entries every glm-5.3 session resolved
+    # to the 202K catch-all and compressed at the ~152K floor.
+    "glm-5.3": 1_048_576,
     "glm-5.2": 1_048_576,
     "glm": 202752,
     # xAI Grok — xAI /v1/models does not return context_length metadata,
