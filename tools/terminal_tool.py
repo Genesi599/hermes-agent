@@ -1081,7 +1081,9 @@ Do NOT use cat/head/tail (use read_file), grep/rg/find/ls (use search_files), se
 Environment state persists: activate a virtualenv or export variables once per session, not before every command.
 
 Foreground (default): returns INSTANTLY when the command finishes, even with a high timeout — set timeout generously for long builds.
-Background: set background=true (returns a session_id). Pair with notify_on_complete=true for bounded tasks; leave silent only for servers/daemons that never exit. Never use nohup/setsid/trailing '&' — use background=true so Hermes tracks the process. After starting a server, verify readiness with a health check, then act in a separate call; no blind sleep loops. Manage with process(action="poll"/"wait").
+Background: set background=true (returns a session_id). Never use nohup/setsid/trailing '&' — use background=true so Hermes tracks the process.
+Long bounded jobs (builds, renders, big test suites — anything expected to run minutes): start with background=true + notify_on_complete=true, tell the user what is running, and END YOUR TURN. On completion Hermes re-enters this session automatically and you continue (verify outputs, follow-up work) in a new turn — the user is never blocked watching you wait. Do NOT hold the turn open with sleep or process-wait loops for multi-minute jobs.
+Servers/daemons that never exit: leave notify_on_complete off; after starting one, verify readiness with a health check, then act in a separate call. process(action="wait"/"poll") is only for short bounded waits (up to ~60s).
 Working directory: use 'workdir' for per-command cwd. When a command changes the session cwd (cd, pushd), the result includes a "cwd" field — trust it instead of prefixing every command with 'cd'.
 PTY: set pty=true for interactive CLIs (they hang without it). Pipe git output to cat if it might page.
 """
@@ -3049,8 +3051,12 @@ def terminal_tool(
                         "CI poller, deploy, anything with a defined end), you "
                         "almost certainly wanted notify_on_complete=true so the "
                         "system pings you on exit. Re-launch with "
-                        "notify_on_complete=true, or call process(action='poll') "
-                        "/ process(action='wait') yourself to learn the outcome. "
+                        "notify_on_complete=true and END YOUR TURN — the "
+                        "completion event re-enters this session automatically "
+                        "and you continue in a new turn. Holding the turn open "
+                        "with process(action='poll'/'wait') or sleep blocks the "
+                        "user for the whole runtime; reserve those for short "
+                        "checks (~60s). "
                         "Only ignore this hint for genuine long-lived processes "
                         "that never exit (servers, watchers, daemons)."
                     )
