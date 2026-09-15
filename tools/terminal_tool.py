@@ -2403,6 +2403,47 @@ def _strip_quotes(command: str) -> str:
     return result
 
 
+# A foreground command whose shell sleeps total at least this many seconds is
+# treated as a wait-for-background-job wall: blocked pre-execution with
+# end-turn guidance instead of letting it hold the turn hostage. Under it,
+# short pacing sleeps are legitimate.
+_FOREGROUND_SLEEP_GUIDE_SECONDS = 120
+
+# ``sleep 560``, ``sleep 5m``, ``sleep 2m 30s`` (GNU sleep sums its args;
+# coreutils duration tokens like ``1m30s`` also parse). Applied to
+# quote-stripped text so echoed/grepped literals don't fire.
+_SLEEP_TOKEN_RE = re.compile(r"\s*(\d+(?:\.\d+)?(?:[smh][\d.]*)?[smh]?)", re.IGNORECASE)
+
+
+def _foreground_sleep_seconds(unquoted: str) -> float:
+    """Total seconds the command's shell-level ``sleep`` invocations add up to."""
+    total = 0.0
+    pos = 0
+    while True:
+        m = re.search(r"\bsleep\s+", unquoted[pos:])
+        if not m:
+            break
+        i = pos + m.end()
+        while True:
+            token_match = _SLEEP_TOKEN_RE.match(unquoted, i)
+            if not token_match:
+                break
+            for num, unit in re.findall(
+                r"(\d+(?:\.\d+)?)([smh]?)", token_match.group(1), re.IGNORECASE
+            ):
+                value = float(num)
+                unit = unit.lower()
+                if unit == "m":
+                    total += value * 60
+                elif unit == "h":
+                    total += value * 3600
+                else:
+                    total += value
+            i = token_match.end()
+        pos = i
+    return total
+
+
 _LONG_LIVED_FOREGROUND_PATTERNS = (
     re.compile(r"\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:dev|start|serve|watch)\b", re.IGNORECASE),
     re.compile(r"\bdocker\s+compose\s+up\b", re.IGNORECASE),
@@ -2430,7 +2471,8 @@ def _foreground_background_guidance(command: str) -> str | None:
     """Suggest background mode when a foreground command looks long-lived.
 
     Prevents workflows that start a server/watch process and then stall before
-    follow-up checks or test commands run.
+    follow-up checks or test commands run — and foreground ``sleep`` walls that
+    hold the turn (and the user) hostage while a background job renders.
     """
     if _looks_like_help_or_version_command(command):
         return None
@@ -2438,6 +2480,19 @@ def _foreground_background_guidance(command: str) -> str | None:
     # Strip quoted content so keywords inside strings/arguments don't trigger
     # false positives (e.g., git commit -m "... setsid ...", python3 -c "os.setsid").
     unquoted = _strip_quotes(command)
+
+    sleep_seconds = _foreground_sleep_seconds(unquoted)
+    if sleep_seconds >= _FOREGROUND_SLEEP_GUIDE_SECONDS:
+        return (
+            f"This foreground command sleeps ~{int(sleep_seconds)}s before its "
+            "real work — the user watches a blocked turn for that entire "
+            "stretch. If you are waiting on a background job (render/build/"
+            "tests), END YOUR TURN instead: its notify_on_complete exit event "
+            "re-enters this session automatically and you continue in a new "
+            "turn. When woken, run only the follow-up command (no sleep). "
+            "Genuine in-turn pacing sleeps must stay under "
+            f"{_FOREGROUND_SLEEP_GUIDE_SECONDS}s per command."
+        )
 
     if _SHELL_LEVEL_BACKGROUND_RE.search(unquoted):
         return (

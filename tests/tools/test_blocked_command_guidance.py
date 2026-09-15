@@ -79,3 +79,38 @@ class TestBackgroundGuidanceRecipes:
 
     def test_quoted_ampersand_not_flagged(self):
         assert _foreground_background_guidance('git commit -m "a & b"') is None
+
+    # --- foreground long-sleep wall (2026-09-15 chord-render incident: the
+    # model held turns open with `sleep 240/300/560` while background renders
+    # ran, because in-history precedent beat the tool description).
+
+    def test_long_foreground_sleep_blocked_with_end_turn_guidance(self):
+        msg = _foreground_background_guidance("sleep 560; ls qc/figs_local/*.png")
+        assert msg is not None
+        assert "~560s" in msg
+        assert "END YOUR TURN" in msg
+        assert "notify_on_complete" in msg
+
+    def test_sleep_duration_forms_summed(self):
+        # GNU sleep sums args; coreutils combined duration tokens parse too.
+        msg = _foreground_background_guidance("sleep 2m 30s; echo done")
+        assert msg is not None and "~150s" in msg
+        msg = _foreground_background_guidance("sleep 4m30s && check.sh")
+        assert msg is not None and "~270s" in msg
+        msg = _foreground_background_guidance("sleep 60; sleep 90; run.sh")
+        assert msg is not None and "~150s" in msg
+
+    def test_sleep_threshold_boundary(self):
+        assert _foreground_background_guidance("sleep 119") is None
+        assert _foreground_background_guidance("sleep 120") is not None
+
+    def test_short_pacing_sleep_allowed(self):
+        assert _foreground_background_guidance("sleep 30 && retry.sh") is None
+        assert _foreground_background_guidance("sleep 0.5 || true") is None
+
+    def test_quoted_sleep_literal_not_flagged(self):
+        assert _foreground_background_guidance('echo "sleep 600" >> notes.txt') is None
+        assert _foreground_background_guidance('grep -r "sleep 999" log/') is None
+
+    def test_sleeplike_names_not_flagged(self):
+        assert _foreground_background_guidance("usleep 300000") is None
