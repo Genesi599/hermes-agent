@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils'
 import { sessionMatchesStoredId, sessionPinId } from '@/store/session'
 import { $sessionDotStateById, hasLiveTurn } from '@/store/session-dot-state'
 
+import { AgentRoster } from './agent-roster'
 import { SidebarDateDivider, SidebarSectionMeta } from './chrome'
 import { orderRowsWithinGroups, reorderableRowIds } from './order'
 import {
@@ -299,10 +300,17 @@ export function SidebarSessionsSection({
         showProfile: showProfileTags
       }
 
-      return draggable && !branchStem ? (
-        <SortableSidebarSessionRow key={session.id} {...rowProps} />
-      ) : (
-        <SidebarSessionRow key={session.id} {...rowProps} />
+      // Same shape as the virtualized list: the row plus, when agents deliver
+      // into this conversation, the roster of who speaks in it.
+      return (
+        <div key={session.id}>
+          {draggable && !branchStem ? (
+            <SortableSidebarSessionRow {...rowProps} />
+          ) : (
+            <SidebarSessionRow {...rowProps} />
+          )}
+          <AgentRoster sessionId={session.id} />
+        </div>
       )
     },
     [
@@ -497,9 +505,9 @@ export function SidebarSessionsSection({
         dividerAction={dividerAction}
         onArchiveSession={onArchiveSession}
         onBranchSession={onBranchSession}
-        onDuplicateSession={onDuplicateSession}
         onCreateBranchesSession={onCreateBranchesSession}
         onDeleteSession={onDeleteSession}
+        onDuplicateSession={onDuplicateSession}
         onMergeChildrenSession={onMergeChildrenSession}
         onMergeSession={onMergeSession}
         onResumeSession={onResumeSession}
