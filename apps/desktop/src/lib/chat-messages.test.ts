@@ -1255,3 +1255,67 @@ describe('compaction handoff reasoning', () => {
     expect(parts.map(part => part.type)).toEqual(['text'])
   })
 })
+
+// Several agents share one transcript (a cron steward, branch workers, the main
+// chat), and `role: 'assistant'` alone cannot tell them apart — the producer
+// stamps its own reply so the bubble can carry a speaker chip.
+describe('named-producer replies (agent_message)', () => {
+  it('carries the agent label off display_metadata', () => {
+    const messages = toChatMessages([
+      {
+        role: 'assistant',
+        content: '本周期做了什么？（回一句就行）',
+        display_kind: 'agent_message',
+        display_metadata: JSON.stringify({ agent: '管家' }),
+        timestamp: 1
+      }
+    ])
+
+    expect(messages[0]?.agent).toBe('管家')
+    expect(messages[0]?.role).toBe('assistant')
+  })
+
+  it('keeps the reply text and assistant role untouched', () => {
+    const messages = toChatMessages([
+      {
+        role: 'assistant',
+        content: '提醒正文',
+        display_kind: 'agent_message',
+        display_metadata: { agent: '管家' },
+        timestamp: 1
+      }
+    ])
+
+    expect(chatMessageText(messages[0] as ChatMessage)).toContain('提醒正文')
+    expect(messages[0]?.role).toBe('assistant')
+  })
+
+  it('omits the label when the metadata is absent, blank, or malformed', () => {
+    const messages = toChatMessages([
+      { role: 'assistant', content: 'no metadata', display_kind: 'agent_message', timestamp: 1 },
+      {
+        role: 'assistant',
+        content: 'blank',
+        display_kind: 'agent_message',
+        display_metadata: { agent: '' },
+        timestamp: 2
+      },
+      {
+        role: 'assistant',
+        content: 'malformed',
+        display_kind: 'agent_message',
+        display_metadata: '{not json',
+        timestamp: 3
+      },
+      { role: 'assistant', content: 'not a string', display_kind: 'agent_message', display_metadata: { agent: 42 }, timestamp: 4 }
+    ])
+
+    expect(messages.map(message => message.agent)).toEqual([undefined, undefined, undefined, undefined])
+  })
+
+  it('labels nothing on an ordinary assistant reply', () => {
+    const messages = toChatMessages([{ role: 'assistant', content: 'ordinary reply', timestamp: 1 }])
+
+    expect(messages[0]?.agent).toBeUndefined()
+  })
+})

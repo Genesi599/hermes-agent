@@ -22,6 +22,7 @@ import { formatMessageTimestamp } from '@/components/assistant-ui/thread/timesta
 import { useMessageReactions, useTapbackDoubleClick } from '@/components/assistant-ui/thread/use-message-reactions'
 import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button'
 import { PreviewAttachment } from '@/components/chat/preview-attachment'
+import { SCAFFOLD_LABEL_CLASS } from '@/components/chat/scaffold-row'
 import { Codicon } from '@/components/ui/codicon'
 import { CopyButton } from '@/components/ui/copy-button'
 import { useI18n } from '@/i18n'
@@ -70,6 +71,15 @@ export const AssistantMessage: FC<{
   // tool-heavy turn doesn't grow a copy/refresh bar per paragraph (see
   // ChatMessage.interim).
   const isInterim = useAuiState(s => s.message.metadata?.custom?.interim === true)
+
+  // Speaker chip: only replies written by a *named* producer carry one, so a
+  // shared transcript (cron steward / branch worker / main chat) shows who
+  // spoke. A stable string-or-undefined, so it adds no streaming re-renders.
+  const agentLabel = useAuiState(s => {
+    const agent = s.message.metadata?.custom?.agent
+
+    return typeof agent === 'string' && agent ? agent : undefined
+  })
 
   // The thinking/stall indicator belongs to the TAIL of the thread, period. A
   // stale pending bubble mid-transcript (a turn that ended without its settle
@@ -130,6 +140,11 @@ export const AssistantMessage: FC<{
         data-slot="aui_assistant-message-content"
       >
         {/* Todos render in the composer status stack now, not inline. */}
+        {agentLabel ? (
+          <div className="mb-0.5 flex items-center gap-1.5" data-slot="aui_assistant-agent-label">
+            <span className={`${SCAFFOLD_LABEL_CLASS} font-medium`}>{agentLabel}</span>
+          </div>
+        ) : null}
         <MessagePrimitive.Parts components={MESSAGE_PARTS_COMPONENTS} />
         {isLastMessage && (isPlaceholder ? <ResponseLoadingIndicator /> : isRunning && <StreamStallIndicator />)}
         {previewTargets.length > 0 && (

@@ -3798,6 +3798,23 @@ def run_job(
                     _dialog_submit.get("status"),
                     _dialog_submit.get("session_id"),
                 )
+                # The delivery preamble + script output is model-facing
+                # scaffolding. Type the row hidden so no client paints it as a
+                # bubble the user supposedly typed (same convention as the
+                # ``[System: …]`` marker rows the projection already drops).
+                try:
+                    _session_db.set_latest_matching_message_display_kind(
+                        _target_session_id,
+                        role="user",
+                        content=prompt,
+                        display_kind="hidden",
+                    )
+                except Exception:
+                    logger.debug(
+                        "Job '%s': could not hide the attached prompt row",
+                        job_id,
+                        exc_info=True,
+                    )
                 _audit_fire_id_dialog = uuid.uuid4().hex
                 _audit_t_start_dialog = time.monotonic()
                 try:
@@ -3841,6 +3858,30 @@ def run_job(
 
 {logged_response}
 """
+                # Producer provenance: when the job declares an ``agent_label``
+                # (e.g. "管家"), type the reply it just produced so the
+                # transcript can show WHO spoke — several agents share one
+                # conversation, and role=assistant alone cannot tell them apart.
+                # Match on the raw DB text: ``final_response`` above is stripped
+                # for delivery, and the stored row keeps its original bytes.
+                agent_label = str(job.get("agent_label") or "").strip()
+                raw_response = str(result.get("final_response") or "")
+                if agent_label and raw_response:
+                    try:
+                        _session_db.set_latest_matching_message_display_kind(
+                            _target_session_id,
+                            role="assistant",
+                            content=raw_response,
+                            display_kind="agent_message",
+                            display_metadata={"agent": agent_label},
+                        )
+                    except Exception:
+                        logger.debug(
+                            "Job '%s': could not label the attached reply as '%s'",
+                            job_id,
+                            agent_label,
+                            exc_info=True,
+                        )
                 logger.info("Job '%s' completed (attached dialog turn)", job_name)
                 _write_usage_audit({
                     "ts": _utcnow_iso_ms(),

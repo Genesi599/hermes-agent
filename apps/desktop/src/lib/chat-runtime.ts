@@ -447,8 +447,13 @@ export function toRuntimeMessage(message: ChatMessage): ThreadMessage {
       unstable_annotations: [],
       unstable_data: [],
       steps: [],
-      // Carries ChatMessage.interim to AssistantMessage's footer gate.
-      custom: { ...(message.interim ? { interim: true } : {}), ...reactionMeta }
+      // Carries ChatMessage.interim to AssistantMessage's footer gate, and
+      // ChatMessage.agent to its speaker chip.
+      custom: {
+        ...(message.interim ? { interim: true } : {}),
+        ...(message.agent ? { agent: message.agent } : {}),
+        ...reactionMeta
+      }
     }
   } as ThreadMessage
 }

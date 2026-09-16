@@ -26,6 +26,11 @@ export type ChatMessage = {
    *  action footer so only the turn's final reply carries copy/refresh, and
    *  the live view matches rehydration (which merges the turn into one bubble). */
   interim?: boolean
+  /** Named producer of this reply (`display_kind: 'agent_message'` +
+   *  `display_metadata.agent`). Several agents can share one transcript — a
+   *  cron steward, branch workers, the main chat — and `role: 'assistant'`
+   *  alone cannot tell them apart, so the label rides the message. */
+  agent?: string
   /** Composer attachment ref strings (`@file:...`, `@image:...`) sent with this user message. */
   attachmentRefs?: string[]
   /** Durable backend `messages.id`. Absent until the row is persisted. */
@@ -1039,6 +1044,7 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
 
     // Task-status block: strip from the visible body, keep for the rail.
     let taskStatus: TaskStatus | null = null
+
     if (message.role === 'assistant' && displayContent) {
       taskStatus = parseTaskStatus(displayContent)
       displayContent = stripTaskStatusBlocks(displayContent)
@@ -1123,12 +1129,20 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
     // reactions address this exact row later.
     const rowId = message.row_id ?? (typeof message.id === 'number' ? message.id : undefined)
 
+    // A named producer stamps its own reply (`display_kind: 'agent_message'`)
+    // so a transcript shared by several agents can show who spoke. An unknown
+    // kind still renders as an ordinary assistant bubble — only the label is
+    // extra, never a replacement for the text.
+    const agentLabel =
+      message.display_kind === 'agent_message' ? parseDisplayMetadata(message.display_metadata)?.agent : undefined
+
     result.push({
       id: `${message.timestamp || Date.now()}-${index}-${displayRole}`,
       role: displayRole,
       parts,
       timestamp: message.timestamp,
       ...(rowId !== undefined ? { rowId } : {}),
+      ...(typeof agentLabel === 'string' && agentLabel ? { agent: agentLabel } : {}),
       ...(reactions.length ? { reactions } : {}),
       ...(extractedAttachmentRefs ? { attachmentRefs: extractedAttachmentRefs } : {}),
       ...(taskStatus ? { taskStatus } : {})
