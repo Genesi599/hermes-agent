@@ -64,3 +64,24 @@ export function agentsForSession(jobs: CronJob[] | undefined, sessionId: string 
 
   return agents
 }
+
+/**
+ * Profiles that ARE agents (they deliver into conversations via a job).
+ *
+ * Used to keep an agent's own conversation out of the flat session list: an
+ * agent speaks *inside* the parent conversation (its roster), so its session is
+ * a child of that conversation, not a standalone row beside it.
+ */
+export function agentProfileSet(jobs: CronJob[] | undefined): Set<string> {
+  const profiles = new Set<string>()
+
+  for (const job of jobs ?? []) {
+    const profile = str(job, 'agent_profile')
+
+    if (profile) {
+      profiles.add(profile)
+    }
+  }
+
+  return profiles
+}

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { CronJob } from '@/types/hermes'
 
-import { agentsForSession } from './session-agents'
+import { agentProfileSet, agentsForSession } from './session-agents'
 
 function job(over: Record<string, unknown>): CronJob {
   return { id: 'j', name: 'job', ...over } as unknown as CronJob
@@ -44,5 +44,23 @@ describe('agentsForSession', () => {
     const jobs = [job({ attach_to_session: true, target_session_id: ' S1 ', agent_label: ' 顾问 ', agent_avatar: '  ', agent_profile: ' advisor ' })]
 
     expect(agentsForSession(jobs, 'S1')).toEqual([{ label: '顾问', avatar: undefined, profile: 'advisor' }])
+  })
+})
+
+describe('agentProfileSet', () => {
+  it('collects the profiles marked as agents on any delivery job, ignoring the rest', () => {
+    const jobs = [
+      job({ attach_to_session: true, target_session_id: 'S1', agent_label: '管家', agent_profile: 'steward' }),
+      job({ attach_to_session: true, target_session_id: 'S1', agent_label: '流程搭档', agent_profile: 'advisor' }),
+      job({ attach_to_session: true, target_session_id: 'S2', agent_label: '管家', agent_profile: 'steward' }),
+      job({ attach_to_session: true, target_session_id: 'S1' })
+    ]
+
+    expect([...agentProfileSet(jobs)].sort()).toEqual(['advisor', 'steward'])
+  })
+
+  it('is empty without jobs', () => {
+    expect(agentProfileSet(undefined).size).toBe(0)
+    expect(agentProfileSet([]).size).toBe(0)
   })
 })

@@ -27,6 +27,7 @@ import { searchSessions, type SessionInfo, type SessionSearchResult } from '@/he
 import { useI18n } from '@/i18n'
 import { comboTokens } from '@/lib/keybinds/combo'
 import { resolveProfileColor } from '@/lib/profile-color'
+import { agentProfileSet } from '@/lib/session-agents'
 import { sessionMatchesSearch } from '@/lib/session-search'
 import { normalizeSessionSource, sessionSourceLabel } from '@/lib/session-source'
 import { cn } from '@/lib/utils'
@@ -378,6 +379,8 @@ export function ChatSidebar({
   const unreadFinishedSessionIds = useStore($unreadFinishedSessionIds)
   const profiles = useStore($profiles)
   const showProfileRail = useStore($showProfileRail)
+  // Stable identity: the session filter below memoizes on this.
+  const agentOwnedProfiles = useMemo(() => agentProfileSet(cronJobs), [cronJobs])
   const profileColors = useStore($profileColors)
   const profileScope = useStore($profileScope)
   // Only surface the profile switcher when more than one profile exists, so
@@ -471,9 +474,13 @@ export function ChatSidebar({
   // rows, no project tree, no date or status dividers.
   const scopedSessions = useMemo(() => {
     const pool = showArchived ? archivedSessions : sessions
+    const scoped = showAllProfiles ? pool : pool.filter(s => normalizeProfileKey(s.profile) === profileScope)
 
-    return showAllProfiles ? pool : pool.filter(s => normalizeProfileKey(s.profile) === profileScope)
-  }, [sessions, archivedSessions, showArchived, showAllProfiles, profileScope])
+    // An agent speaks inside its parent conversation (through that
+    // conversation's roster), so its own conversation is a child of it — not a
+    // standalone row beside it. Agents are the profiles wired to deliver.
+    return scoped.filter(s => !agentOwnedProfiles.has(normalizeProfileKey(s.profile)))
+  }, [sessions, archivedSessions, showArchived, showAllProfiles, profileScope, agentOwnedProfiles])
 
   // One predicate for the status/project filters, so the flat list and the
   // project lanes narrow by the same rule. A project lane holds rows the loaded
