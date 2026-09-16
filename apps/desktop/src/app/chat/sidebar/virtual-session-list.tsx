@@ -11,8 +11,14 @@ import { sessionBucketLabel } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { sessionMatchesStoredId, sessionPinId } from '@/store/session'
 
+import { AgentRoster } from './agent-roster'
 import { SidebarDateDivider } from './chrome'
 import { SidebarSessionRow } from './session-row'
+
+// The measured container in the row renderer owns virtualization measurement;
+// the sortable row still needs a ref slot because it merges dnd-kit's own node
+// ref into it (see VirtualSortableRow).
+const noopMeasure = () => undefined
 
 interface SessionRowCommonProps {
   branchStem?: string
@@ -174,22 +180,25 @@ export const VirtualSessionList: FC<VirtualSessionListProps> = ({
       showProfile: showProfileTags
     }
 
-    return reorderable ? (
-      <VirtualSortableRow
-        index={virtualItem.index}
-        key={session.id}
-        measureRef={virtualizer.measureElement}
-        rowProps={commonProps}
-        session={session}
-      />
-    ) : (
-      <SidebarSessionRow
-        {...commonProps}
-        data-index={virtualItem.index}
-        key={session.id}
-        ref={virtualizer.measureElement}
-        session={session}
-      />
+    // Each virtual item is a measured container holding the session row plus —
+    // when agents deliver into this conversation — the roster of who is
+    // speaking in it. The container owns `data-index`/`measureElement` so the
+    // row's extra height is part of the item the virtualizer measures;
+    // measuring only the row would let the roster overlap the next one.
+    return (
+      <div data-index={virtualItem.index} key={session.id} ref={virtualizer.measureElement}>
+        {reorderable ? (
+          <VirtualSortableRow
+            index={virtualItem.index}
+            measureRef={noopMeasure}
+            rowProps={commonProps}
+            session={session}
+          />
+        ) : (
+          <SidebarSessionRow {...commonProps} session={session} />
+        )}
+        <AgentRoster sessionId={session.id} />
+      </div>
     )
   })
 
