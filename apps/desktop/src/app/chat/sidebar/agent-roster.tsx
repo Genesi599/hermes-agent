@@ -1,21 +1,70 @@
 import { useStore } from '@nanostores/react'
 import { memo } from 'react'
 
+import { listAllProfileSessions } from '@/hermes'
 import { agentsForSession } from '@/lib/session-agents'
 import { $cronJobs } from '@/store/cron'
 import { ensureGatewayProfile } from '@/store/profile'
+import { $projectScope, ALL_PROJECTS, projectIdForCwd } from '@/store/projects'
 
 /**
  * Who is speaking in this conversation — the agents whose delivery jobs feed
- * into it, hung under the parent session row like branch children, but as
- * agents: each shows its own avatar + name, and clicking one switches into that
- * agent's profile so you can talk to it directly.
+ * into it, hung under the parent session row, each with its own avatar + name.
  *
- * The roster is derived from the delivery wiring (see `agentsForSession`), so
- * it needs no separate registry to keep in sync. Rows without agents render
- * nothing at all.
+ * Clicking one opens a conversation WITH that agent (its newest session, or its
+ * fresh context when it has none yet) — the same thing clicking a session row
+ * does, so the gateway swap and tab wiring stay the app's own path. It does NOT
+ * park you in the agent's profile: with the all-profiles view on, your own
+ * sessions stay listed while the agent's chat opens beside them.
+ *
+ * The roster follows the delivery wiring (see `agentsForSession`), so there is
+ * no second registry to keep in sync. Rows without agents render nothing.
  */
-function AgentRosterImpl({ sessionId }: { sessionId: string }) {
+/**
+ * The agent's conversation to open: its newest session IN THE CURRENT PROJECT
+ * when the sidebar is scoped to one, else its newest session overall.
+ *
+ * A session's project is derived from where it ran (`git_repo_root`/`cwd`), the
+ * same key the sidebar groups by — so this only finds project-scoped agent work
+ * if the agent was actually dispatched with that project as its working dir.
+ */
+async function sessionToOpenForAgent(profile: string): Promise<null | string> {
+  try {
+    // A small page is enough: project-scoped agent work is recent by nature.
+    const { sessions } = await listAllProfileSessions(20, 0, 'exclude', 'recent', profile)
+
+    if (!sessions.length) {
+      return null
+    }
+
+    const scope = $projectScope.get()
+
+    if (scope && scope !== ALL_PROJECTS) {
+      const inProject = sessions.find(session => {
+        const where = (session.git_repo_root || session.cwd || '').trim()
+
+        return Boolean(where) && projectIdForCwd(where) === scope
+      })
+
+      if (inProject) {
+        return inProject.id
+      }
+    }
+
+    return sessions[0].id
+  } catch {
+    return null
+  }
+}
+
+function AgentRosterImpl({
+  onOpenSession,
+  sessionId
+}: {
+  /** Resume a session by id — the sidebar's own open path. */
+  onOpenSession?: (sessionId: string) => void
+  sessionId: string
+}) {
   const agents = agentsForSession(useStore($cronJobs), sessionId)
 
   if (!agents.length) {
@@ -23,25 +72,36 @@ function AgentRosterImpl({ sessionId }: { sessionId: string }) {
   }
 
   return (
-    <div
-      className="flex flex-wrap items-center gap-x-2 gap-y-1 pb-1.5 pl-8 pr-2"
-      data-slot="sidebar-session-agents"
-    >
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pb-1.5 pl-8 pr-2" data-slot="sidebar-session-agents">
       {agents.map(agent => (
         <button
           className="flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-[0.625rem] leading-4 text-(--ui-text-tertiary) transition-colors hover:bg-(--ui-control-active-background) hover:text-foreground"
           data-agent={agent.label}
           key={agent.label}
-          onClick={event => {
-            // The row underneath opens the SESSION; this opens the AGENT.
+          onClick={async event => {
+            // The row underneath opens the PARENT session; this opens the AGENT.
             event.preventDefault()
             event.stopPropagation()
 
-            if (agent.profile) {
-              void ensureGatewayProfile(agent.profile)
+            const profile = agent.profile
+
+            if (!profile) {
+              return
             }
+
+            const target = await sessionToOpenForAgent(profile)
+
+            if (target && onOpenSession) {
+              onOpenSession(target)
+
+              return
+            }
+
+            // No conversation yet — land in the agent's context so the next
+            // message starts one.
+            void ensureGatewayProfile(profile)
           }}
-          title={agent.profile ? `打开「${agent.label}」(${agent.profile})` : `${agent.label} 参与本对话`}
+          title={`跟「${agent.label}」对话`}
           type="button"
         >
           <span
