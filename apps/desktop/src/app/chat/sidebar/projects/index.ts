@@ -1,3 +1,4 @@
+export { ProjectBoardRow } from './board-row'
 // Public surface of the project/worktree sidebar, consumed by the sidebar root.
 export { EnteredProjectContent } from './entered-content'
 export {

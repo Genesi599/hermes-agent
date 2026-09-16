@@ -10244,6 +10244,10 @@ ipcMain.handle('hermes:bootstrap:get', async () => getBootstrapState())
 ipcMain.handle('hermes:connection-config:get', async (_event, profile) =>
   sanitizeDesktopConnectionConfig(readDesktopConnectionConfig(), profile)
 )
+// The user's home directory — the desktop needs it to reach user-level
+// locations the agent works with (e.g. the shared blackboard under
+// `hermes_board/`), which are not inside any project or app-data root.
+ipcMain.handle('hermes:user-home', async () => os.homedir())
 ipcMain.handle('hermes:ssh-config:hosts', async () => ({ hosts: collectSshConfigHosts() }))
 ipcMain.handle('hermes:ssh-config:resolve', async (_event, host) => {
   const value = String(host || '').trim()

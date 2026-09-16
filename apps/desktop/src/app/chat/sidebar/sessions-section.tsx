@@ -26,6 +26,7 @@ import { SidebarDateDivider, SidebarSectionMeta } from './chrome'
 import { orderRowsWithinGroups, reorderableRowIds } from './order'
 import {
   EnteredProjectContent,
+  ProjectBoardRow,
   ProjectOverviewRow,
   type SidebarProjectTree,
   type SidebarSessionGroup,
@@ -458,15 +459,19 @@ export function SidebarSessionsSection({
     const Row = projectsDraggable ? SortableProjectOverviewRow : ProjectOverviewRow
 
     const projectRow = (project: SidebarProjectTree, Component: typeof ProjectOverviewRow) => (
-      <Component
-        activeProjectId={activeProjectId}
-        key={project.id}
-        onEnter={onEnterProject}
-        onNewSession={onNewSessionInWorkspace}
-        previewSessions={projectOverviewPreviews?.[project.id]}
-        project={project}
-        renderRows={renderRows}
-      />
+      <div key={project.id}>
+        <Component
+          activeProjectId={activeProjectId}
+          onEnter={onEnterProject}
+          onNewSession={onNewSessionInWorkspace}
+          previewSessions={projectOverviewPreviews?.[project.id]}
+          project={project}
+          renderRows={renderRows}
+        />
+        {/* 公共看板 hangs under the project (not under a conversation): one
+            board per project, maintained by Hermes. */}
+        <ProjectBoardRow projectLabel={project.label} />
+      </div>
     )
 
     const rows = sortableProjects.map(project => projectRow(project, Row))
