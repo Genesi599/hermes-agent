@@ -75,12 +75,18 @@ function AgentRosterImpl({
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pb-1.5 pl-8 pr-2" data-slot="sidebar-session-agents">
       {/* The conversation's own agent: every session in the main profile is
-          Hermes's, so it is a participant — shown first, not clickable (this
-          row IS its conversation). */}
-      <span
-        className="flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-[0.625rem] leading-4 text-(--ui-text-tertiary)"
+          Hermes's, so it is a participant — shown first. Clicking it opens
+          this conversation (the row it belongs to), same as the row itself. */}
+      <button
+        className="flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-[0.625rem] leading-4 text-(--ui-text-tertiary) transition-colors hover:bg-(--ui-control-active-background) hover:text-foreground"
         data-agent={DEFAULT_AGENT_SPEAKER.name}
-        title={`本对话由 ${DEFAULT_AGENT_SPEAKER.name} 主持`}
+        onClick={event => {
+          event.preventDefault()
+          event.stopPropagation()
+          onOpenSession?.(sessionId)
+        }}
+        title={`打开与「${DEFAULT_AGENT_SPEAKER.name}」的对话`}
+        type="button"
       >
         <span
           aria-hidden="true"
@@ -89,7 +95,7 @@ function AgentRosterImpl({
           <img alt="" className="size-full object-cover" src={DEFAULT_AGENT_SPEAKER.avatarImage} />
         </span>
         <span className="truncate">{DEFAULT_AGENT_SPEAKER.name}</span>
-      </span>
+      </button>
       {agents.map(agent => (
         <button
           className="flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-[0.625rem] leading-4 text-(--ui-text-tertiary) transition-colors hover:bg-(--ui-control-active-background) hover:text-foreground"
