@@ -1,3 +1,4 @@
+import hermesAvatar from '@/assets/avatars/hermes-avatar.png'
 import userAvatar from '@/assets/avatars/user-avatar.png'
 
 /**
@@ -16,7 +17,7 @@ import userAvatar from '@/assets/avatars/user-avatar.png'
 export const USER_SPEAKER = { name: '杨航', avatarImage: userAvatar } as const
 
 /** The main assistant when a reply carries no producer label of its own. */
-export const DEFAULT_AGENT_SPEAKER = { name: 'Hermes', avatar: 'H' } as const
+export const DEFAULT_AGENT_SPEAKER = { name: 'Hermes', avatarImage: hermesAvatar } as const
 
 export interface SpeakerIdentity {
   name: string

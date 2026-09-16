@@ -86,7 +86,7 @@ export const AssistantMessage: FC<{
   const agentAvatar = useAuiState(s => {
     const avatar = s.message.metadata?.custom?.agentAvatar
 
-    return typeof avatar === 'string' && avatar ? avatar : DEFAULT_AGENT_SPEAKER.avatar
+    return typeof avatar === 'string' ? avatar : ''
   })
 
   // The thinking/stall indicator belongs to the TAIL of the thread, period. A
@@ -148,7 +148,13 @@ export const AssistantMessage: FC<{
         data-slot="aui_assistant-message-content"
       >
         {/* Todos render in the composer status stack now, not inline. */}
-        <SpeakerChip avatar={agentAvatar} name={agentLabel} />
+        {/* A producer that stamps its own glyph (the steward's 🎩) keeps it;
+            otherwise the main assistant's avatar image stands in. */}
+        <SpeakerChip
+          avatar={agentAvatar || undefined}
+          avatarImage={agentAvatar ? undefined : DEFAULT_AGENT_SPEAKER.avatarImage}
+          name={agentLabel}
+        />
         <MessagePrimitive.Parts components={MESSAGE_PARTS_COMPONENTS} />
         {isLastMessage && (isPlaceholder ? <ResponseLoadingIndicator /> : isRunning && <StreamStallIndicator />)}
         {previewTargets.length > 0 && (
