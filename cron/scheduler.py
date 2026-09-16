@@ -3798,23 +3798,9 @@ def run_job(
                     _dialog_submit.get("status"),
                     _dialog_submit.get("session_id"),
                 )
-                # The delivery preamble + script output is model-facing
-                # scaffolding. Type the row hidden so no client paints it as a
-                # bubble the user supposedly typed (same convention as the
-                # ``[System: …]`` marker rows the projection already drops).
-                try:
-                    _session_db.set_latest_matching_message_display_kind(
-                        _target_session_id,
-                        role="user",
-                        content=prompt,
-                        display_kind="hidden",
-                    )
-                except Exception:
-                    logger.debug(
-                        "Job '%s': could not hide the attached prompt row",
-                        job_id,
-                        exc_info=True,
-                    )
+                # (The prompt row is typed hidden after the turn flushes — the
+                # row does not exist yet at submit time, so matching it here
+                # would silently no-op. See the provenance block below.)
                 _audit_fire_id_dialog = uuid.uuid4().hex
                 _audit_t_start_dialog = time.monotonic()
                 try:
@@ -3858,6 +3844,25 @@ def run_job(
 
 {logged_response}
 """
+                # The delivery preamble + script output is model-facing
+                # scaffolding, not a user turn. Type it hidden so no client
+                # paints it as a bubble the user supposedly typed (the same
+                # convention the projection already applies to ``[System: …]``
+                # rows). This runs after the turn flushes because the row does
+                # not exist yet at submit time.
+                try:
+                    _session_db.set_latest_matching_message_display_kind(
+                        _target_session_id,
+                        role="user",
+                        content=prompt,
+                        display_kind="hidden",
+                    )
+                except Exception:
+                    logger.debug(
+                        "Job '%s': could not hide the attached prompt row",
+                        job_id,
+                        exc_info=True,
+                    )
                 # Producer provenance: when the job declares an ``agent_label``
                 # (e.g. "管家"), type the reply it just produced so the
                 # transcript can show WHO spoke — several agents share one
