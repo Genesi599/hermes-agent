@@ -197,7 +197,7 @@ export const VirtualSessionList: FC<VirtualSessionListProps> = ({
         ) : (
           <SidebarSessionRow {...commonProps} session={session} />
         )}
-        <AgentRoster sessionId={session.id} />
+        <AgentRoster onOpenSession={onResumeSession} sessionId={session.id} />
       </div>
     )
   })

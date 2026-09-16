@@ -309,7 +309,7 @@ export function SidebarSessionsSection({
           ) : (
             <SidebarSessionRow {...rowProps} />
           )}
-          <AgentRoster sessionId={session.id} />
+          <AgentRoster onOpenSession={onResumeSession} sessionId={session.id} />
         </div>
       )
     },
