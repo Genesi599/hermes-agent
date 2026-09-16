@@ -1,3 +1,5 @@
+import userAvatar from '@/assets/avatars/user-avatar.png'
+
 /**
  * Speaker identities for the shared transcript.
  *
@@ -11,12 +13,15 @@
  */
 
 /** The person at the keyboard. */
-export const USER_SPEAKER = { name: '杨航', avatar: '杨' } as const
+export const USER_SPEAKER = { name: '杨航', avatarImage: userAvatar } as const
 
 /** The main assistant when a reply carries no producer label of its own. */
 export const DEFAULT_AGENT_SPEAKER = { name: 'Hermes', avatar: 'H' } as const
 
 export interface SpeakerIdentity {
   name: string
+  /** Text glyph (an emoji, or the name's first character). */
   avatar?: string
+  /** Image source; wins over the glyph when present. */
+  avatarImage?: string
 }

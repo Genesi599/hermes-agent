@@ -279,7 +279,7 @@ export const UserMessage: FC<{
       >
         {/* The person is a speaker too — same chip the assistant bubble
             carries, so the transcript reads like a group chat. */}
-        <SpeakerChip avatar={USER_SPEAKER.avatar} name={USER_SPEAKER.name} />
+        <SpeakerChip {...USER_SPEAKER} />
         <ActionBarPrimitive.Root className="relative w-full max-w-full" data-slot="aui_user-bubble-actions">
           <div className="human-message-with-todos-wrapper flex w-full flex-col gap-0">
             <ReactionPicker
