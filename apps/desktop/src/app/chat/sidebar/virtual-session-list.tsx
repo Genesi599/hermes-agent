@@ -6,6 +6,7 @@ import { type FC, useCallback, useRef } from 'react'
 
 import type { SessionInfo } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { openConversationBoard } from '@/lib/conversation-board'
 import { type SidebarListRow } from '@/lib/session-date-groups'
 import { sessionBucketLabel } from '@/lib/time'
 import { cn } from '@/lib/utils'
@@ -175,7 +176,11 @@ export const VirtualSessionList: FC<VirtualSessionListProps> = ({
       onMerge:
         session.parent_session_id && onMergeSession ? () => onMergeSession(session.id, session.profile) : undefined,
       onPin: () => onTogglePin(sessionPinId(session)),
-      onResume: () => onResumeSession(session.id),
+      onResume: () => {
+          onResumeSession(session.id)
+          // A conversation IS its project: opening it also opens its board.
+          void openConversationBoard(session.title)
+        },
       reorderable,
       showProfile: showProfileTags
     }

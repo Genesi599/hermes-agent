@@ -9,6 +9,7 @@ import { SidebarGroup, SidebarGroupContent } from '@/components/ui/sidebar'
 import type { HermesGitWorktree } from '@/global'
 import type { SessionInfo } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { openConversationBoard } from '@/lib/conversation-board'
 import { flattenSessionsWithBranches } from '@/lib/session-branch-tree'
 import {
   groupEntriesByRecency,
@@ -26,7 +27,6 @@ import { SidebarDateDivider, SidebarSectionMeta } from './chrome'
 import { orderRowsWithinGroups, reorderableRowIds } from './order'
 import {
   EnteredProjectContent,
-  ProjectBoardRow,
   ProjectOverviewRow,
   type SidebarProjectTree,
   type SidebarSessionGroup,
@@ -295,7 +295,11 @@ export function SidebarSessionsSection({
         onMerge:
           session.parent_session_id && onMergeSession ? () => onMergeSession(session.id, session.profile) : undefined,
         onPin: () => onTogglePin(sessionPinId(session)),
-        onResume: () => onResumeSession(session.id),
+        onResume: () => {
+          onResumeSession(session.id)
+          // A conversation IS its project: opening it also opens its board.
+          void openConversationBoard(session.title)
+        },
         reorderable: draggable && !branchStem,
         session,
         showProfile: showProfileTags
@@ -459,19 +463,15 @@ export function SidebarSessionsSection({
     const Row = projectsDraggable ? SortableProjectOverviewRow : ProjectOverviewRow
 
     const projectRow = (project: SidebarProjectTree, Component: typeof ProjectOverviewRow) => (
-      <div key={project.id}>
-        <Component
-          activeProjectId={activeProjectId}
-          onEnter={onEnterProject}
-          onNewSession={onNewSessionInWorkspace}
-          previewSessions={projectOverviewPreviews?.[project.id]}
-          project={project}
-          renderRows={renderRows}
-        />
-        {/* 公共看板 hangs under the project (not under a conversation): one
-            board per project, maintained by Hermes. */}
-        <ProjectBoardRow projectLabel={project.label} />
-      </div>
+      <Component
+        activeProjectId={activeProjectId}
+        key={project.id}
+        onEnter={onEnterProject}
+        onNewSession={onNewSessionInWorkspace}
+        previewSessions={projectOverviewPreviews?.[project.id]}
+        project={project}
+        renderRows={renderRows}
+      />
     )
 
     const rows = sortableProjects.map(project => projectRow(project, Row))
