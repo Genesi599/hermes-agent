@@ -17,15 +17,16 @@ import {
 } from '@/components/assistant-ui/thread/content'
 import { MESSAGE_PARTS_COMPONENTS } from '@/components/assistant-ui/thread/message-parts'
 import { ReactionPicker } from '@/components/assistant-ui/thread/message-reactions'
+import { SpeakerChip } from '@/components/assistant-ui/thread/speaker-chip'
 import { ResponseLoadingIndicator, StreamStallIndicator } from '@/components/assistant-ui/thread/status'
 import { formatMessageTimestamp } from '@/components/assistant-ui/thread/timestamp'
 import { useMessageReactions, useTapbackDoubleClick } from '@/components/assistant-ui/thread/use-message-reactions'
 import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button'
 import { PreviewAttachment } from '@/components/chat/preview-attachment'
-import { SCAFFOLD_LABEL_CLASS } from '@/components/chat/scaffold-row'
 import { Codicon } from '@/components/ui/codicon'
 import { CopyButton } from '@/components/ui/copy-button'
 import { useI18n } from '@/i18n'
+import { DEFAULT_AGENT_SPEAKER } from '@/lib/chat-identity'
 import { triggerHaptic } from '@/lib/haptics'
 import { AudioLines, GitForkIcon, Loader2Icon, RefreshCwIcon, SmilePlusIcon, VolumeXIcon, XIcon } from '@/lib/icons'
 import { extractPreviewTargets } from '@/lib/preview-targets'
@@ -72,19 +73,20 @@ export const AssistantMessage: FC<{
   // ChatMessage.interim).
   const isInterim = useAuiState(s => s.message.metadata?.custom?.interim === true)
 
-  // Speaker chip: only replies written by a *named* producer carry one, so a
-  // shared transcript (cron steward / branch worker / main chat) shows who
-  // spoke. A stable string-or-undefined, so it adds no streaming re-renders.
+  // Speaker chip: every reply says who wrote it. A named producer (cron
+  // steward / branch worker) stamps its own label; anything else is the main
+  // assistant. Both selectors return a stable string, so they add no
+  // streaming re-renders.
   const agentLabel = useAuiState(s => {
     const agent = s.message.metadata?.custom?.agent
 
-    return typeof agent === 'string' && agent ? agent : undefined
+    return typeof agent === 'string' && agent ? agent : DEFAULT_AGENT_SPEAKER.name
   })
 
   const agentAvatar = useAuiState(s => {
     const avatar = s.message.metadata?.custom?.agentAvatar
 
-    return typeof avatar === 'string' && avatar ? avatar : undefined
+    return typeof avatar === 'string' && avatar ? avatar : DEFAULT_AGENT_SPEAKER.avatar
   })
 
   // The thinking/stall indicator belongs to the TAIL of the thread, period. A
@@ -146,18 +148,7 @@ export const AssistantMessage: FC<{
         data-slot="aui_assistant-message-content"
       >
         {/* Todos render in the composer status stack now, not inline. */}
-        {agentLabel ? (
-          <div className="mb-1 flex items-center gap-1.5" data-slot="aui_assistant-agent-label">
-            <span
-              aria-hidden="true"
-              className="inline-grid size-4 shrink-0 place-items-center rounded-full bg-(--ui-bg-tertiary) text-[0.625rem] leading-none text-(--ui-text-secondary)"
-              data-slot="aui_assistant-agent-avatar"
-            >
-              {agentAvatar ?? agentLabel.charAt(0)}
-            </span>
-            <span className={`${SCAFFOLD_LABEL_CLASS} font-medium`}>{agentLabel}</span>
-          </div>
-        ) : null}
+        <SpeakerChip avatar={agentAvatar} name={agentLabel} />
         <MessagePrimitive.Parts components={MESSAGE_PARTS_COMPONENTS} />
         {isLastMessage && (isPlaceholder ? <ResponseLoadingIndicator /> : isRunning && <StreamStallIndicator />)}
         {previewTargets.length > 0 && (

@@ -4,12 +4,14 @@ import { type FC, type ReactNode, useCallback, useRef, useState } from 'react'
 import { DirectiveContent } from '@/components/assistant-ui/directive-text'
 import { messageAttachmentRefs, messageContentText } from '@/components/assistant-ui/thread/content'
 import { ReactionBadge, ReactionPicker } from '@/components/assistant-ui/thread/message-reactions'
+import { SpeakerChip } from '@/components/assistant-ui/thread/speaker-chip'
 import { type RestoreMessageTarget } from '@/components/assistant-ui/thread/types'
 import { useMessageReactions } from '@/components/assistant-ui/thread/use-message-reactions'
 import { UserMessageText } from '@/components/assistant-ui/thread/user-message-text'
 import { Codicon } from '@/components/ui/codicon'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { useI18n } from '@/i18n'
+import { USER_SPEAKER } from '@/lib/chat-identity'
 import { triggerHaptic } from '@/lib/haptics'
 import { StopFilled } from '@/lib/icons'
 import { cn } from '@/lib/utils'
@@ -275,6 +277,9 @@ export const UserMessage: FC<{
         }
         messageId={messageId}
       >
+        {/* The person is a speaker too — same chip the assistant bubble
+            carries, so the transcript reads like a group chat. */}
+        <SpeakerChip avatar={USER_SPEAKER.avatar} name={USER_SPEAKER.name} />
         <ActionBarPrimitive.Root className="relative w-full max-w-full" data-slot="aui_user-bubble-actions">
           <div className="human-message-with-todos-wrapper flex w-full flex-col gap-0">
             <ReactionPicker
