@@ -74,6 +74,7 @@ import {
   $profileColors,
   $profiles,
   $profileScope,
+  $showProfileRail,
   ALL_PROFILES,
   normalizeProfileKey
 } from '@/store/profile'
@@ -376,6 +377,7 @@ export function ChatSidebar({
   const workingSessionIds = useStore($workingSessionIds)
   const unreadFinishedSessionIds = useStore($unreadFinishedSessionIds)
   const profiles = useStore($profiles)
+  const showProfileRail = useStore($showProfileRail)
   const profileColors = useStore($profileColors)
   const profileScope = useStore($profileScope)
   // Only surface the profile switcher when more than one profile exists, so
@@ -1568,9 +1570,9 @@ export function ChatSidebar({
                 label={s.results}
                 onArchiveSession={onArchiveSession}
                 onBranchSession={onBranchSession}
-                onDuplicateSession={onDuplicateSession}
                 onCreateBranchesSession={openBranchBatchForSession}
                 onDeleteSession={onDeleteSession}
+                onDuplicateSession={onDuplicateSession}
                 onMergeChildrenSession={onMergeChildrenSession}
                 onMergeSession={onMergeSession}
                 onResumeSession={onResumeSession}
@@ -1594,9 +1596,9 @@ export function ChatSidebar({
                   label={s.running}
                   onArchiveSession={onArchiveSession}
                   onBranchSession={onBranchSession}
-                  onDuplicateSession={onDuplicateSession}
                   onCreateBranchesSession={openBranchBatchForSession}
                   onDeleteSession={onDeleteSession}
+                  onDuplicateSession={onDuplicateSession}
                   onMergeChildrenSession={onMergeChildrenSession}
                   onMergeSession={onMergeSession}
                   onResumeSession={onResumeSession}
@@ -1621,9 +1623,9 @@ export function ChatSidebar({
                 label={s.pinned}
                 onArchiveSession={onArchiveSession}
                 onBranchSession={onBranchSession}
-                onDuplicateSession={onDuplicateSession}
                 onCreateBranchesSession={openBranchBatchForSession}
                 onDeleteSession={onDeleteSession}
+                onDuplicateSession={onDuplicateSession}
                 onMergeChildrenSession={onMergeChildrenSession}
                 onMergeSession={onMergeSession}
                 onReorderSessions={reorderPinned}
@@ -1776,9 +1778,9 @@ export function ChatSidebar({
                 manualOrderIds={agentOrderManual ? agentOrderIds : sortOrderIds}
                 onArchiveSession={onArchiveSession}
                 onBranchSession={onBranchSession}
-                onDuplicateSession={onDuplicateSession}
                 onCreateBranchesSession={openBranchBatchForSession}
                 onDeleteSession={onDeleteSession}
+                onDuplicateSession={onDuplicateSession}
                 onEnterProject={onEnterProject}
                 onMergeChildrenSession={onMergeChildrenSession}
                 onMergeSession={onMergeSession}
@@ -1869,9 +1871,11 @@ export function ChatSidebar({
 
         {!showSessionSections && <SidebarBlankState onNewProject={openProjectCreate} />}
 
-        <div className="shrink-0 px-0.5 pb-1 pt-0.5">
-          <ProfileRail />
-        </div>
+        {showProfileRail ? (
+          <div className="shrink-0 px-0.5 pb-1 pt-0.5">
+            <ProfileRail />
+          </div>
+        ) : null}
       </SidebarContent>
       <ProjectDialog />
       {/* One mount for the whole app. The header of WorktreeDialog tells why. */}

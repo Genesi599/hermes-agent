@@ -321,6 +321,15 @@ export const $showAllProfiles = atom<boolean>(storedBoolean(SHOW_ALL_PROFILES_ST
 
 $showAllProfiles.subscribe(value => persistBoolean(SHOW_ALL_PROFILES_STORAGE_KEY, value))
 
+const SHOW_PROFILE_RAIL_STORAGE_KEY = 'hermes.desktop.showProfileRail'
+
+// The bottom profile rail (profile squares + manage/create). Off by default in
+// this build: agents are reached by clicking them in a conversation's roster,
+// so the rail is clutter — kept as an opt-in for profile administration.
+export const $showProfileRail = atom<boolean>(storedBoolean(SHOW_PROFILE_RAIL_STORAGE_KEY, false))
+
+$showProfileRail.subscribe(value => persistBoolean(SHOW_PROFILE_RAIL_STORAGE_KEY, value))
+
 // The profile context the sidebar is currently showing: a concrete profile key,
 // or ALL_PROFILES for the unified grouped view. Concrete scope is tied to the
 // gateway so opening/selecting a profile (which swaps the gateway) moves the
