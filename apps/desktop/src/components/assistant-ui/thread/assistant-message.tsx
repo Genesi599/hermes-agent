@@ -81,6 +81,12 @@ export const AssistantMessage: FC<{
     return typeof agent === 'string' && agent ? agent : undefined
   })
 
+  const agentAvatar = useAuiState(s => {
+    const avatar = s.message.metadata?.custom?.agentAvatar
+
+    return typeof avatar === 'string' && avatar ? avatar : undefined
+  })
+
   // The thinking/stall indicator belongs to the TAIL of the thread, period. A
   // stale pending bubble mid-transcript (a turn that ended without its settle
   // event, a steer race) must never show one — a spinner above a later user
@@ -141,7 +147,14 @@ export const AssistantMessage: FC<{
       >
         {/* Todos render in the composer status stack now, not inline. */}
         {agentLabel ? (
-          <div className="mb-0.5 flex items-center gap-1.5" data-slot="aui_assistant-agent-label">
+          <div className="mb-1 flex items-center gap-1.5" data-slot="aui_assistant-agent-label">
+            <span
+              aria-hidden="true"
+              className="inline-grid size-4 shrink-0 place-items-center rounded-full bg-(--ui-bg-tertiary) text-[0.625rem] leading-none text-(--ui-text-secondary)"
+              data-slot="aui_assistant-agent-avatar"
+            >
+              {agentAvatar ?? agentLabel.charAt(0)}
+            </span>
             <span className={`${SCAFFOLD_LABEL_CLASS} font-medium`}>{agentLabel}</span>
           </div>
         ) : null}

@@ -1272,7 +1272,30 @@ describe('named-producer replies (agent_message)', () => {
     ])
 
     expect(messages[0]?.agent).toBe('管家')
+    expect(messages[0]?.agentAvatar).toBeUndefined()
     expect(messages[0]?.role).toBe('assistant')
+  })
+
+  it('carries an optional avatar glyph, and ignores a non-string one', () => {
+    const messages = toChatMessages([
+      {
+        role: 'assistant',
+        content: '有头像',
+        display_kind: 'agent_message',
+        display_metadata: JSON.stringify({ agent: '管家', agent_avatar: '🎩' }),
+        timestamp: 1
+      },
+      {
+        role: 'assistant',
+        content: '头像不是字符串',
+        display_kind: 'agent_message',
+        display_metadata: JSON.stringify({ agent: '管家', agent_avatar: 7 }),
+        timestamp: 2
+      }
+    ])
+
+    expect(messages[0]?.agentAvatar).toBe('🎩')
+    expect(messages[1]?.agentAvatar).toBeUndefined()
   })
 
   it('keeps the reply text and assistant role untouched', () => {
@@ -1281,7 +1304,7 @@ describe('named-producer replies (agent_message)', () => {
         role: 'assistant',
         content: '提醒正文',
         display_kind: 'agent_message',
-        display_metadata: { agent: '管家' },
+        display_metadata: JSON.stringify({ agent: '管家' }),
         timestamp: 1
       }
     ])
@@ -1297,7 +1320,7 @@ describe('named-producer replies (agent_message)', () => {
         role: 'assistant',
         content: 'blank',
         display_kind: 'agent_message',
-        display_metadata: { agent: '' },
+        display_metadata: JSON.stringify({ agent: '' }),
         timestamp: 2
       },
       {
@@ -1307,7 +1330,13 @@ describe('named-producer replies (agent_message)', () => {
         display_metadata: '{not json',
         timestamp: 3
       },
-      { role: 'assistant', content: 'not a string', display_kind: 'agent_message', display_metadata: { agent: 42 }, timestamp: 4 }
+      {
+        role: 'assistant',
+        content: 'not a string',
+        display_kind: 'agent_message',
+        display_metadata: JSON.stringify({ agent: 42 }),
+        timestamp: 4
+      }
     ])
 
     expect(messages.map(message => message.agent)).toEqual([undefined, undefined, undefined, undefined])

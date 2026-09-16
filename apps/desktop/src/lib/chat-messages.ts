@@ -31,6 +31,9 @@ export type ChatMessage = {
    *  cron steward, branch workers, the main chat — and `role: 'assistant'`
    *  alone cannot tell them apart, so the label rides the message. */
   agent?: string
+  /** Optional avatar glyph for that producer (an emoji, or a short monogram).
+   *  Falls back to the label's first character when absent. */
+  agentAvatar?: string
   /** Composer attachment ref strings (`@file:...`, `@image:...`) sent with this user message. */
   attachmentRefs?: string[]
   /** Durable backend `messages.id`. Absent until the row is persisted. */
@@ -1136,6 +1139,9 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
     const agentLabel =
       message.display_kind === 'agent_message' ? parseDisplayMetadata(message.display_metadata)?.agent : undefined
 
+    const agentAvatar =
+      message.display_kind === 'agent_message' ? parseDisplayMetadata(message.display_metadata)?.agent_avatar : undefined
+
     result.push({
       id: `${message.timestamp || Date.now()}-${index}-${displayRole}`,
       role: displayRole,
@@ -1143,6 +1149,7 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
       timestamp: message.timestamp,
       ...(rowId !== undefined ? { rowId } : {}),
       ...(typeof agentLabel === 'string' && agentLabel ? { agent: agentLabel } : {}),
+      ...(typeof agentAvatar === 'string' && agentAvatar ? { agentAvatar } : {}),
       ...(reactions.length ? { reactions } : {}),
       ...(extractedAttachmentRefs ? { attachmentRefs: extractedAttachmentRefs } : {}),
       ...(taskStatus ? { taskStatus } : {})

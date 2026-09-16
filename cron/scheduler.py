@@ -3870,15 +3870,19 @@ def run_job(
                 # Match on the raw DB text: ``final_response`` above is stripped
                 # for delivery, and the stored row keeps its original bytes.
                 agent_label = str(job.get("agent_label") or "").strip()
+                agent_avatar = str(job.get("agent_avatar") or "").strip()
                 raw_response = str(result.get("final_response") or "")
                 if agent_label and raw_response:
+                    metadata = {"agent": agent_label}
+                    if agent_avatar:
+                        metadata["agent_avatar"] = agent_avatar
                     try:
                         _session_db.set_latest_matching_message_display_kind(
                             _target_session_id,
                             role="assistant",
                             content=raw_response,
                             display_kind="agent_message",
-                            display_metadata={"agent": agent_label},
+                            display_metadata=metadata,
                         )
                     except Exception:
                         logger.debug(
