@@ -2,6 +2,7 @@ import { useStore } from '@nanostores/react'
 import { memo } from 'react'
 
 import { listAllProfileSessions } from '@/hermes'
+import { DEFAULT_AGENT_SPEAKER } from '@/lib/chat-identity'
 import { agentsForSession } from '@/lib/session-agents'
 import { $cronJobs } from '@/store/cron'
 import { ensureGatewayProfile } from '@/store/profile'
@@ -73,6 +74,22 @@ function AgentRosterImpl({
 
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pb-1.5 pl-8 pr-2" data-slot="sidebar-session-agents">
+      {/* The conversation's own agent: every session in the main profile is
+          Hermes's, so it is a participant — shown first, not clickable (this
+          row IS its conversation). */}
+      <span
+        className="flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-[0.625rem] leading-4 text-(--ui-text-tertiary)"
+        data-agent={DEFAULT_AGENT_SPEAKER.name}
+        title={`本对话由 ${DEFAULT_AGENT_SPEAKER.name} 主持`}
+      >
+        <span
+          aria-hidden="true"
+          className="inline-grid size-3.5 shrink-0 place-items-center overflow-hidden rounded-full bg-(--ui-bg-tertiary) text-[0.5rem] leading-none"
+        >
+          <img alt="" className="size-full object-cover" src={DEFAULT_AGENT_SPEAKER.avatarImage} />
+        </span>
+        <span className="truncate">{DEFAULT_AGENT_SPEAKER.name}</span>
+      </span>
       {agents.map(agent => (
         <button
           className="flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-[0.625rem] leading-4 text-(--ui-text-tertiary) transition-colors hover:bg-(--ui-control-active-background) hover:text-foreground"
