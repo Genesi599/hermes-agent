@@ -30,7 +30,16 @@
   剔 `{"output"` 与 `[System:`/compaction 前缀）、**把历史人类消息直接盖成已路由**（否则看门狗会把
   陈年消息全派一遍）。实测：星阶 805 条 → 导入 **210 条**（142 agent / 68 human；说话人 Hermes 122、
   杨航 68、管家 18、流程搭档 2），跳过 609 条。
-- [~] **切片 4（桌面频道面板）——代码写完、已出包部署，但还没点亮**：
+- [x] **切片 4（桌面频道面板）——完成并实测点亮（2026-09-17）**：
+  **根因**：我把 `include_router(channels)` 追加在 `web_server.py` **文件末尾**，而 `mount_spa(app)`
+  在那之前（17915 行）就注册了 SPA/headless 的兜底 `@application.get("/{full_path:path}")`；
+  Starlette 按注册顺序匹配 → `/api/channels` 永远落进兜底（那句 "Headless backend … web UI disabled" 的 404）。
+  这同时解释了：为什么 `/api/skills`、`/api/cron/jobs`（注册更早）正常而我 404，以及
+  "走桥拿 openapi 却看得到这些路由"（openapi 是完整 app 视角，与匹配顺序无关）。
+  **修法**：注册移到 `mount_spa(app)` 之前。**实测**：桥 GET `/api/channels` → `星阶:212` ✓；
+  随后 ChannelView 在星阶那一面渲染成功（200 行、说话人 杨航/Hermes/管家/流程搭档、输入框在位）。
+  **临时镜像桥已拆**：投递现在只写频道、stdout 0 字节（群聊那一轮 turn 彻底消失，实测）。
+  历史记录（保留作教训）：
   `lib/channels.ts`（频道 API 客户端）+ `components/chat/channel-view.tsx`（房间视图：按行渲染、
   每行 SpeakerChip、底部输入框 POST 一行不跑 turn、5s 轮询）+ `app/chat/index.tsx` 接线
   （会话标题对应的项目有频道时，该面渲染房间取代转写+聊天输入框）+ i18n 三处。
