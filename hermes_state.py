@@ -19,6 +19,7 @@ import atexit
 import errno
 import hashlib
 import json
+import uuid
 import logging
 import os
 import queue
@@ -126,6 +127,26 @@ def resolved_max_export_messages() -> int:
     return _configured_transcript_limit(
         "max_export_messages", MAX_SAFE_EXPORT_MESSAGES
     )
+
+
+def _purge_compacted_enabled() -> bool:
+    """custom/hermes-yh: hard-delete pre-compaction turns once summarized.
+
+    Reads ``compression.purge_compacted`` from config.yaml lazily (same
+    pattern as :func:`_configured_transcript_limit`). Upstream default keeps
+    the soft-archived rows on disk for search/recovery (#38763); this fork
+    option DELETEs them instead — the summarized turns are model-invisible
+    and the user opted out of durable retention. The messages_fts* triggers
+    drop the index rows on DELETE; rewind/undo rows (compacted=0) and the
+    freshly inserted summary rows are untouched.
+    """
+    try:
+        from hermes_cli.config import load_config_readonly
+
+        comp_cfg = load_config_readonly().get("compression") or {}
+        return bool(comp_cfg.get("purge_compacted", False))
+    except Exception:
+        return False
 
 
 class SessionResumeTooLargeError(ValueError):
@@ -8274,6 +8295,160 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
             return value
         return json.dumps(value)
 
+    # ── Channels: the group chat as a FIRST-CLASS ENTITY ────────────────────
+    #
+    # A channel is where agents and the human exchange information. It is NOT a
+    # session: there is no `sessions` row, so the session list, unread marks,
+    # compaction and search machinery never see it, and its messages live in
+    # their own table (`messages.session_id` is a FK to `sessions`, so reusing
+    # that one is impossible by design). Everything here touches only the two
+    # channel tables.
+
+    def get_or_create_channel(self, project: str, title: str = "") -> str:
+        """Id of the channel for `project`, created on first use.
+
+        Keyed by project: a project has ONE room, and the project name is
+        already its identity everywhere else (board directory, dispatch).
+        """
+        name = (project or "").strip()
+        if not name:
+            raise ValueError("channel project is required")
+
+        existing = self.get_channel_for_project(name)
+        if existing:
+            return str(existing["id"])
+
+        channel_id = "ch_" + uuid.uuid4().hex[:12]
+        now = time.time()
+        display_title = (title or name).strip()
+
+        def _do(conn):
+            conn.execute(
+                "INSERT INTO channels (id, project, title, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (channel_id, name, display_title, now, now),
+            )
+
+        self._execute_write(_do)
+
+        return channel_id
+
+    def get_channel_for_project(self, project: str) -> Optional[Dict[str, Any]]:
+        with self._read_ctx() as conn:
+            row = conn.execute(
+                "SELECT * FROM channels WHERE project = ? ORDER BY created_at LIMIT 1",
+                ((project or "").strip(),),
+            ).fetchone()
+
+        return dict(row) if row else None
+
+    def list_channels(self, project: Optional[str] = None) -> List[Dict[str, Any]]:
+        with self._read_ctx() as conn:
+            if project:
+                rows = conn.execute(
+                    "SELECT * FROM channels WHERE project = ? ORDER BY updated_at DESC",
+                    (project.strip(),),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM channels ORDER BY updated_at DESC"
+                ).fetchall()
+
+        return [dict(row) for row in rows]
+
+    def append_channel_message(
+        self,
+        channel_id: str,
+        content: str,
+        author_kind: str = "agent",
+        author_label: Optional[str] = None,
+        author_avatar: Optional[str] = None,
+        role: str = "assistant",
+        display_kind: Optional[str] = "agent_message",
+        display_metadata: Optional[Dict[str, Any]] = None,
+        timestamp: Any = None,
+    ) -> int:
+        """Post one line into a channel.
+
+        No turn, no session, no model: a channel message is what someone SAID,
+        recorded as said. `author_kind` is 'human' | 'agent' | 'system', and
+        `role` keeps the transcript role the renderer already understands.
+        """
+        body = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
+        meta_json = self._encode_display_metadata(display_metadata)
+        when = time.time()
+        if timestamp is not None:
+            try:
+                when = float(timestamp.timestamp()) if hasattr(timestamp, "timestamp") else float(timestamp)
+            except (TypeError, ValueError):
+                pass
+
+        def _do(conn):
+            cursor = conn.execute(
+                "INSERT INTO channel_messages "
+                "(channel_id, role, author_kind, author_label, author_avatar, content, "
+                " display_kind, display_metadata, timestamp) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (channel_id, role, author_kind, author_label, author_avatar, body,
+                 display_kind, meta_json, when),
+            )
+            message_id = int(cursor.lastrowid or 0)
+            conn.execute(
+                "UPDATE channels SET message_count = message_count + 1, updated_at = ? "
+                "WHERE id = ?",
+                (when, channel_id),
+            )
+            return message_id
+
+        return self._execute_write(_do)
+
+    def get_channel_messages(
+        self,
+        channel_id: str,
+        limit: int = 200,
+        before: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """Channel messages in insertion order; `before` pages backwards."""
+        sql = "SELECT * FROM channel_messages WHERE channel_id = ?"
+        params: List[Any] = [channel_id]
+        if before is not None:
+            sql += " AND id < ?"
+            params.append(int(before))
+        sql += " ORDER BY id DESC LIMIT ?"
+        params.append(int(limit))
+
+        with self._read_ctx() as conn:
+            rows = conn.execute(sql, params).fetchall()
+
+        out: List[Dict[str, Any]] = []
+        for row in reversed(rows):
+            message = dict(row)
+            if message.get("display_metadata") is not None:
+                message["display_metadata"] = self._decode_display_metadata(message["display_metadata"])
+            out.append(message)
+
+        return out
+
+    def pending_channel_messages(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """Human lines nobody has routed yet — the router watchdog's work list."""
+        with self._read_ctx() as conn:
+            rows = conn.execute(
+                "SELECT * FROM channel_messages WHERE author_kind = 'human' "
+                "AND routed_at IS NULL ORDER BY id LIMIT ?",
+                (int(limit),),
+            ).fetchall()
+
+        return [dict(row) for row in rows]
+
+    def mark_channel_message_routed(self, message_id: int) -> None:
+        def _do(conn):
+            conn.execute(
+                "UPDATE channel_messages SET routed_at = ? WHERE id = ?",
+                (time.time(), int(message_id)),
+            )
+
+        self._execute_write(_do)
+
     def append_message(
         self,
         session_id: str,
@@ -8953,6 +9128,10 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
         matching what the live load returns. ``model_config_patch`` is merged
         into the session's JSON config in the same transaction; a ``None``
         value removes that key. Returns the new active count.
+
+        custom/hermes-yh: when ``compression.purge_compacted`` is enabled the
+        soft-archived pre-compaction rows are DELETEd in the same transaction
+        (see :func:`_purge_compacted_enabled`) instead of being retained.
         """
 
         def _do(conn):
@@ -8980,6 +9159,26 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
             inserted, tool_calls_total = self._insert_message_rows(
                 conn, session_id, compacted_messages
             )
+            if _purge_compacted_enabled():
+                # custom/hermes-yh (compression.purge_compacted): the archived
+                # turns were summarized away — model-invisible by design. The
+                # user opted out of durable retention, so DELETE them (the
+                # messages_fts* triggers drop the index rows) instead of
+                # keeping active=0/compacted=1 rows on disk. Rewind/undo rows
+                # (compacted=0) and the freshly inserted summary set above are
+                # not affected.
+                purged_cur = conn.execute(
+                    "DELETE FROM messages WHERE session_id = ? AND compacted = 1",
+                    (session_id,),
+                )
+                purged_rows = purged_cur.rowcount or 0
+                if purged_rows:
+                    logger.info(
+                        "purge_compacted: deleted %s archived pre-compaction "
+                        "message rows for session %s",
+                        purged_rows,
+                        session_id,
+                    )
             # message_count / tool_call_count reflect the LIVE (active) set —
             # the archived rows are still on disk but not part of the live count.
             if model_config_patch is None:
