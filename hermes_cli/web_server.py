@@ -17912,6 +17912,12 @@ _mount_plugin_api_routes()
 from hermes_cli.dashboard_auth.routes import router as _dashboard_auth_router  # noqa: E402
 app.include_router(_dashboard_auth_router)
 
+from hermes_cli.web_routers import channels as _channels_routes  # noqa: E402
+
+# Channels must be registered BEFORE mount_spa(): the SPA/headless catch-all it
+# adds is a `/{full_path:path}` GET, and Starlette matches in registration order.
+app.include_router(_channels_routes.router)
+
 mount_spa(app)
 
 
@@ -18410,7 +18416,3 @@ def start_server(
         _runner(_serve(), loop_factory=_loop_factory)
     else:
         asyncio.run(_serve())
-
-from hermes_cli.web_routers import channels as _channels_routes  # noqa: E402
-
-app.include_router(_channels_routes.router)
