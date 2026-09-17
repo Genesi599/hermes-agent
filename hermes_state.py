@@ -8342,6 +8342,14 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
 
         return dict(row) if row else None
 
+    def get_channel(self, channel_id: str) -> Optional[Dict[str, Any]]:
+        with self._read_ctx() as conn:
+            row = conn.execute(
+                "SELECT * FROM channels WHERE id = ?", (channel_id,)
+            ).fetchone()
+
+        return dict(row) if row else None
+
     def list_channels(self, project: Optional[str] = None) -> List[Dict[str, Any]]:
         with self._read_ctx() as conn:
             if project:

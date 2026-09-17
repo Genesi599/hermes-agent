@@ -18410,3 +18410,7 @@ def start_server(
         _runner(_serve(), loop_factory=_loop_factory)
     else:
         asyncio.run(_serve())
+
+from hermes_cli.web_routers import channels as _channels_routes  # noqa: E402
+
+app.include_router(_channels_routes.router)
