@@ -437,6 +437,33 @@ CREATE INDEX IF NOT EXISTS idx_branch_batches_parent
     ON branch_batches(parent_session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_branch_runs_status
     ON branch_runs(batch_id, status, updated_at);
+
+CREATE TABLE IF NOT EXISTS channels (
+    id TEXT PRIMARY KEY,
+    project TEXT NOT NULL,
+    title TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    message_count INTEGER NOT NULL DEFAULT 0,
+    last_routed_message_id INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS channel_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    author_kind TEXT NOT NULL,
+    author_label TEXT,
+    author_avatar TEXT,
+    content TEXT NOT NULL,
+    display_kind TEXT,
+    display_metadata TEXT,
+    timestamp REAL NOT NULL,
+    routed_at REAL
+);
+
+CREATE INDEX IF NOT EXISTS idx_channel_messages_channel
+    ON channel_messages(channel_id, id);
 """
 
 
