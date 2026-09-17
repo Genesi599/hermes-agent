@@ -8,9 +8,11 @@ export interface SessionAgent {
   profile?: string
 }
 
-// `agent_label` / `agent_avatar` / `agent_profile` are emitted by the cron API
-// for producer-labelled jobs but are not (yet) on the shared `CronJob` type,
-// so read them structurally instead of widening a type this file does not own.
+// `attach_to_session` / `target_session_id` / `agent_label` / `agent_avatar` /
+// `agent_profile` are emitted by the cron API for producer-labelled jobs, but
+// whether they are on the shared `CronJob` type depends on what else is
+// in flight in this repo — so read them structurally rather than depending on
+// a type this file does not own.
 function str(source: unknown, key: string): string {
   if (!source || typeof source !== 'object') {
     return ''
@@ -19,6 +21,14 @@ function str(source: unknown, key: string): string {
   const value = (source as Record<string, unknown>)[key]
 
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function flag(source: unknown, key: string): boolean {
+  if (!source || typeof source !== 'object') {
+    return false
+  }
+
+  return (source as Record<string, unknown>)[key] === true
 }
 
 /**
@@ -40,7 +50,7 @@ export function agentsForSession(jobs: CronJob[] | undefined, sessionId: string 
   const seen = new Set<string>()
 
   for (const job of jobs) {
-    if (!job?.attach_to_session) {
+    if (!flag(job, 'attach_to_session')) {
       continue
     }
 

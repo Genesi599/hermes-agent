@@ -12,21 +12,24 @@ import { cn } from '@/lib/utils'
 import { $sessions, sessionMatchesStoredId } from '@/store/session'
 
 /**
- * CONVERSATION BOARD — the conversation's shared blackboard, embedded in the
- * chat surface itself.
+ * CONVERSATION BOARD — the conversation's shared blackboard, as a rail BESIDE
+ * the chat.
  *
  * A conversation IS its project, and the project's board lives at
  * `<user home>/hermes_board/<conversation title>/`: `state.md` is what is in
  * flight, `decisions.md` is what has been settled. Hermes maintains both.
  *
- * The board renders INSIDE the conversation, directly above the transcript —
- * not in the preview rail. It is the room the group chat is talking in, so it
- * has to read as one surface with the messages below it; a preview tab is a
- * second place to look and closes independently of the chat it belongs to.
+ * The board is a PEER of the transcript, not a card inside it: a second column
+ * on the right, full height of the chat area, separated by a border — the same
+ * column the chat occupies, next to it. Two surfaces at one level, so reading
+ * the room and reading the talk never fight over the same scroll. It is a
+ * container query on the pane, NOT a primary-surface privilege: sessions open
+ * as tiles, and a tile that is too narrow to hold a second column drops the
+ * rail rather than crushing the transcript.
  *
  * Resolution is by TITLE, not by session id: the board is a property of the
  * project, and the title is what names the project. A conversation with no
- * board directory renders NOTHING — no placeholder, no border — so an ordinary
+ * board directory renders NOTHING — no empty rail, no border — so an ordinary
  * chat pays only a failed stat, at a slow cadence that still picks up a board
  * created later (a project promoted to a shared conversation) without a reload.
  */
@@ -58,7 +61,7 @@ const ABSENT: BoardContent = { present: false, text: '' }
 const $collapsedBoards = persistentAtom<Record<string, boolean>>('hermes.desktop.boardCollapsed.v1', {})
 
 /** The Electron bridge is async but the home directory never changes, and the
- *  panel mounts per conversation switch — resolve it once per window. */
+ *  rail mounts per conversation switch — resolve it once per window. */
 let homePromise: null | Promise<string> = null
 
 function userHome(): Promise<string> {
@@ -92,16 +95,15 @@ async function readBoard(path: string): Promise<BoardContent> {
 }
 
 export interface ConversationBoardProps {
-  className?: string
   storedSessionId: null | string
 }
 
-export function ConversationBoard({ className, storedSessionId }: ConversationBoardProps) {
+export function ConversationBoard({ storedSessionId }: ConversationBoardProps) {
   const { t } = useI18n()
   const copy = t.assistant.board
 
   // Scalar selector: the session list republishes on every status poll, and
-  // this panel only cares which conversation is open.
+  // this rail only cares which conversation is open.
   const title = useStoreSelector($sessions, sessions => {
     const row = storedSessionId ? sessions.find(session => sessionMatchesStoredId(session, storedSessionId)) : undefined
 
@@ -163,71 +165,85 @@ export function ConversationBoard({ className, storedSessionId }: ConversationBo
 
   const toggle = () => $collapsedBoards.set({ ...$collapsedBoards.get(), [title]: !collapsed })
 
-  return (
-    <section
-      className={cn(
-        'mx-3 mt-2 shrink-0 overflow-hidden rounded-lg border border-(--ui-stroke-tertiary) bg-card/60 shadow-sm',
-        className
-      )}
-      data-slot="conversation-board"
-    >
-      <div className="flex h-8 items-center gap-1 px-2">
+  if (collapsed) {
+    return (
+      <div
+        className="hidden h-full w-9 shrink-0 flex-col items-center border-l border-(--ui-stroke-tertiary) bg-(--ui-chat-surface-background) @4xl:flex"
+        data-slot="conversation-board"
+      >
         <button
-          aria-expanded={!collapsed}
-          className="flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors hover:bg-muted/60"
+          aria-label={copy.expand}
+          className="mt-2 grid size-7 place-items-center rounded text-(--ui-text-tertiary) hover:bg-(--ui-hover-overlay) hover:text-(--ui-text-secondary)"
           onClick={toggle}
-          title={collapsed ? copy.expand : copy.collapse}
+          title={copy.expand}
           type="button"
         >
-          <Codicon
-            className="shrink-0 text-(--ui-text-quaternary)"
-            name={collapsed ? 'chevron-right' : 'chevron-down'}
-            size="0.75rem"
-          />
-          <Codicon className="shrink-0 text-(--ui-text-tertiary)" name="project" size="0.75rem" />
-          <span className="shrink-0 text-[0.72rem] font-medium text-foreground">{copy.title}</span>
-          <span className="truncate text-[0.72rem] text-muted-foreground">{title}</span>
+          <Codicon name="project" size="0.875rem" />
         </button>
+        <span
+          className="mt-2 [writing-mode:vertical-rl] text-[0.625rem] font-semibold uppercase tracking-widest text-(--ui-text-tertiary)"
+          style={{ transform: 'rotate(180deg)' }}
+        >
+          {copy.title}
+        </span>
+      </div>
+    )
+  }
 
-        <div className="ml-1 flex shrink-0 items-center gap-0.5" role="tablist">
-          {BOARD_FILES.map(key => (
-            <button
-              aria-selected={file === key}
-              className={cn(
-                'rounded px-1.5 py-0.5 text-[0.68rem] transition-colors',
-                file === key
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-              )}
-              key={key}
-              onClick={() => setFile(key)}
-              role="tab"
-              type="button"
-            >
-              {copy[key]}
-            </button>
-          ))}
-        </div>
-
-        <Tip label={copy.owner}>
-          <span className="ml-auto shrink-0 pr-1 text-[0.62rem] uppercase tracking-[0.08em] text-(--ui-text-quaternary)">
-            {copy.owner}
-          </span>
+  return (
+    <aside
+      className="hidden h-full w-80 shrink-0 flex-col overflow-hidden border-l border-(--ui-stroke-tertiary) bg-(--ui-chat-surface-background) @4xl:flex"
+      data-slot="conversation-board"
+    >
+      <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-(--ui-stroke-tertiary) px-3">
+        <Codicon className="shrink-0 text-(--ui-text-tertiary)" name="project" size="0.875rem" />
+        <span className="shrink-0 text-[0.6875rem] font-semibold text-(--ui-text-secondary)">{copy.title}</span>
+        <span className="min-w-0 truncate text-[0.6875rem] text-(--ui-text-tertiary)">{title}</span>
+        <Tip label={copy.collapse}>
+          <button
+            aria-label={copy.collapse}
+            className="ml-auto grid size-6 shrink-0 place-items-center rounded text-(--ui-text-tertiary) hover:bg-(--ui-hover-overlay) hover:text-(--ui-text-secondary)"
+            onClick={toggle}
+            type="button"
+          >
+            <Codicon name="chevron-right" size="0.875rem" />
+          </button>
         </Tip>
       </div>
 
-      {!collapsed && (
-        <div
-          className="max-h-[34vh] overflow-auto border-t border-(--ui-stroke-tertiary) px-3 py-2"
-          data-selectable-text="true"
-        >
-          {content.text.trim() ? (
-            <CompactMarkdown className="text-foreground/90" text={content.text} />
-          ) : (
-            <p className="text-[0.7rem] italic text-muted-foreground">{copy.empty}</p>
-          )}
-        </div>
-      )}
-    </section>
+      <div
+        className="flex h-8 shrink-0 items-center gap-0.5 border-b border-(--ui-stroke-tertiary) px-2"
+        role="tablist"
+      >
+        {BOARD_FILES.map(key => (
+          <button
+            aria-selected={file === key}
+            className={cn(
+              'rounded px-1.5 py-0.5 text-[0.6875rem] transition-colors',
+              file === key
+                ? 'bg-muted text-foreground'
+                : 'text-(--ui-text-tertiary) hover:bg-(--ui-hover-overlay) hover:text-(--ui-text-secondary)'
+            )}
+            key={key}
+            onClick={() => setFile(key)}
+            role="tab"
+            type="button"
+          >
+            {copy[key]}
+          </button>
+        ))}
+        <span className="ml-auto shrink-0 pr-1 text-[0.625rem] uppercase tracking-[0.08em] text-(--ui-text-quaternary)">
+          {copy.owner}
+        </span>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3" data-selectable-text="true">
+        {content.text.trim() ? (
+          <CompactMarkdown text={content.text} />
+        ) : (
+          <p className="text-[0.75rem] italic text-(--ui-text-tertiary)">{copy.empty}</p>
+        )}
+      </div>
+    </aside>
   )
 }

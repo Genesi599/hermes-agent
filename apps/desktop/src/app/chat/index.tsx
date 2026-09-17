@@ -43,10 +43,10 @@ import {
   sessionPinId,
   shouldMigrateComposerScope
 } from '@/store/session'
-import { $sessionStates } from '@/store/session-states'
 import { isSessionFamilyPinned } from '@/store/session-pins'
+import { $sessionStates } from '@/store/session-states'
 import { $taskStatusRailEnabled, toggleTaskStatusRail } from '@/store/task-status'
-import { isAuxiliaryWindow, isSecondaryWindow, isWatchWindow } from '@/store/windows'
+import { isAuxiliaryWindow, isWatchWindow } from '@/store/windows'
 import type { ModelOptionsResponse } from '@/types/hermes'
 
 import { primaryRouteSelectedSessionId, routeSessionId } from '../routes'
@@ -435,7 +435,9 @@ export const ChatView = memo(function ChatView({
       ),
     [view.$runtimeId]
   )
+
   const activeSliceStoredId = useStore($activeSliceStoredId)
+
   const activeTranscriptMatchesSelection = ((): boolean => {
     if (!activeSessionId || !selectedSessionId || !activeSliceStoredId) {
       // No runtime yet (cold path clears active before its awaits) or still on
@@ -595,11 +597,6 @@ export const ChatView = memo(function ChatView({
         <ExperienceReviewStatus />
       </div>
 
-      {/* The conversation's own board, when its project keeps one — above the
-          transcript, in this surface, so the room and the talk are one view.
-          Renders nothing at all for a conversation without a board. */}
-      <ConversationBoard storedSessionId={selectedSessionId} />
-
       {/* Mounted for the primary AND every tile, each scoped to its own session
           so a tiled/background session's blocking prompt surfaces instead of
           stalling to timeout. */}
@@ -614,7 +611,7 @@ export const ChatView = memo(function ChatView({
         suppressMessages={routeSessionMismatch || !activeTranscriptMatchesSelection}
       >
         <div
-          className="relative flex min-h-0 max-w-full flex-1 overflow-hidden bg-(--ui-chat-surface-background) contain-[layout_paint]"
+          className="@container relative flex min-h-0 max-w-full flex-1 overflow-hidden bg-(--ui-chat-surface-background) contain-[layout_paint]"
           data-slot="composer-bounds"
           {...dropHandlers}
         >
@@ -666,6 +663,11 @@ export const ChatView = memo(function ChatView({
             <ChatSwapOverlay profile={gatewaySwapTarget} />
           </div>
           <TaskStatusRail />
+          {/* The conversation's own board, when its project keeps one: a PEER
+              column of the transcript on the right, not a card over it. Renders
+              nothing at all for a conversation without a board, and the rail
+              hides itself when the pane is too narrow for a second column. */}
+          <ConversationBoard storedSessionId={selectedSessionId} />
         </div>
         {/* Composer renders OUTSIDE the contain:[layout paint] wrapper above:
             that wrapper is a containing block for — and clips — position:fixed
