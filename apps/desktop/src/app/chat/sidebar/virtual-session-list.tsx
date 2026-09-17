@@ -6,6 +6,7 @@ import { type FC, useCallback, useRef } from 'react'
 
 import type { SessionInfo } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { sessionTitle } from '@/lib/chat-runtime'
 import { type SidebarListRow } from '@/lib/session-date-groups'
 import { sessionBucketLabel } from '@/lib/time'
 import { cn } from '@/lib/utils'
@@ -197,7 +198,7 @@ export const VirtualSessionList: FC<VirtualSessionListProps> = ({
         ) : (
           <SidebarSessionRow {...commonProps} session={session} />
         )}
-        <AgentRoster onOpenSession={onResumeSession} sessionId={session.id} />
+        <AgentRoster onOpenSession={onResumeSession} sessionId={session.id} sessionTitle={sessionTitle(session)} />
       </div>
     )
   })

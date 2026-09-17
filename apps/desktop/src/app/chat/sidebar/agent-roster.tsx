@@ -58,13 +58,45 @@ async function sessionToOpenForAgent(profile: string): Promise<null | string> {
   }
 }
 
+/**
+ * Hermes's OWN conversation in this project: `<conversation> · Hermes`.
+ *
+ * Hermes is a participant in the group chat but its thinking is not the group
+ * chat — the user's rule: the conversation whose name is the project IS the
+ * room everyone speaks in (and the board hangs off it), while Hermes's own
+ * conversation is a separate one, named like every other agent's
+ * (`<项目> · <名字>`). So its chip must land there, not on the row it sits
+ * under. Returns null when Hermes has no such conversation yet.
+ */
+async function hermesConversationFor(title: string): Promise<null | string> {
+  const name = (title || '').trim()
+
+  if (!name) {
+    return null
+  }
+
+  const prefix = `${name} · ${DEFAULT_AGENT_SPEAKER.name}`
+
+  try {
+    const { sessions } = await listAllProfileSessions(50, 0, 'exclude', 'recent', 'default')
+
+    return sessions.find(session => (session.title || '').trim().startsWith(prefix))?.id ?? null
+  } catch {
+    return null
+  }
+}
+
 function AgentRosterImpl({
   onOpenSession,
-  sessionId
+  sessionId,
+  sessionTitle
 }: {
   /** Resume a session by id — the sidebar's own open path. */
   onOpenSession?: (sessionId: string) => void
   sessionId: string
+  /** The row's own name — the project, and so the prefix of Hermes's own
+   *  conversation (`星阶` → `星阶 · Hermes`). */
+  sessionTitle?: string
 }) {
   const agents = agentsForSession(useStore($cronJobs), sessionId)
 
@@ -74,16 +106,19 @@ function AgentRosterImpl({
 
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pb-1.5 pl-8 pr-2" data-slot="sidebar-session-agents">
-      {/* The conversation's own agent: every session in the main profile is
-          Hermes's, so it is a participant — shown first. Clicking it opens
-          this conversation (the row it belongs to), same as the row itself. */}
+      {/* Hermes is a participant — shown first. Clicking it opens its OWN
+          conversation for this project (`星阶 · Hermes`); only when it has none
+          yet does it fall back to this row, which is where it speaks today. */}
       <button
         className="flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-[0.625rem] leading-4 text-(--ui-text-tertiary) transition-colors hover:bg-(--ui-control-active-background) hover:text-foreground"
         data-agent={DEFAULT_AGENT_SPEAKER.name}
-        onClick={event => {
+        onClick={async event => {
           event.preventDefault()
           event.stopPropagation()
-          onOpenSession?.(sessionId)
+
+          const target = await hermesConversationFor(sessionTitle ?? '')
+
+          onOpenSession?.(target ?? sessionId)
         }}
         title={`打开与「${DEFAULT_AGENT_SPEAKER.name}」的对话`}
         type="button"

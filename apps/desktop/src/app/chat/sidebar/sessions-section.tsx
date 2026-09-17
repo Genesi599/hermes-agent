@@ -9,6 +9,7 @@ import { SidebarGroup, SidebarGroupContent } from '@/components/ui/sidebar'
 import type { HermesGitWorktree } from '@/global'
 import type { SessionInfo } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { sessionTitle } from '@/lib/chat-runtime'
 import { flattenSessionsWithBranches } from '@/lib/session-branch-tree'
 import {
   groupEntriesByRecency,
@@ -309,7 +310,7 @@ export function SidebarSessionsSection({
           ) : (
             <SidebarSessionRow {...rowProps} />
           )}
-          <AgentRoster onOpenSession={onResumeSession} sessionId={session.id} />
+          <AgentRoster onOpenSession={onResumeSession} sessionId={session.id} sessionTitle={sessionTitle(session)} />
         </div>
       )
     },
