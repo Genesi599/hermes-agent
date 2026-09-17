@@ -50,8 +50,20 @@
   - ⇒ **结论：在 `hermes:api` 与 FastAPI 路由之间，这个路径被丢掉/改写了**。尚未排除的候选：
     ① `pathWithGlobalRemoteProfile` 对这种路径形状的改写；② 桌面/鉴权中间件里的路径白名单；
     ③ 桥实际连的是第三个实例（我没列到的端口）。
-  - **下一步（最省事）**：在 `main.ts` 的 handler 里把最终 `url` 打一条日志，或直接 grep
-    `pathWithGlobalRemoteProfile` 的定义（我两处搜索都没命中它，可能需要按名找文件）看它的改写规则。
+  - **三轮排查（决定性证据）**：
+    - `hermesDesktop.getConnection()` 实测返回 `baseUrl=http://127.0.0.1:8803`、`mode=local`、`authMode=token`
+      → 桥打的就是我 curl 过的那个后端。
+    - **通过桥**拉 `/openapi.json`：275 条路由，**包含我的 4 条 `/api/channels*`** ✓ → 同一个 app 上路由确实在。
+    - 但通过桥逐条试：`/api/cron/jobs` ✓、`/api/profiles/sessions` ✓、`/api/skills` ✓，
+      而 `/api/tools` ✗、`/api/plugins` ✗、`/api/channels` ✗ —— 全是 `mount_spa` 的 catch-all body。
+    - `pathWithGlobalRemoteProfile`（`electron/connection-config.ts`）只在 **global-remote** 模式才追加
+      `?profile=`，本地是原样透传 → **排除**它是元凶（源码 + 它自己的单测都读了）。
+    - **鉴权是"先按 `/api/` 前缀拦"**：随便一个 `/api/…` 假路径也返回 401，只有非 `/api` 路径才落 catch-all
+      → 所以 **401 不能证明路由存在**（这条判据坑过我一次，记牢）。
+  - ⇒ **结论：桥到 FastAPI 之间有一层"哪些 `/api/*` 对桌面可用"的子集门**（cron/skills/sessions 放行，
+    tools/plugins/channels 不放行），而 openapi 是从**另一个**（完整）app 视角生成的。
+  - **下一步**：读 `hermes_cli/subcommands/dashboard.py` 的 serve 路径 + `web_server.py` 里 app 的组装，
+    找那个子集门到底在哪（对比 `/api/skills` ✓ 与 `/api/tools` ✗ 的注册差异），然后把 channels 纳入放行集合。
   （前端是惰性的：查不到频道就什么都不渲染，所以现状无回归。）
 - [ ] 切片 5 的收尾：归档原会话 `20260903_202943_020268`（迁移前已备份 state.db 到临时目录）
 - ⚠️ **临时桥（要记得拆）**：`_outbox_common.deliver` 现在是"写频道 + 同时打印"（打印仅在投递任务仍带
