@@ -126,3 +126,37 @@ const HERMES_CONVERSATION_RE = new RegExp(`${AGENT_TITLE_SEPARATOR}${HERMES_NAME
 export function isHermesConversation(title: null | string | undefined): boolean {
   return HERMES_CONVERSATION_RE.test((title ?? '').trim())
 }
+
+/**
+ * The identity of the agent whose OWN conversation this is (`steward` → 🎩 管家),
+ * from the same delivery wiring the roster derives its agents from.
+ *
+ * Needed because a message only carries a producer label when it was DELIVERED
+ * into someone else's conversation. An agent's own replies in its own
+ * conversation carry nothing, so without this they fall back to the main
+ * assistant's face — the steward answering under Hermes's name and avatar.
+ */
+export function agentIdentityForProfile(
+  jobs: CronJob[] | undefined,
+  profile: string
+): null | { avatar: string; label: string } {
+  const wanted = profile.trim()
+
+  if (!wanted || wanted === 'default') {
+    return null
+  }
+
+  for (const job of jobs ?? []) {
+    if (str(job, 'agent_profile') !== wanted) {
+      continue
+    }
+
+    const label = str(job, 'agent_label')
+
+    if (label) {
+      return { avatar: str(job, 'agent_avatar'), label }
+    }
+  }
+
+  return null
+}

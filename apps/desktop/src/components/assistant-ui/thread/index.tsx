@@ -32,6 +32,14 @@ interface ThreadEditContextValue {
 // stable, and a changed value propagates straight to the mounted consumer.
 const ThreadEditContext = createContext<ThreadEditContextValue>({ cwd: null, gateway: null, sessionId: null })
 
+/** The runtime session id of the thread currently rendering. Same value the
+ *  edit composer gets through this context — for leaves that need to know
+ *  WHICH conversation they are in (an assistant reply's speaker identity, say)
+ *  without the message payload carrying it. */
+export function useThreadRuntimeSessionId(): null | string {
+  return useContext(ThreadEditContext).sessionId
+}
+
 interface ThreadProps {
   clampToComposer?: boolean
   cwd?: string | null

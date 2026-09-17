@@ -9,6 +9,7 @@ import {
 import { useStore } from '@nanostores/react'
 import { type FC, useCallback, useMemo, useState } from 'react'
 
+import { useThreadRuntimeSessionId } from '@/components/assistant-ui/thread'
 import { ChangedFilesCard } from '@/components/assistant-ui/thread/changed-files-card'
 import {
   contentHasVisibleText,
@@ -30,11 +31,17 @@ import { DEFAULT_AGENT_SPEAKER } from '@/lib/chat-identity'
 import { triggerHaptic } from '@/lib/haptics'
 import { AudioLines, GitForkIcon, Loader2Icon, RefreshCwIcon, SmilePlusIcon, VolumeXIcon, XIcon } from '@/lib/icons'
 import { extractPreviewTargets } from '@/lib/preview-targets'
+import { agentIdentityForProfile } from '@/lib/session-agents'
 import { formatAgo } from '@/lib/time'
 import { useEnterAnimation } from '@/lib/use-enter-animation'
+import { useStoreSelector } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
 import { playSpeechText, stopVoicePlayback } from '@/lib/voice-playback'
+import { $cronJobs } from '@/store/cron'
 import { notifyError } from '@/store/notifications'
+import { $activeGatewayProfile } from '@/store/profile'
+import { $sessions, sessionMatchesStoredId } from '@/store/session'
+import { $sessionStates } from '@/store/session-states'
 import { $voicePlayback } from '@/store/voice-playback'
 
 // Stable empty identity for the settled-parts selector — a fresh [] per render
@@ -77,10 +84,36 @@ export const AssistantMessage: FC<{
   // steward / branch worker) stamps its own label; anything else is the main
   // assistant. Both selectors return a stable string, so they add no
   // streaming re-renders.
+  // Whose conversation this is. A reply written INSIDE an agent's own
+  // conversation (open the steward's chat and talk to it) carries no producer
+  // label — there is no delivery involved — so without this it would wear the
+  // main assistant's face. Agents are the profiles wired to deliver; the
+  // gateway's profile is the fallback signal while the row is still loading.
+  const runtimeSessionId = useThreadRuntimeSessionId()
+
+  const storedSessionId = useStoreSelector($sessionStates, states =>
+    runtimeSessionId ? (states[runtimeSessionId]?.storedSessionId ?? '') : ''
+  )
+
+  const rowProfile = useStoreSelector($sessions, sessions => {
+    const row = storedSessionId ? sessions.find(s => sessionMatchesStoredId(s, storedSessionId)) : undefined
+
+    return (row?.profile ?? '').trim()
+  })
+
+  const gatewayProfile = useStore($activeGatewayProfile)
+  const ownerProfile = rowProfile || gatewayProfile
+  const ownerLabel = useStoreSelector($cronJobs, jobs => agentIdentityForProfile(jobs, ownerProfile)?.label ?? '')
+  const ownerAvatar = useStoreSelector($cronJobs, jobs => agentIdentityForProfile(jobs, ownerProfile)?.avatar ?? '')
+
   const agentLabel = useAuiState(s => {
     const agent = s.message.metadata?.custom?.agent
 
-    return typeof agent === 'string' && agent ? agent : DEFAULT_AGENT_SPEAKER.name
+    if (typeof agent === 'string' && agent) {
+      return agent
+    }
+
+    return ownerLabel || DEFAULT_AGENT_SPEAKER.name
   })
 
   const agentAvatar = useAuiState(s => {
@@ -88,6 +121,11 @@ export const AssistantMessage: FC<{
 
     return typeof avatar === 'string' ? avatar : ''
   })
+
+  // A delivered reply brings its own glyph; a reply written inside the agent's
+  // OWN conversation brings none, so the owner's glyph stands in before we fall
+  // back to the main assistant's face.
+  const speakerGlyph = agentAvatar || ownerAvatar
 
   // The thinking/stall indicator belongs to the TAIL of the thread, period. A
   // stale pending bubble mid-transcript (a turn that ended without its settle
@@ -151,8 +189,8 @@ export const AssistantMessage: FC<{
         {/* A producer that stamps its own glyph (the steward's 🎩) keeps it;
             otherwise the main assistant's avatar image stands in. */}
         <SpeakerChip
-          avatar={agentAvatar || undefined}
-          avatarImage={agentAvatar ? undefined : DEFAULT_AGENT_SPEAKER.avatarImage}
+          avatar={speakerGlyph || undefined}
+          avatarImage={speakerGlyph ? undefined : DEFAULT_AGENT_SPEAKER.avatarImage}
           name={agentLabel}
         />
         <MessagePrimitive.Parts components={MESSAGE_PARTS_COMPONENTS} />
