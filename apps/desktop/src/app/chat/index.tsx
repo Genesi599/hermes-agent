@@ -59,6 +59,7 @@ import { requestComposerInsert } from './composer/focus'
 import { droppedFileInlineRefs } from './composer/inline-refs'
 import { useComposerScope } from './composer/scope'
 import type { ChatBarState } from './composer/types'
+import { ConversationBoard } from './conversation-board'
 import { ExperienceReviewStatus } from './experience-review-status'
 import { type DroppedFile, partitionDroppedFiles } from './hooks/use-composer-actions'
 import { type DragKind, useFileDropZone } from './hooks/use-file-drop-zone'
@@ -593,6 +594,11 @@ export const ChatView = memo(function ChatView({
       >
         <ExperienceReviewStatus />
       </div>
+
+      {/* The conversation's own board, when its project keeps one — above the
+          transcript, in this surface, so the room and the talk are one view.
+          Renders nothing at all for a conversation without a board. */}
+      <ConversationBoard storedSessionId={selectedSessionId} />
 
       {/* Mounted for the primary AND every tile, each scoped to its own session
           so a tiled/background session's blocking prompt surfaces instead of

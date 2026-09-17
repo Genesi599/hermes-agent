@@ -1708,6 +1708,8 @@ export interface Translations {
       waitingForAnswer: string
       finishedUnread: string
       backgroundRunning: string
+      cronBound: (jobName: string) => string
+      cronBoundCount: (count: number) => string
       draftSession: string
       handoffOrigin: (platform: string) => string
       ownedByProfile: (profile: string) => string
@@ -2380,6 +2382,15 @@ export interface Translations {
   }
 
   assistant: {
+    board: {
+      collapse: string
+      decisions: string
+      empty: string
+      expand: string
+      owner: string
+      state: string
+      title: string
+    }
     thread: {
       loadingSession: string
       showEarlier: string

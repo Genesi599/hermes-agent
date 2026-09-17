@@ -9,7 +9,6 @@ import { SidebarGroup, SidebarGroupContent } from '@/components/ui/sidebar'
 import type { HermesGitWorktree } from '@/global'
 import type { SessionInfo } from '@/hermes'
 import { useI18n } from '@/i18n'
-import { openConversationBoard } from '@/lib/conversation-board'
 import { flattenSessionsWithBranches } from '@/lib/session-branch-tree'
 import {
   groupEntriesByRecency,
@@ -295,11 +294,7 @@ export function SidebarSessionsSection({
         onMerge:
           session.parent_session_id && onMergeSession ? () => onMergeSession(session.id, session.profile) : undefined,
         onPin: () => onTogglePin(sessionPinId(session)),
-        onResume: () => {
-          onResumeSession(session.id)
-          // A conversation IS its project: opening it also opens its board.
-          void openConversationBoard(session.title)
-        },
+        onResume: () => onResumeSession(session.id),
         reorderable: draggable && !branchStem,
         session,
         showProfile: showProfileTags

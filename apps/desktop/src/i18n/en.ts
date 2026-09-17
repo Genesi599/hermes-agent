@@ -2013,6 +2013,8 @@ export const en: Translations = {
       waitingForAnswer: 'Waiting for your answer',
       finishedUnread: 'Finished — unread',
       backgroundRunning: 'Background task running',
+      cronBound: jobName => `Scheduled task: ${jobName}`,
+      cronBoundCount: count => `${count} scheduled task${count === 1 ? '' : 's'}`,
       draftSession: 'Draft — nothing sent yet',
       handoffOrigin: platform => `Handed off from ${platform}`,
       ownedByProfile: profile => `Profile: ${profile}`,
@@ -2784,6 +2786,15 @@ export const en: Translations = {
   },
 
   assistant: {
+    board: {
+      collapse: 'Collapse the board',
+      decisions: 'Decisions',
+      empty: 'Nothing on the board yet.',
+      expand: 'Expand the board',
+      owner: 'Hermes',
+      state: 'Status',
+      title: 'Project board'
+    },
     thread: {
       loadingSession: 'Loading session',
       showEarlier: 'Show earlier messages',

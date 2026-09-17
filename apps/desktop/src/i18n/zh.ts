@@ -2201,6 +2201,8 @@ export const zh: Translations = {
       waitingForAnswer: '正在等待你的回答',
       finishedUnread: '已完成 — 未读',
       backgroundRunning: '后台任务运行中',
+      cronBound: jobName => `定时任务：${jobName}`,
+      cronBoundCount: count => `${count} 个定时任务`,
       draftSession: '草稿 — 尚未发送',
       handoffOrigin: platform => `从 ${platform} 转接`,
       ownedByProfile: profile => `配置档：${profile}`,
@@ -2957,6 +2959,15 @@ export const zh: Translations = {
   },
 
   assistant: {
+    board: {
+      collapse: '收起看板',
+      decisions: '决策',
+      empty: '看板还是空的。',
+      expand: '展开看板',
+      owner: 'Hermes 维护',
+      state: '状态',
+      title: '项目看板'
+    },
     thread: {
       loadingSession: '正在加载会话',
       showEarlier: '显示更早的消息',
