@@ -11,9 +11,12 @@ The store lives on SessionDB (`get_or_create_channel`, `get_channel`,
 `mark_channel_message_routed`); these handlers only shape HTTP around it.
 """
 
+import os
+import subprocess
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel
 
 from hermes_cli.web_deps import late
@@ -37,6 +40,29 @@ class ChannelMessagePost(BaseModel):
 
 def _open(profile: Optional[str], *, read_only: bool):
     return _open_session_db_for_profile(profile, read_only=read_only)
+
+
+def _trigger_router(message_id: int) -> None:
+    """Hand one new human line to the routing watchdog, off the request path.
+
+    Who a message concerns is HERMES's judgement (that is the model), so routing
+    runs as its own process — this endpoint only records the line and nudges the
+    watchdog, keeping "posting" a pure insert.
+    """
+    home = Path(os.environ.get("LOCALAPPDATA", "")) / "hermes"
+    script = home / "scripts" / "channel_router.py"
+    python = home / "hermes-agent" / "venv" / "Scripts" / "python.exe"
+
+    if not script.exists() or not python.exists():
+        return
+
+    try:
+        subprocess.Popen(
+            [str(python), str(script), f"--message={message_id}"],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except OSError:
+        pass  # the */2 watchdog will pick the line up anyway
 
 
 @router.get("/api/channels")
@@ -91,6 +117,7 @@ def channel_messages(
 def post_channel_message(
     channel_id: str,
     body: ChannelMessagePost,
+    background: BackgroundTasks,
     profile: Optional[str] = Query(None),
 ) -> Dict[str, Any]:
     """Post a HUMAN line into the room.
@@ -120,7 +147,9 @@ def post_channel_message(
             display_kind=None,
         )
 
-        return {"channel_id": channel_id, "message_id": message_id}
+        background.add_task(_trigger_router, message_id)
+
+        return {"channel_id": channel_id, "message_id": message_id, "routing": "triggered"}
     finally:
         db.close()
 

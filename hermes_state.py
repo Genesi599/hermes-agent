@@ -8437,14 +8437,29 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
 
         return out
 
-    def pending_channel_messages(self, limit: int = 20) -> List[Dict[str, Any]]:
-        """Human lines nobody has routed yet — the router watchdog's work list."""
+    def pending_channel_messages(
+        self,
+        limit: int = 20,
+        channel_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Human lines nobody has routed yet — the router watchdog's work list.
+
+        Pass ``channel_id`` to scope it to one room; the channel's project is
+        what the router needs to decide who a message concerns.
+        """
+        sql = (
+            "SELECT * FROM channel_messages WHERE author_kind = 'human' "
+            "AND routed_at IS NULL"
+        )
+        params: List[Any] = []
+        if channel_id:
+            sql += " AND channel_id = ?"
+            params.append(channel_id)
+        sql += " ORDER BY id LIMIT ?"
+        params.append(int(limit))
+
         with self._read_ctx() as conn:
-            rows = conn.execute(
-                "SELECT * FROM channel_messages WHERE author_kind = 'human' "
-                "AND routed_at IS NULL ORDER BY id LIMIT ?",
-                (int(limit),),
-            ).fetchall()
+            rows = conn.execute(sql, params).fetchall()
 
         return [dict(row) for row in rows]
 
