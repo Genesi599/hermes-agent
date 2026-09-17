@@ -6,6 +6,21 @@
 > 本文是落地设计。结论先行：**能做到，但它是一条新实体 + 新面板 + 改投递通路的多切片改动**；
 > 每个切片单独可验证、且不破坏现有可用状态。
 
+## 进度
+
+- [x] **切片 1（存储 + API）**——`channels` / `channel_messages` 进 `SCHEMA_SQL`（声明式，老库自愈，
+  live 库实测已出现）；`hermes_state.py` 的频道读写方法（`get_or_create_channel` / `get_channel` /
+  `list_channels` / `append_channel_message` / `get_channel_messages` / `pending_channel_messages` /
+  `mark_channel_message_routed`）；`hermes_cli/web_routers/channels.py` + 注册。
+  两处实证（都在 **state.db 副本**上跑，绝不碰 live）：存储往返 PASS（幂等建频道、人/agent 各插一条、
+  `display_metadata` 正确解码、`message_count` 递增、路由水位 1→0）；handler 往返 PASS（建→发言→列→读→
+  pending→标 routed→未知频道 404）。⚠️ 路由在 dashboard 既有鉴权之后（无 token 401），没新增暴露面。
+  提交：`6d8c948aae`（存储+文档）、`d293c99e1c`（API）。运行中的后端**重启后**才提供这些路由。
+- [ ] 切片 2：投递改插行（不再 attach 提交 prompt → 群聊那一轮 turn 消失）
+- [ ] 切片 3：路由触发（人发言后立即 + `*/2` 看门狗兜底）
+- [ ] 切片 4：桌面频道面板（新 pane `channel:<id>` + 侧栏 + 只插入的 composer）
+- [ ] 切片 5：把现有群聊会话导入频道、归档原会话
+
 ## 已核实的事实（决定了设计，不是推断）
 
 | 事实 | 出处 |
