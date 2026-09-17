@@ -168,3 +168,21 @@ CREATE INDEX IF NOT EXISTS idx_channel_messages_channel ON channel_messages(chan
 2. 切片 3 是最大的一块（新 pane 类型 + 侧栏 + composer），且要重新出包部署。
 3. 迁移前**先备份 `state.db`**（切片 4 动历史数据）。
 4. 每个切片结束时系统都必须可用；任何一步出错，退回"群聊=会话 + 投递门"的现状（那是今天已经在跑的形态）。
+
+
+## 用户报「我在群里说话 hermes 怎么没反应」（2026-09-17 修）
+
+**根因**：`scripts/channel_router.py` 的 `--message=<id>` 快路径（人发言后 API 用 `BackgroundTasks`
+立刻触发的那条）**崩了**——它用原生 `sqlite3.connect` 查那一条消息，却没有 `row_factory`，
+于是 `dict(row)` 抛 `TypeError: cannot convert dictionary update sequence element #0 to a sequence`；
+子进程的报错进了被吞掉的 stdout，所以**外面看起来就是"发了消息没人理"**。
+（另一条兜底路径——`*/2` 的 cron 看门狗——用的是 SessionDB，所以它一直是对的；但看门狗要等下一个整 2 分钟。）
+
+**修了四处**（都在脚本里，脚本不在 git 仓库，改动只在磁盘上）：
+1. `row_factory = sqlite3.Row` → 快路径可用（**这是用户实际撞到的那个**）。
+2. **Hermes 自己的那条也贴进房间**：路由轮结束时把它的回复以 `author_label='Hermes'` 插进频道，
+   并把 prompt 从"不要长篇回答"改成"把你要说的话放在回复最后（会以你的名义贴进群聊）"——
+   否则按原设计它只在后台唤醒别人，房间里看不到它有任何反应（用户感知＝没反应）。
+3. **先认领再派活**：`mark_channel_message_routed` 移到 dispatch 之前——快路径与看门狗会同时触发
+   （实测 #740 就被路由了两次，唤醒了两轮 agent）；派活失败时把 `routed_at` 置回 NULL 交给看门狗重试。
+4. 失败不再消失：整个派活块包 try/except 并写 `logs/channel_router.log`。

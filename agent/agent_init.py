@@ -584,6 +584,22 @@ def init_agent(
     """
     _install_safe_stdio()
 
+    # Desktop / TUI / run_agent sessions construct AIAgent via init_agent but
+    # (unlike CLI and gateway) never call agent.shell_hooks.register_from_config,
+    # so declarative `hooks:` shell hooks (e.g. the Hub wiki-write reminder)
+    # never fire there. Registering here covers every entry point that builds a
+    # session through AIAgent. register_from_config is idempotent (per-process
+    # `_registered` set) so this is a no-op when CLI/gateway already registered,
+    # and it is wrapped in try/except so a hook-config problem can never break
+    # agent construction (fail-open, mirrors Hermes hook failure semantics).
+    try:
+        from hermes_cli.config import load_config as _load_hook_cfg
+        from agent.shell_hooks import register_from_config as _register_shell_hooks
+        _register_shell_hooks(_load_hook_cfg(), accept_hooks=False)
+    except Exception:
+        logger = __import__("logging").getLogger(__name__)
+        logger.warning("shell-hook registration from init_agent skipped", exc_info=True)
+
     agent.model = model
     agent.max_iterations = max_iterations
     # Shared iteration budget — parent creates, children inherit.

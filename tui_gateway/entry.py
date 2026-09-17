@@ -446,6 +446,12 @@ def main():
     # Live-apply skins Hermes activates mid-conversation.
     server._ensure_skin_watcher()
 
+    # Quietly continue sessions whose last turn was killed by the previous
+    # process exit (frequent custom-rebuild restarts). Backgrounded + best-
+    # effort; reuses the session.resume cold path, so the interrupted turn
+    # runs server-side with no UI opening.
+    server._auto_resume_interrupted_on_start()
+
     # Warm the /model picker's provider-models cache off-thread during this
     # idle window (gateway.ready sent, user about to type). Mirrors the classic
     # CLI run() loop — the stdio TUI otherwise never prewarms, so the first

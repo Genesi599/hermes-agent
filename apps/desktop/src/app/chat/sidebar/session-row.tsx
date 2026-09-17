@@ -22,6 +22,7 @@ import { handoffOriginSource, sessionSourceLabel } from '@/lib/session-source'
 import { coarseElapsed } from '@/lib/time'
 import { useStoreSelector } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
+import { $cronJobs } from '@/store/cron'
 import { $sidebarRowMeta } from '@/store/layout'
 import { normalizeProfileKey } from '@/store/profile'
 import { $pullRequestsByBranch, sessionPrKey } from '@/store/pull-requests'
@@ -508,6 +509,7 @@ function SidebarSessionRowImpl({
               {title}
             </SidebarRowLabel>
           )}
+          <CronJobBadge sessionId={session.id} />
           {showProfile && <ProfileTag profile={session.profile} />}
           {isMergeWaiting ? (
             <span
@@ -570,3 +572,49 @@ function rowPropsEqual(a: SidebarSessionRowProps, b: SidebarSessionRowProps): bo
 }
 
 export const SidebarSessionRow = memo(SidebarSessionRowImpl, rowPropsEqual)
+
+/**
+ * Clock badge on sessions a cron job is bound to (fixed-conversation cron).
+ *
+ * A job with `target_session_id` resumes that session every fire, so the chat
+ * accumulates scheduled runs. Mark the row so it reads as "this conversation
+ * has a timer on it". Self-subscribing: only repaints when the set of jobs
+ * bound to THIS session changes (a new job bound, one removed, names edited).
+ */
+function CronJobBadge({ sessionId }: { sessionId: string }) {
+  const { t } = useI18n()
+  const r = t.sidebar.row
+  // Scalar selector (useStoreSelector bails on primitive equality — returning
+  // a fresh array here would re-render this row on every $cronJobs write):
+  // encode the bound jobs as a stable string key of (name|id) pairs.
+  const boundKey = useStoreSelector($cronJobs, jobs =>
+    jobs
+      .filter(job => job.target_session_id === sessionId && job.enabled !== false)
+      .map(job => job.name?.trim() || job.id)
+      .join('\n')
+  )
+
+  if (!boundKey) {
+    return null
+  }
+
+  const boundNames = boundKey.split('\n')
+  const label =
+    boundNames.length === 1
+      ? r.cronBound(boundNames[0])
+      : r.cronBoundCount(boundNames.length)
+
+  return (
+    <Tip label={label}>
+      <span
+        aria-label={label}
+        className="flex shrink-0 items-center text-(--ui-text-tertiary) transition-colors group-hover/session-row:text-(--ui-text-secondary)"
+        data-cron-bound="true"
+        role="img"
+        title={label}
+      >
+        <Codicon name="clock" size="0.6875rem" />
+      </span>
+    </Tip>
+  )
+}

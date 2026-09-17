@@ -590,6 +590,11 @@ export const watchSessionTiles = paneMirror<SessionTile>({
   before: t => t.before,
   minWidth: '20rem',
   title: tileTitle,
+  // The tab's LIVE label — the draft name while unsent, the real title once
+  // the session is listed. Self-subscribing (each tab only its own key), so a
+  // keystroke renames just this tab instead of re-registering the pane. Falls
+  // back to the registered `title` via `??` when there is no draft text.
+  tabTitle: storedSessionId => <SessionDraftTitle scope={storedSessionId} />,
   // The tab's status dot — the SAME primitive the sidebar row renders, keyed by
   // the stored id, so a session's semantic status can never disagree between
   // the two surfaces. Self-subscribing, so the strip needn't re-sync when it

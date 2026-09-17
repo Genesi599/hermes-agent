@@ -374,3 +374,51 @@ def test_failed_agent_build_leaves_marker_for_retry(
 # ── End to end: continuation runs a real turn and clears the marker ────
 
 
+
+
+# ── Startup sweep: list markers + auto-resume-on-start ───────────────────
+
+
+def test_list_turn_markers_returns_surviving_entries(marker_home):
+    from tui_gateway.turn_marker import list_turn_markers
+
+    record_turn_start(marker_home, "a", "prompt A")
+    record_turn_start(marker_home, "b", "prompt B")
+
+    markers = list_turn_markers(marker_home)
+
+    assert set(markers) == {"a", "b"}
+    assert markers["a"]["prompt"] == "prompt A"
+    assert markers["b"]["attempts"] == 0
+
+
+def test_list_turn_markers_skips_empty_and_missing(marker_home, tmp_path):
+    from tui_gateway.turn_marker import list_turn_markers
+
+    # No sidecar at all → empty map, never raises.
+    assert list_turn_markers(tmp_path / "nonexistent") == {}
+
+
+def test_auto_resume_on_start_sweeps_markers(
+    marker_home, monkeypatch, schedule_env
+):
+    record_turn_start(marker_home, "k1", "task one")
+    record_turn_start(marker_home, "k2", "task two")
+
+    resumed = []
+    monkeypatch.setattr(
+        server,
+        "handle_request",
+        lambda req: resumed.append(req) or None,
+    )
+
+    server._auto_resume_interrupted_on_start()
+
+    # The sweep runs on a daemon thread; force it inline by running the same
+    # marker set synchronously via the already-recorded sidecar is not
+    # deterministic, so assert on the request-shape contract instead: every
+    # interrupted key is resumed through session.resume with omit_messages.
+    keys = [r["params"]["session_id"] for r in resumed]
+    assert set(keys) == {"k1", "k2"}
+    assert all(r["method"] == "session.resume" for r in resumed)
+    assert all(r["params"].get("omit_messages") is True for r in resumed)

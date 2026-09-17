@@ -20,6 +20,7 @@ import {
   generatedImageEchoSources,
   stripGeneratedImageEchoes
 } from '@/lib/generated-images'
+import { parseTaskStatus, stripTaskStatusBlocks } from '@/lib/task-status'
 import { parseTodos } from '@/lib/todos'
 import { dispatchNativeNotification } from '@/store/native-notifications'
 import { isDiskFullErrorMessage, notifyError } from '@/store/notifications'
@@ -561,7 +562,15 @@ export function useMessageStream({
         }
 
         const streamId = state.streamId
-        const finalText = renderMediaTags(text).trim()
+        // Task-status block: the model closes the turn with a
+        // [HERMES_TASK_STATUS] JSON block for the right rail. Strip it from
+        // the visible bubble text NOW (not just at rehydrate) — the live
+        // message built here otherwise carries the raw block into the
+        // transcript until the next reload. Parse it first so the rail still
+        // updates from the live turn, then use only the clean text below.
+        const rawFinalText = renderMediaTags(text).trim()
+        const liveTaskStatus = parseTaskStatus(rawFinalText)
+        const finalText = liveTaskStatus ? stripTaskStatusBlocks(rawFinalText) : rawFinalText
         // Structured failure from the terminal frame wins over the legacy text
         // heuristic ("Error: <provider detail>" texts don't match the regexes).
         const completionError = failure?.error ?? completionErrorText(finalText)
@@ -589,6 +598,7 @@ export function useMessageStream({
           return {
             ...settled,
             parts: replaceTextPart(message.parts),
+            ...(liveTaskStatus ? { taskStatus: liveTaskStatus } : {}),
             ...(completionError ? { error: completionError } : {})
           }
         }
@@ -598,6 +608,7 @@ export function useMessageStream({
           role: 'assistant',
           parts: completionError && !keepFailedPartialText ? [] : [assistantTextPart(finalText)],
           branchGroupId: state.pendingBranchGroup ?? undefined,
+          ...(liveTaskStatus ? { taskStatus: liveTaskStatus } : {}),
           ...(completionError && { error: completionError })
         })
 

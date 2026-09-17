@@ -847,6 +847,10 @@ export interface CronJob {
   schedule_display?: null | string
   script?: null | string
   state?: null | string
+  /** When true, the job's output is appended into the bound session (target_session_id). */
+  attach_to_session?: boolean
+  /** The session this job resumes/continues in (fixed-conversation cron). */
+  target_session_id?: null | string
 }
 
 export interface CronJobCreatePayload {

@@ -435,6 +435,12 @@ const syncWorkspaceTitle = () => {
     // that. Keeping it here would re-register the pane on every keystroke.
     title: stored ? storedSessionTitle(stored) : NEW_SESSION_TITLE,
     data: {
+      // The tab's LIVE label — the draft name while unsent, the real title
+      // once the session is listed. Self-subscribing, so a keystroke renames
+      // just this tab instead of re-registering the pane (which is what
+      // keeping the draft text in `title` above would cost). Falls back to
+      // `title` via `??` when there is no draft text.
+      tabTitle: () => <SessionDraftTitle scope={selected} />,
       // The tab's status dot — the SAME primitive the sidebar row and session
       // tiles render, so the main tab never disagrees with its sidebar row. No
       // dot on a fresh draft (no session yet).

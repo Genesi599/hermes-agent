@@ -157,3 +157,36 @@ def read_turn_marker(home: Path | str, session_key: str) -> dict[str, Any] | Non
     except (TypeError, ValueError):
         return None
     return {"attempts": attempts, "prompt": prompt, "started_at": started_at}
+
+
+def list_turn_markers(home: Path | str) -> dict[str, dict[str, Any]]:
+    """Return every surviving interrupted-turn marker keyed by session_key.
+
+    Startup auto-resume scans this map to decide which sessions the gateway
+    should quietly continue after a restart. Each value matches the shape
+    ``read_turn_marker`` returns (``attempts`` / ``prompt`` / ``started_at``).
+    Best-effort: an unreadable or corrupt sidecar yields ``{}`` instead of
+    raising, so bookkeeping can never break a launch.
+    """
+    try:
+        with _lock:
+            entries = _load(_marker_path(home))
+    except Exception:
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    now = time.time()
+    for key, entry in entries.items():
+        if not isinstance(entry, dict):
+            continue
+        prompt = str(entry.get("prompt") or "")
+        if not prompt.strip():
+            continue
+        try:
+            started_at = float(entry.get("started_at") or 0)
+            attempts = max(0, int(entry.get("attempts") or 0))
+        except (TypeError, ValueError):
+            continue
+        if now - started_at > _MAX_AGE_SECS:
+            continue
+        out[key] = {"attempts": attempts, "prompt": prompt, "started_at": started_at}
+    return out
