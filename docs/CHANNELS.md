@@ -16,10 +16,22 @@
   `display_metadata` 正确解码、`message_count` 递增、路由水位 1→0）；handler 往返 PASS（建→发言→列→读→
   pending→标 routed→未知频道 404）。⚠️ 路由在 dashboard 既有鉴权之后（无 token 401），没新增暴露面。
   提交：`6d8c948aae`（存储+文档）、`d293c99e1c`（API）。运行中的后端**重启后**才提供这些路由。
-- [ ] 切片 2：投递改插行（不再 attach 提交 prompt → 群聊那一轮 turn 消失）
-- [ ] 切片 3：路由触发（人发言后立即 + `*/2` 看门狗兜底）
-- [ ] 切片 4：桌面频道面板（新 pane `channel:<id>` + 侧栏 + 只插入的 composer）
-- [ ] 切片 5：把现有群聊会话导入频道、归档原会话
+- [x] **切片 2（投递改插行）**——`_outbox_common.deliver` 先试频道：把出箱正文写成
+  `channel_messages` 行（`author_kind='agent'` + `agent_label`/`agent_avatar`），**不打印任何东西**
+  → cron 的 `prompt is None` 分支照样跳过 → **群聊那一轮 turn 消失**；没有频道时回退成老的"打印→attach"。
+  项目名从该智能体的投递任务派生（`script == agent_outbox_<agent>.py` → `target_session_id` → 会话标题），沿用既有接线。
+  实测：advisor 出箱放一条 → 脚本 **stdout 0 字节**，频道里出现 `730 agent 流程搭档 🧭 …`（测试行已删）。
+- [x] **切片 3（路由触发）**——`scripts/channel_router.py`：扫 `routed_at IS NULL` 的人类消息，
+  逐条派给 **Hermes**（它按主 SOUL 的路由流程用 `wake_agents.py` 并行唤醒），然后盖章 routed；
+  **永远不输出 stdout**（否则 cron 会把输出当 prompt 跑一轮），留痕写 `logs/channel_router.log`。
+  cron 任务 `频道路由`(`bb60ae377589`, `*/2`) 兜底；人发言后 API 用 `BackgroundTasks` 立即 `--message=<id>` 触发一次。
+- [x] **切片 5（导入）**——`scripts/channel_import.py <项目名>`：把会话历史按原样搬进频道（内容/时间戳/
+  `display_kind`+元数据）、按说话人归类、**跳过工具与管道行**（`role` 只收 user/assistant、
+  剔 `{"output"` 与 `[System:`/compaction 前缀）、**把历史人类消息直接盖成已路由**（否则看门狗会把
+  陈年消息全派一遍）。实测：星阶 805 条 → 导入 **210 条**（142 agent / 68 human；说话人 Hermes 122、
+  杨航 68、管家 18、流程搭档 2），跳过 609 条。
+- [ ] 切片 4：**桌面频道面板**（新 pane `channel:<id>` + 侧栏频道行 + 只插入不跑 turn 的 composer）
+- [ ] 切片 5 的收尾：归档原会话 `20260903_202943_020268`（迁移前已备份 state.db 到临时目录）
 
 ## 已核实的事实（决定了设计，不是推断）
 
