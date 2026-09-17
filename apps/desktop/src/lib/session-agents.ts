@@ -8,6 +8,9 @@ export interface SessionAgent {
   profile?: string
 }
 
+/** The room's own maintainer's display name — also the roster's first chip. */
+const MAIN_AGENT_LABEL = 'Hermes'
+
 // `attach_to_session` / `target_session_id` / `agent_label` / `agent_avatar` /
 // `agent_profile` are emitted by the cron API for producer-labelled jobs, but
 // whether they are on the shared `CronJob` type depends on what else is
@@ -60,7 +63,11 @@ export function agentsForSession(jobs: CronJob[] | undefined, sessionId: string 
 
     const label = str(job, 'agent_label')
 
-    if (!label || seen.has(label)) {
+    // The room's maintainer is rendered by the roster ITSELF (it owns the
+    // conversation the row belongs to, and its chip is the first one). Its
+    // delivery job exists so its replies can be posted like anyone else's —
+    // that job must not add a second chip for it.
+    if (!label || label === MAIN_AGENT_LABEL || seen.has(label)) {
       continue
     }
 

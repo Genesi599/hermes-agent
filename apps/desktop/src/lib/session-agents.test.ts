@@ -11,10 +11,28 @@ function job(over: Record<string, unknown>): CronJob {
 describe('agentsForSession', () => {
   it('lists the producers that deliver into the session, in job order, de-duped', () => {
     const jobs = [
-      job({ attach_to_session: true, target_session_id: 'S1', agent_label: '管家', agent_avatar: '🎩', agent_profile: 'steward' }),
-      job({ attach_to_session: true, target_session_id: 'S1', agent_label: '流程搭档', agent_avatar: '🧭', agent_profile: 'advisor' }),
+      job({
+        attach_to_session: true,
+        target_session_id: 'S1',
+        agent_label: '管家',
+        agent_avatar: '🎩',
+        agent_profile: 'steward'
+      }),
+      job({
+        attach_to_session: true,
+        target_session_id: 'S1',
+        agent_label: '流程搭档',
+        agent_avatar: '🧭',
+        agent_profile: 'advisor'
+      }),
       // Same agent, second delivery job (the :40 reminder) — must not repeat.
-      job({ attach_to_session: true, target_session_id: 'S1', agent_label: '管家', agent_avatar: '🎩', agent_profile: 'steward' })
+      job({
+        attach_to_session: true,
+        target_session_id: 'S1',
+        agent_label: '管家',
+        agent_avatar: '🎩',
+        agent_profile: 'steward'
+      })
     ]
 
     expect(agentsForSession(jobs, 'S1')).toEqual([
@@ -36,12 +54,24 @@ describe('agentsForSession', () => {
   it('tolerates missing/blank fields and a missing list', () => {
     expect(agentsForSession(undefined, 'S1')).toEqual([])
     expect(agentsForSession([], 'S1')).toEqual([])
-    expect(agentsForSession([job({ attach_to_session: true, target_session_id: 'S1', agent_label: '   ' })], 'S1')).toEqual([])
-    expect(agentsForSession([job({ attach_to_session: true, target_session_id: 'S1', agent_label: 'X' })], '  ')).toEqual([])
+    expect(
+      agentsForSession([job({ attach_to_session: true, target_session_id: 'S1', agent_label: '   ' })], 'S1')
+    ).toEqual([])
+    expect(
+      agentsForSession([job({ attach_to_session: true, target_session_id: 'S1', agent_label: 'X' })], '  ')
+    ).toEqual([])
   })
 
   it('keeps a labelless-avatar agent usable and normalizes whitespace', () => {
-    const jobs = [job({ attach_to_session: true, target_session_id: ' S1 ', agent_label: ' 顾问 ', agent_avatar: '  ', agent_profile: ' advisor ' })]
+    const jobs = [
+      job({
+        attach_to_session: true,
+        target_session_id: ' S1 ',
+        agent_label: ' 顾问 ',
+        agent_avatar: '  ',
+        agent_profile: ' advisor '
+      })
+    ]
 
     expect(agentsForSession(jobs, 'S1')).toEqual([{ label: '顾问', avatar: undefined, profile: 'advisor' }])
   })
@@ -82,5 +112,18 @@ describe('isHermesConversation', () => {
     expect(isHermesConversation('')).toBe(false)
     expect(isHermesConversation(null)).toBe(false)
     expect(isHermesConversation(undefined)).toBe(false)
+  })
+})
+
+describe('main-agent delivery job', () => {
+  it('does not add a second chip for the room maintainer', () => {
+    const jobs = [
+      // Hermes's own delivery job: same shape every agent's has, but its chip
+      // is rendered by the roster itself.
+      job({ attach_to_session: true, target_session_id: 'S1', agent_label: 'Hermes' }),
+      job({ attach_to_session: true, target_session_id: 'S1', agent_label: '管家', agent_profile: 'steward' })
+    ]
+
+    expect(agentsForSession(jobs, 'S1').map(agent => agent.label)).toEqual(['管家'])
   })
 })
