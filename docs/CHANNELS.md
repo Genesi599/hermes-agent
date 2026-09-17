@@ -30,8 +30,20 @@
   剔 `{"output"` 与 `[System:`/compaction 前缀）、**把历史人类消息直接盖成已路由**（否则看门狗会把
   陈年消息全派一遍）。实测：星阶 805 条 → 导入 **210 条**（142 agent / 68 human；说话人 Hermes 122、
   杨航 68、管家 18、流程搭档 2），跳过 609 条。
-- [ ] 切片 4：**桌面频道面板**（新 pane `channel:<id>` + 侧栏频道行 + 只插入不跑 turn 的 composer）
+- [~] **切片 4（桌面频道面板）——代码写完、已出包部署，但还没点亮**：
+  `lib/channels.ts`（频道 API 客户端）+ `components/chat/channel-view.tsx`（房间视图：按行渲染、
+  每行 SpeakerChip、底部输入框 POST 一行不跑 turn、5s 轮询）+ `app/chat/index.tsx` 接线
+  （会话标题对应的项目有频道时，该面渲染房间取代转写+聊天输入框）+ i18n 三处。
+  **阻塞点（未解决）**：桌面桥 `hermes:api` 对 `/api/channels` 返回 404（headless 的 catch-all），
+  而同一桥对 `/api/cron/jobs`、`/api/profiles/sessions` 正常 → 说明桥走到的那个后端没有这些路由。
+  已试过重启 `hermes serve`(8803) 与 `hermes dashboard`(8806) 两个进程再重启应用，仍然 404；
+  两个端口 curl 都是 401（鉴权中间件在路由匹配前就拦，所以 401 不能证明路由存在）。
+  **下一步**：读 `apps/desktop/electron/main.ts` 里 `hermes:api` 处理器，看它解析的 base URL
+  与是否有路径白名单 —— 答案在那里。（前端是惰性的：查不到频道就什么都不渲染，所以现状无回归。）
 - [ ] 切片 5 的收尾：归档原会话 `20260903_202943_020268`（迁移前已备份 state.db 到临时目录）
+- ⚠️ **临时桥（要记得拆）**：`_outbox_common.deliver` 现在是"写频道 + 同时打印"（打印仅在投递任务仍带
+  `attach_to_session` 时发生）——因为桌面还看不到频道，打印让回复照旧出现在旧群聊视图里；
+  频道视图点亮后把这段删掉，群聊那一轮 turn 才真正消失。
 
 ## 已核实的事实（决定了设计，不是推断）
 
