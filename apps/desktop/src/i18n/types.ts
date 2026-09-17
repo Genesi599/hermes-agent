@@ -2414,6 +2414,9 @@ export interface Translations {
       preparingAudio: string
       stopReading: string
       readAloud: string
+      channelPlaceholder: string
+      channelPost: string
+      channelSubtitle: (count: number) => string
       editMessage: string
       expandMessage: string
       scrollToBottom: string

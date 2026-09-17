@@ -10,6 +10,7 @@ import type { SubmitTextOptions } from '@/app/session/hooks/use-prompt-actions/u
 import { Thread } from '@/components/assistant-ui/thread'
 import { TranscriptWindowProvider } from '@/components/assistant-ui/thread/transcript-window'
 import { Backdrop } from '@/components/Backdrop'
+import { ChannelView } from '@/components/chat/channel-view'
 import { COMPOSER_HEART_CONFIG, HeartField } from '@/components/chat/vibe-hearts'
 import { usePaneVisible } from '@/components/pane-shell/pane-visibility'
 import { $sessionTileDragging, $sessionTileEdgeHover } from '@/components/pane-shell/tree/store'
@@ -19,6 +20,7 @@ import { ErrorState } from '@/components/ui/error-state'
 import { TitleMenuTrigger } from '@/components/ui/title-menu-trigger'
 import { type HermesGateway } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { type Channel, channelForProject } from '@/lib/channels'
 import type { ChatMessage } from '@/lib/chat-messages'
 import { NEW_SESSION_TITLE, quickModelOptions, sessionTitle } from '@/lib/chat-runtime'
 import { useIncrementalExternalStoreRuntime } from '@/lib/incremental-external-store-runtime'
@@ -367,6 +369,10 @@ export const ChatView = memo(function ChatView({
   const lastVisibleIsUser = useStore(view.$lastVisibleIsUser)
   const selectedSessionId = useStore(view.$storedId)
   const sessions = useStore($sessions)
+  // A conversation whose project keeps a ROOM is that room: a channel is a
+  // place where everyone speaks, not a conversation with one assistant, so this
+  // surface shows the channel's lines (and posting is an insert, not a turn).
+  const [room, setRoom] = useState<Channel | null>(null)
   const resumeExhaustedSessionId = useStore($resumeExhaustedSessionId)
 
   // Durable composer/queue scope (lineage root) so auto-compression tip rotation
@@ -488,10 +494,45 @@ export const ChatView = memo(function ChatView({
     (routeSessionMismatch || !activeTranscriptMatchesSelection || (messagesEmpty && !activeSessionId))
 
   const threadLoading = threadLoadingState(loadingSession, busy, awaitingResponse, lastVisibleIsUser)
+
   // Hide the composer in the exhausted error state too: there's no live runtime
   // to send to until a retry rebinds one. Watch windows are pure spectators of a
   // subagent run driven elsewhere — no composer, transcript is read-only.
-  const showChatBar = !loadingSession && !resumeExhausted && !isWatchWindow()
+  const roomTitle = useMemo(() => {
+    const row = selectedSessionId
+      ? sessions.find(session => sessionMatchesStoredId(session, selectedSessionId))
+      : undefined
+
+    return (row?.title || '').trim()
+  }, [selectedSessionId, sessions])
+
+  useEffect(() => {
+    if (!roomTitle) {
+      setRoom(null)
+
+      return
+    }
+
+    let live = true
+
+    void channelForProject(roomTitle)
+      .then(channel => {
+        if (live) {
+          setRoom(channel)
+        }
+      })
+      .catch(() => {
+        if (live) {
+          setRoom(null)
+        }
+      })
+
+    return () => {
+      live = false
+    }
+  }, [roomTitle])
+
+  const showChatBar = !loadingSession && !resumeExhausted && !isWatchWindow() && !room
   const threadKey = selectedSessionId || activeSessionId || (isRoutedSessionView ? location.pathname : 'new')
 
   const modelOptionsQuery = useQuery<ModelOptionsResponse>({
@@ -616,51 +657,56 @@ export const ChatView = memo(function ChatView({
           {...dropHandlers}
         >
           <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-            <Thread
-              clampToComposer={showChatBar}
-              cwd={currentCwd}
-              gateway={gateway}
-              intro={showIntro ? { personality: introPersonality, seed: introSeed } : undefined}
-              loading={threadLoading}
-              onBranchInNewChat={onBranchInNewChat}
-              onCancel={haltRun}
-              onDismissError={onDismissError}
-              onRestoreToMessage={onRestoreToMessage}
-              sessionId={activeSessionId}
-              sessionKey={threadKey}
-            />
-            {resumeExhausted && routedSessionId && (
-              <div className="absolute inset-0 z-10 grid place-items-center bg-(--ui-chat-surface-background) px-8 py-10">
-                <ErrorState
-                  className="max-w-sm"
-                  description={t.desktop.resumeStrandedBody}
-                  title={t.desktop.resumeStrandedTitle}
-                >
-                  <div className="grid justify-items-center">
-                    <Button onClick={() => onRetryResume(routedSessionId)} size="sm" variant="outline">
-                      {t.desktop.resumeRetry}
-                    </Button>
+            {room ? <ChannelView channel={room} /> : null}
+            {room ? null : (
+              <>
+                <Thread
+                  clampToComposer={showChatBar}
+                  cwd={currentCwd}
+                  gateway={gateway}
+                  intro={showIntro ? { personality: introPersonality, seed: introSeed } : undefined}
+                  loading={threadLoading}
+                  onBranchInNewChat={onBranchInNewChat}
+                  onCancel={haltRun}
+                  onDismissError={onDismissError}
+                  onRestoreToMessage={onRestoreToMessage}
+                  sessionId={activeSessionId}
+                  sessionKey={threadKey}
+                />
+                {resumeExhausted && routedSessionId && (
+                  <div className="absolute inset-0 z-10 grid place-items-center bg-(--ui-chat-surface-background) px-8 py-10">
+                    <ErrorState
+                      className="max-w-sm"
+                      description={t.desktop.resumeStrandedBody}
+                      title={t.desktop.resumeStrandedTitle}
+                    >
+                      <div className="grid justify-items-center">
+                        <Button onClick={() => onRetryResume(routedSessionId)} size="sm" variant="outline">
+                          {t.desktop.resumeRetry}
+                        </Button>
+                      </div>
+                    </ErrorState>
                   </div>
-                </ErrorState>
-              </div>
-            )}
-            {showChatBar && <ScrollToBottomButton />}
-            {/* Vibe hearts rise from the composer only when no pet is out (else
+                )}
+                {showChatBar && <ScrollToBottomButton />}
+                {/* Vibe hearts rise from the composer only when no pet is out (else
                 they play on the pet). Fired by the core `reaction` event. */}
-            {!petPresent && (
-              <HeartField
-                className="absolute inset-x-0 z-30"
-                config={COMPOSER_HEART_CONFIG}
-                style={{
-                  top: 0,
-                  bottom: 'calc(var(--composer-measured-height) + 0.25rem)'
-                }}
-              />
-            )}
-            {/* A session drag hovering an EDGE hands the visual to the zone
+                {!petPresent && (
+                  <HeartField
+                    className="absolute inset-x-0 z-30"
+                    config={COMPOSER_HEART_CONFIG}
+                    style={{
+                      top: 0,
+                      bottom: 'calc(var(--composer-measured-height) + 0.25rem)'
+                    }}
+                  />
+                )}
+                {/* A session drag hovering an EDGE hands the visual to the zone
                 target; the link overlay shows only for the center region. */}
-            <ChatDropOverlay kind={overlayKind} />
-            <ChatSwapOverlay profile={gatewaySwapTarget} />
+                <ChatDropOverlay kind={overlayKind} />
+                <ChatSwapOverlay profile={gatewaySwapTarget} />
+              </>
+            )}
           </div>
           <TaskStatusRail />
           {/* The conversation's own board, when its project keeps one: a PEER
