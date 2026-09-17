@@ -38,8 +38,21 @@
   而同一桥对 `/api/cron/jobs`、`/api/profiles/sessions` 正常 → 说明桥走到的那个后端没有这些路由。
   已试过重启 `hermes serve`(8803) 与 `hermes dashboard`(8806) 两个进程再重启应用，仍然 404；
   两个端口 curl 都是 401（鉴权中间件在路由匹配前就拦，所以 401 不能证明路由存在）。
-  **下一步**：读 `apps/desktop/electron/main.ts` 里 `hermes:api` 处理器，看它解析的 base URL
-  与是否有路径白名单 —— 答案在那里。（前端是惰性的：查不到频道就什么都不渲染，所以现状无回归。）
+  **排查进展（2026-09-17 二轮）**：
+  - `hermes:api` 处理器（`electron/main.ts`）解析 `connection.baseUrl`（`ensureBackend(routeProfile)` 的返回），
+    URL = `baseUrl + pathWithGlobalRemoteProfile(request.path, profile, …)`。
+  - 桌面日志显示**两个后端**：主 profile 的 `serve --port 8803`（PID 15536/46808）+ steward 的
+    `--profile steward serve --port 0` → 实际监听 **63676**（PID 39812/3392），启动时间都在我改动之后。
+  - **两个后端的 `/openapi.json` 都有我的 4 条 `/api/channels*` 路由**（275 paths，实测列出）——
+    所以"代码没加载"这个假设被排除。
+  - 但桥对 `/api/channels`（带或不带 `profile=default`）都返回 404（`mount_spa` 的 catch-all body），
+    而同一桥的 `GET /api/cron/jobs`、`GET /api/profiles/sessions` 正常。
+  - ⇒ **结论：在 `hermes:api` 与 FastAPI 路由之间，这个路径被丢掉/改写了**。尚未排除的候选：
+    ① `pathWithGlobalRemoteProfile` 对这种路径形状的改写；② 桌面/鉴权中间件里的路径白名单；
+    ③ 桥实际连的是第三个实例（我没列到的端口）。
+  - **下一步（最省事）**：在 `main.ts` 的 handler 里把最终 `url` 打一条日志，或直接 grep
+    `pathWithGlobalRemoteProfile` 的定义（我两处搜索都没命中它，可能需要按名找文件）看它的改写规则。
+  （前端是惰性的：查不到频道就什么都不渲染，所以现状无回归。）
 - [ ] 切片 5 的收尾：归档原会话 `20260903_202943_020268`（迁移前已备份 state.db 到临时目录）
 - ⚠️ **临时桥（要记得拆）**：`_outbox_common.deliver` 现在是"写频道 + 同时打印"（打印仅在投递任务仍带
   `attach_to_session` 时发生）——因为桌面还看不到频道，打印让回复照旧出现在旧群聊视图里；
