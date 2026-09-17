@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { CronJob } from '@/types/hermes'
 
-import { agentProfileSet, agentsForSession } from './session-agents'
+import { agentProfileSet, agentsForSession, isHermesConversation } from './session-agents'
 
 function job(over: Record<string, unknown>): CronJob {
   return { id: 'j', name: 'job', ...over } as unknown as CronJob
@@ -62,5 +62,25 @@ describe('agentProfileSet', () => {
   it('is empty without jobs', () => {
     expect(agentProfileSet(undefined).size).toBe(0)
     expect(agentProfileSet([]).size).toBe(0)
+  })
+})
+
+describe('isHermesConversation', () => {
+  it('recognizes Hermes project conversations, counter and all', () => {
+    expect(isHermesConversation('星阶 · Hermes')).toBe(true)
+    expect(isHermesConversation('星阶 · Hermes (2)')).toBe(true)
+    expect(isHermesConversation('  B Cell Aging · Hermes  ')).toBe(true)
+  })
+
+  it('leaves the room, other agents, and self-named chats alone', () => {
+    // The room is named after the project itself — no agent suffix.
+    expect(isHermesConversation('星阶')).toBe(false)
+    // Another agent's conversation is filtered by its PROFILE, not by name.
+    expect(isHermesConversation('星阶 · 流程搭档')).toBe(false)
+    expect(isHermesConversation('Hermes')).toBe(false)
+    expect(isHermesConversation('和 Hermes 聊 · 关于 Hermes')).toBe(false)
+    expect(isHermesConversation('')).toBe(false)
+    expect(isHermesConversation(null)).toBe(false)
+    expect(isHermesConversation(undefined)).toBe(false)
   })
 })

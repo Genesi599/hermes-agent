@@ -27,7 +27,7 @@ import { searchSessions, type SessionInfo, type SessionSearchResult } from '@/he
 import { useI18n } from '@/i18n'
 import { comboTokens } from '@/lib/keybinds/combo'
 import { resolveProfileColor } from '@/lib/profile-color'
-import { agentProfileSet } from '@/lib/session-agents'
+import { agentProfileSet, isHermesConversation } from '@/lib/session-agents'
 import { sessionMatchesSearch } from '@/lib/session-search'
 import { normalizeSessionSource, sessionSourceLabel } from '@/lib/session-source'
 import { cn } from '@/lib/utils'
@@ -479,7 +479,11 @@ export function ChatSidebar({
     // An agent speaks inside its parent conversation (through that
     // conversation's roster), so its own conversation is a child of it — not a
     // standalone row beside it. Agents are the profiles wired to deliver.
-    return scoped.filter(s => !agentOwnedProfiles.has(normalizeProfileKey(s.profile)))
+    //
+    // Hermes's own project conversations (`星阶 · Hermes`) are the same kind of
+    // child, but no profile can catch them — they live in the DEFAULT profile,
+    // alongside your own chats — so the naming convention is the signal.
+    return scoped.filter(s => !agentOwnedProfiles.has(normalizeProfileKey(s.profile)) && !isHermesConversation(s.title))
   }, [sessions, archivedSessions, showArchived, showAllProfiles, profileScope, agentOwnedProfiles])
 
   // One predicate for the status/project filters, so the flat list and the

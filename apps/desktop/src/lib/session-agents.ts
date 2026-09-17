@@ -95,3 +95,34 @@ export function agentProfileSet(jobs: CronJob[] | undefined): Set<string> {
 
   return profiles
 }
+
+/** Hermes's display name — `chat-identity.ts`'s DEFAULT_AGENT_SPEAKER.name.
+ *  Duplicated as a literal so this module (pure, no assets) stays importable
+ *  from anywhere. */
+const HERMES_NAME = 'Hermes'
+
+/** The separator `agent_session_name.py` writes: `项目 · 智能体`. */
+const AGENT_TITLE_SEPARATOR = ' · '
+
+/** `<项目> · Hermes`, with the dedupe counter the naming script appends. */
+const HERMES_CONVERSATION_RE = new RegExp(`${AGENT_TITLE_SEPARATOR}${HERMES_NAME}(?: \\(\\d+\\))?$`)
+
+/**
+ * Is this one of HERMES's own project conversations (`星阶 · Hermes`)?
+ *
+ * Hermes has a project conversation exactly like every other agent — but it is
+ * NOT a delivery agent, so `agentProfileSet` can never recognize it: it lives
+ * in the DEFAULT profile, the same one your own conversations live in, so
+ * filtering by profile would take your chats with it. The NAME is the only
+ * signal available, and it is a reliable one because the naming convention is
+ * enforced at dispatch time. A conversation you named yourself with a
+ * ` · Hermes` suffix is the accepted false positive.
+ *
+ * Hermes's conversations are therefore hidden from the session list for the
+ * same reason an agent's are: it speaks inside its conversations, so its own
+ * conversations are children of them (reached from the roster), not standalone
+ * rows beside them.
+ */
+export function isHermesConversation(title: null | string | undefined): boolean {
+  return HERMES_CONVERSATION_RE.test((title ?? '').trim())
+}
