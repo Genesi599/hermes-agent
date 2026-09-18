@@ -106,6 +106,13 @@ class ChannelEnsureFromSession(BaseModel):
 # apps/desktop/src/lib/session-agents.ts isHermesConversation.
 _HERMES_OWN_TITLE_RE = re.compile(r" · Hermes( \(\d+\))?$")
 
+# A DISPATCHED run (routing turn, wake-up, board upkeep) OPENS with the shared
+# context its dispatcher feeds it. Such a session is an agent's working notes,
+# not a place the user talks in — promoting one mints a "project" out of a task
+# summary (2026-09-18: a routing turn's fresh `-z` session, auto-titled
+# 「推进星阶胸腺单细胞初步分析」, turned up in the sidebar as its own project).
+_DISPATCH_OPENING_RE = re.compile(r"^\s*#\s*共享上下文\s*·")
+
 
 def _cron_bound_session_ids() -> set:
     """Sessions a cron still runs its turns IN (attach_to_session targets).
@@ -146,8 +153,9 @@ def ensure_channel_from_session(
     break it), imports what was said there, and from then on the desktop
     surface for that session is the channel. Sessions that must stay
     conversations return `channel: null` with a reason: platform threads
-    (weixin/feishu), the maintainer's own `· Hermes` talks, untitled
-    newborns, and sessions a content cron still reports into.
+    (weixin/feishu), the maintainer's own `· Hermes` talks, dispatched agent
+    runs (their opening message is a shared-context blob), untitled newborns,
+    and sessions a content cron still reports into.
     """
     session_id = (body.session_id or "").strip()
 
@@ -194,6 +202,17 @@ def ensure_channel_from_session(
 
         if session_id in _cron_bound_session_ids():
             return {"channel": None, "reason": "cron_reports_here"}
+
+        # Dispatched work (a routing turn, a wake-up) is not a project: its
+        # opening message is the shared context the dispatcher fed it. Keep it
+        # a conversation however the auto-titler decided to name it.
+        try:
+            opening = db.get_messages(session_id, limit=1)
+        except Exception:
+            opening = []
+
+        if opening and _DISPATCH_OPENING_RE.match(str(opening[0].get("content") or "")):
+            return {"channel": None, "reason": "dispatch_run"}
 
         title = session["title"].strip()
         channel_id = db.get_or_create_channel(title, title, session_id=session_id)

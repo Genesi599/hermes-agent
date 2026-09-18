@@ -392,3 +392,43 @@ CDP 实测分组：星阶/胸腺/Log/A股复盘/Book → Today，其余按真实
 `USER_SPEAKER.avatarImage`（线程视图用的正式用户头像）——进了群聊头像就变样。修：人声行
 回退 `USER_SPEAKER`（名+头像图），agent 行不变；行自带 `author_avatar` 时仍优先。
 CDP 实测：星阶/胸腺房间人声行均显示 user-avatar 图，无 emoji。
+
+
+## 路由轮的 `-z` 回退凭空造"新项目"（2026-09-18）
+
+用户报：在星阶房间问「管家给我发飞书了，但是怎么没发群聊？」，随后侧栏多出一个项目
+**「推进星阶胸腺单细胞初步分析」**。查证（进程树 + 会话/房间表 + 日志）：
+
+- 15:01:31 房间消息 #3957 → 后端 `_trigger_router` 拉起 `channel_router.py --message=3957`；
+  这一轮路由**跑了两遍**：一遍正确续写 `星阶 · Hermes`（15:01:31.395 起、15:03:38 收尾），
+  另一遍走了 `agent_dispatch` 的 `-z` 回退（进程实据：`-z <路由 prompt> --in …\hermes_board\星阶`，
+  会话 `20260918_150133_c0a981`）。
+- `-z` **永远新开会话**（`run_oneshot` 无 resume），新会话被起名器按看板内容命名成
+  「推进星阶胸腺单细胞初步分析」（title_source=llm）；"每个会话都是房间"的自动晋升把它变成房间
+  → 用户看到的就是"突然多出一个项目"。
+- 旧命名护栏为什么失效：飞行改名只认**无标题**新行，而起名器在开篇消息落库那一刻就写了
+  `derived` 标题，轮询永远慢一步；事后命名又传 `resumed_from`（旧会话 id），新会话始终没被命名成
+  `<项目> · Hermes`——而 ensure-from-session 正是靠这个后缀排除「agent 自己的会话」。
+
+修复（四层，防重复 + 防误晋升）：
+
+1. `channel_router.py`：认领改成**原子**（`UPDATE … SET routed_at=? WHERE id=? AND routed_at IS NULL`，
+   输家 `continue`）——同一条人声不允许被两个路由各派一遍。
+2. `agent_dispatch._rename_newest_while_running`：只有 `title_source='user'` 的行才不碰；
+   `derived`/`llm` 只是起名器对我们这条 prompt 的猜测，一律改写成派活名。实测：迟到的
+   llm 标题行被改成 `星阶 · Hermes (4)` / source=user（随即被 ensure 排除）。
+3. `agent_dispatch._rest_turn`：POST 抛错/读超时**不再等同于"没跑 turn"**——先查 transcript
+   （`_prompt_landed`：最新 user 消息就是这条 prompt，或 live_status=working）再决定是否回退；
+   5 分钟宽限与 1800s 硬顶两处 bail 同样先查证（已落地就继续等，硬顶返回空回复而不是开新会话）。
+4. `channels.py` ensure-from-session：开篇消息是共享上下文 blob（`# 共享上下文 · `）的会话
+   不晋升房间（reason=`dispatch_run`）——派活/路由轮的工作记录不是"项目"。
+
+清理：伪房间 `ch_9b5e24e78d6a` 与该 `-z` 会话已删除（回答早已以 Hermes 名义贴回星阶房间 #3959）。
+第 1–3 条对**每次新派活**立即生效（每次都是新进程）；第 4 条在保证后端重启后生效。
+
+## 后端会话轮次接口的两次"假失败"（2026-09-18，同事故机制注记）
+
+`POST /api/sessions/{id}/prompt` 在**空闲会话**上会**同步把整轮跑完**才回响应（`_run_prompt_submit`
+inline），而 `_rest_turn` 的读超时只有 20s——短轮次能过、长轮次必超时；超时一旦被当成"后端拒绝"，
+就会叠加 `-z` 回退（同一条 prompt 跑两遍、多出一个新会话）。修复把"失败"的判据从"HTTP 层有没有
+异常"改成"**transcript 里这条 prompt 在不在**"。
