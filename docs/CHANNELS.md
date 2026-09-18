@@ -338,3 +338,15 @@ assistant 行）。无既有会话则**预建带名行**（`title_source='user'`
   匹配，且不误伤正文里的普通水平线（后随文本不含你问的/本轮结果不切）。
 - 六种形态单测全过（新契约/旧分隔/粗体尾巴/朴素尾巴/无尾巴/正常水平线）；
   Book 房间已发的那条 #3917 已按此修剪（完整过程记录仍在 `Book · Hermes` 会话里）。
+
+## Hermes 芯片动效全房间齐亮（2026-09-18 修，`a9c8ca0591`）
+
+用户报：星阶发一条 "hi"，**所有项目**的 Hermes 芯片都开始动效。根因：`$agentActivity`/
+`$agentUnreadAt` **只按 profile 作键**——每个房间的 Hermes 芯片各自轮询自己项目的
+`<项目> · Hermes`，但全写进 `activity['default']` 这**同一个条目**（互相覆盖），而所有
+Hermes 芯片也都读它 → 一个项目思考 = 全部 Hermes 芯片齐亮，未读绿点同理。
+
+修复：`agentWatchKey({profile, titlePrefix})` 复合键（`default::<项目> · Hermes`；无前缀的
+agent 芯片仍是裸 profile 键，行为不变）；`pollAgentWatch` 按复合键写，AgentChip 加 `watchKey`
+属性按同一键读，`markAgentRead` 同步。部署后 CDP 实测（星阶路由轮真实运行中）：
+星阶 Hermes=working，Book/胸腺/Tiddlywiki/Log/应用开发/Cashew/AI出题 全部 idle——一一对应。
