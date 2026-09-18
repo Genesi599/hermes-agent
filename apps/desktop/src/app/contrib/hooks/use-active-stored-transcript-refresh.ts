@@ -1,0 +1,96 @@
+import { type MutableRefObject, useCallback, useRef } from 'react'
+
+import { getLatestSessionMessages } from '@/hermes'
+import { preserveLocalAssistantErrors, toChatMessages } from '@/lib/chat-messages'
+import { sessionMessagesSignature } from '@/lib/session-signatures'
+import { $sessions, sessionMatchesStoredId } from '@/store/session'
+
+import { resolveSessionProfile } from '../../session/hooks/use-session-actions/utils'
+import type { useSessionStateCache } from '../../session/hooks/use-session-state-cache'
+
+type SessionStateCache = ReturnType<typeof useSessionStateCache>
+
+interface ActiveTranscriptRefreshParams {
+  activeSessionIdRef: SessionStateCache['activeSessionIdRef']
+  busyRef: MutableRefObject<boolean>
+  selectedStoredSessionIdRef: SessionStateCache['selectedStoredSessionIdRef']
+  updateSessionState: SessionStateCache['updateSessionState']
+}
+
+/**
+ * Refresh the open messaging transcript (inbound platform turns arrive via
+ * the background gateway, not the desktop websocket); external
+ * Desktop-compatible clients can also write the selected stored session
+ * without this renderer receiving a websocket event. Signature-gate the
+ * durable-history refresh and never replace a local active stream.
+ *
+ * The sidebar row is only the cheap path to the owning profile — NOT a
+ * precondition. A conversation opened from an agent chip lives outside the
+ * profile-scoped recents list, so `$sessions` never carries it and the old
+ * `if (!stored) return` gate froze that transcript at its open-time snapshot
+ * forever. On a row miss the profile resolves through the same ladder the
+ * open path used (cache → active backend → the other profiles; the active
+ * backend is probed first, which is the profile the resume swapped the
+ * gateway onto) and is memoized so the 2s polls don't re-probe. An id no
+ * library owns — deleted while open, wiped backend — resolves to nothing
+ * and quietly skips.
+ */
+export function useActiveStoredTranscriptRefresh({
+  activeSessionIdRef,
+  busyRef,
+  selectedStoredSessionIdRef,
+  updateSessionState
+}: ActiveTranscriptRefreshParams) {
+  const transcriptSignatureRef = useRef(new Map<string, string>())
+  const profileCacheRef = useRef(new Map<string, string>())
+
+  return useCallback(async () => {
+    const storedSessionId = selectedStoredSessionIdRef.current
+    const runtimeSessionId = activeSessionIdRef.current
+
+    if (!storedSessionId || !runtimeSessionId || busyRef.current) {
+      return
+    }
+
+    const stored = $sessions.get().find(s => sessionMatchesStoredId(s, storedSessionId))
+
+    // Row hit keeps the previous behavior: `stored.profile` may legitimately
+    // be undefined (single-profile installs don't stamp it), and the fetch
+    // then runs against the live backend exactly as before.
+    let profile: null | string | undefined = stored?.profile ?? profileCacheRef.current.get(storedSessionId) ?? null
+
+    if (!stored && !profile) {
+      profile = await resolveSessionProfile(storedSessionId)
+
+      if (!profile) {
+        return
+      }
+
+      profileCacheRef.current.set(storedSessionId, profile)
+    }
+
+    try {
+      const latest = await getLatestSessionMessages(storedSessionId, profile)
+      const signatureKey = `${profile ?? 'default'}:${storedSessionId}`
+      const sig = sessionMessagesSignature(latest.messages)
+
+      if (transcriptSignatureRef.current.get(signatureKey) === sig) {
+        return
+      }
+
+      transcriptSignatureRef.current.set(signatureKey, sig)
+      const messages = toChatMessages(latest.messages)
+
+      updateSessionState(
+        runtimeSessionId,
+        state => ({ ...state, messages: preserveLocalAssistantErrors(messages, state.messages) }),
+        storedSessionId
+      )
+    } catch {
+      // Non-fatal: next poll or manual refresh can hydrate. Drop the memoized
+      // profile so a fetch that no longer routes (backend re-homed) re-resolves
+      // instead of retrying a dead profile forever.
+      profileCacheRef.current.delete(storedSessionId)
+    }
+  }, [activeSessionIdRef, busyRef, selectedStoredSessionIdRef, updateSessionState])
+}
