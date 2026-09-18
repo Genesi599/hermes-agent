@@ -8456,6 +8456,8 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
             except (TypeError, ValueError):
                 pass
 
+        bound_session: List[str] = []
+
         def _do(conn):
             cursor = conn.execute(
                 "INSERT INTO channel_messages "
@@ -8471,6 +8473,20 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
                 "WHERE id = ?",
                 (when, channel_id),
             )
+            # The room's line must carry its time onto the BOUND session too:
+            # the sidebar buckets/sorts a conversation by the session's
+            # recency (freshest of last_activity_at and newest message), and
+            # a room that never touches it stays pinned in the "yesterday"
+            # bucket however lively the room is (2026-09-18). Captured here,
+            # stamped after the insert (touch_session_activity is monotonic,
+            # so history imports cannot rewind it).
+            bound = conn.execute(
+                "SELECT session_id FROM channels WHERE id = ?", (channel_id,)
+            ).fetchone()
+
+            if bound and bound[0]:
+                bound_session.append(str(bound[0]))
+
             # The room's roster follows who SPOKE in it: an agent line merges its
             # label into `participants` so the sidebar can chip it without a
             # second registry. The maintainer ('Hermes') is rendered by the
@@ -8491,7 +8507,14 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
                     )
             return message_id
 
-        return self._execute_write(_do)
+        message_id = self._execute_write(_do)
+
+        if bound_session:
+            self.touch_session_activity(
+                bound_session[0], when, description="群聊消息",
+            )
+
+        return message_id
 
     def get_channel_messages(
         self,
@@ -8554,6 +8577,21 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
             )
 
         self._execute_write(_do)
+
+    def touch_bound_session_activity(self, channel_id: str, when: float) -> None:
+        """Carry a room line's time onto the session the room is bound to.
+
+        The sidebar buckets/sorts a conversation by session recency (freshest
+        of `last_activity_at` and the newest message) — but in the room model
+        lines land in `channel_messages`, so a project you messaged today
+        kept sitting in the "yesterday" bucket (2026-09-18). Monotonic via
+        `touch_session_activity`: importing history cannot rewind it.
+        """
+        row = self.get_channel(channel_id) or {}
+        session_id = str(row.get("session_id") or "").strip()
+
+        if session_id:
+            self.touch_session_activity(session_id, when, description="群聊消息")
 
     # Housekeeping rows nobody said in the room: cron prompt echoes, model
     # switches, compaction carriers. Same filter the shared-context builder
