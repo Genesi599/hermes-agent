@@ -260,3 +260,27 @@ Android/应用开发/中性粒项目/Journal Club/game/脑和脑膜/探索/神�
 - CDP 实测：21 个房间全部有名册——星阶=Hermes+管家+流程搭档，其余 20 个=Hermes。
 - 语义：被唤醒的 agent 在某房间**说过话**（投递按项目名插行）→ participants 自动添 → 芯片出现，
   无需为每个项目手配投递 cron。
+
+## 「群里说话 → 冒出新项目」事故（2026-09-18 修，scripts 侧 + `b61ef468d2`）
+
+用户在 Book 房间发"1"，系统冒出新项目「补充 epub-read SKILL.md 图表文档」。链式根因：
+
+1. **派活会话裸奔**：`agent_dispatch.dispatch()` 的改名（`agent_session_name.py`）在**整轮跑完之后**才执行；
+   运行中会话无名，被 llm 自动命名成**工作内容**的标题（"补充 epub-read SKILL.md 图表文档"）。
+2. **路由轮被上下文劫持**：路由 prompt 只有"判断跟谁有关"，没防"继续旧工作"——共享上下文里满是
+   09:21 的 epub-read 旧任务，模型把"1"当成继续干活的信号（33 条消息的真工作）。
+3. 裸奔会话是**可见普通会话**（非 `· Hermes` 命名→不被过滤）→ 被打开/命名落地后 ensure 成了新项目。
+
+修复（scripts 不在 git，只在磁盘；`channel_backfill_all.py` 同目录）：
+- `agent_dispatch.py`：改 `Popen` + **运行中即改名**——进程起来后轮询 profile 库找"本轮新出现的无名行"，
+  立即 `title_source='user'` 写入 `<项目> · <智能体>`（user 权威 > llm，自动命名再也盖不掉；
+  45s 内赢不了则回落到原有的跑完后改名）。实测修后 8 秒即已命名 `Book · Hermes`。
+  （曾试过"预建带名空会话 + `--resume`"——`--resume` 不认无消息的裸 DB 行，另起新会话，弃。）
+- `channel_router.py` prompt 加**防劫持护栏**："这是一次路由判断不是干活；消息可能只是 '1' 那样的
+  链路确认；上下文里的旧工作除非明确要求否则绝不要继续"；并删掉重复的日志行。
+- ensure 接口（`b61ef468d2`）：`live_status=working` → 拒绝（另一个 tile 打开同一会话时不得把
+  半截 transcript 导进房间）。
+
+验证（重路由 #3906）：`Book · Hermes` 会话运行中即命名且被侧栏隐藏；回复 366 字落 Book 房间
+（#3909）；无新会话/新频道；router.log 单条 "routed #3906 … posted to room"。残留清理：
+被劫持的 33 消息会话、两个假项目频道（其一曾被年轻房间改名逻辑跟随成 "Book · Hermes"）已删。
