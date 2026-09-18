@@ -363,3 +363,15 @@ agent 芯片仍是裸 profile 键，行为不变）；`pollAgentWatch` 按复合
 对账把残留 id 当 stale 从持久集合清除（启动即清扫存量幽灵）。名册芯片的未读点不受影响（那是
 它自己的存储，隐藏会话的"可回读入口"本来就是芯片）。回归测试：隐藏的 `Book · Hermes` 不计数、
 可见行正常计数（17 测试全过）。实测：包一层角标回调观测整轮隐藏思考-完成，计数从未变 1。
+
+## 房间行内渲染 MEDIA: 引用（2026-09-18，`604bcb085a`）
+
+用户报：带读回复里的图在 Hermes 自己的对话能看到，群里只显示 `MEDIA:C:\…` 裸路径。根因：线程侧
+`renderMediaTags` + `#media:` 链接 → `resolveMediaDisplaySrc`（桥读文件转 data URL）→ ZoomableImage
+一整条链；房间视图只用了 CompactMarkdown（无媒体能力）。
+
+修复：`chat-messages.ts` 新增 `splitMediaRefs()`（复用同一套 MEDIA_LINE_RE/MEDIA_TAG_RE——语法
+单一事实源，行式与内联式都认）；ChannelView 按段渲染——文字走 CompactMarkdown、媒体走新的
+`ChannelMedia`（resolveMediaDisplaySrc 解析 + ZoomableImage 复用线程的看大图/下载外观；视频/音频
+留一行名字，房间以文字为先）。CDP 实测 Book 房间：图 8-1(448×184)/图 8-2(256×256) 内嵌加载成功，
+导入历史里的图 7-1/图 9-1 也一并渲染，裸路径文本消失。
