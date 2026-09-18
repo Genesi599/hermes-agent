@@ -2,9 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { SpeakerChip } from '@/components/assistant-ui/thread/speaker-chip'
 import { CompactMarkdown } from '@/components/chat/compact-markdown'
+import { ZoomableImage } from '@/components/chat/zoomable-image'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
 import { type Channel, type ChannelMessage, fetchChannelMessages, postChannelMessage } from '@/lib/channels'
+import { splitMediaRefs } from '@/lib/chat-messages'
+import { mediaKind, mediaName, resolveMediaDisplaySrc } from '@/lib/media'
 import { DEFAULT_AGENT_SPEAKER } from '@/lib/chat-identity'
 import { cn } from '@/lib/utils'
 
@@ -19,6 +22,64 @@ import { cn } from '@/lib/utils'
  * what makes the room readable as an exchange rather than as a conversation
  * with one assistant.
  */
+/** One MEDIA: reference, rendered INLINE like the thread renders it — the raw
+ *  path is not loadable in the renderer, so resolve it through the desktop
+ *  bridge (data URL) and reuse the thread's image chrome (zoom / download).
+ *  Non-image media keeps a name line: the room is text-first. */
+function ChannelMedia({ path }: { path: string }) {
+  const kind = mediaKind(path)
+  const [src, setSrc] = useState('')
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let live = true
+
+    setSrc('')
+    setFailed(false)
+
+    void resolveMediaDisplaySrc(path)
+      .then(value => {
+        if (live) {
+          setSrc(value)
+        }
+      })
+      .catch(() => {
+        if (live) {
+          setFailed(true)
+        }
+      })
+
+    return () => {
+      live = false
+    }
+  }, [path])
+
+  if (kind !== 'image') {
+    return (
+      <div className="my-1 text-[0.75rem] text-(--ui-text-tertiary)">
+        {kind === 'video' ? '🎬' : '🎵'} {mediaName(path)}
+      </div>
+    )
+  }
+
+  if (failed) {
+    return <div className="my-1 text-[0.75rem] text-(--ui-text-tertiary)">Couldn&rsquo;t load {mediaName(path)}</div>
+  }
+
+  if (!src) {
+    return <div className="my-1 text-[0.75rem] text-(--ui-text-tertiary)">Loading {mediaName(path)}…</div>
+  }
+
+  return (
+    <ZoomableImage
+      alt={mediaName(path)}
+      className="m-0 block h-auto w-auto max-h-64 max-w-full rounded-lg object-contain"
+      containerClassName="my-1.5 block w-fit max-w-[min(100%,28rem)]"
+      src={src}
+    />
+  )
+}
+
 export function ChannelView({ channel, className }: { channel: Channel; className?: string }) {
   const { t } = useI18n()
   const [messages, setMessages] = useState<ChannelMessage[]>([])
@@ -107,7 +168,13 @@ export function ChannelView({ channel, className }: { channel: Channel; classNam
               name={line.author_label || DEFAULT_AGENT_SPEAKER.name}
             />
             <div className="mt-1 text-foreground/90">
-              <CompactMarkdown className="text-foreground/90" text={line.content} />
+              {splitMediaRefs(line.content).map((segment, index) =>
+                segment.kind === 'media' ? (
+                  <ChannelMedia key={`media-${line.id}-${index}`} path={segment.path} />
+                ) : (
+                  <CompactMarkdown className="text-foreground/90" key={`text-${line.id}-${index}`} text={segment.text} />
+                )
+              )}
             </div>
           </article>
         ))}

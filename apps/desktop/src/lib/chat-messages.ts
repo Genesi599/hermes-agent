@@ -167,6 +167,64 @@ function mediaLink(value: string): string {
   return `[${mediaDisplayLabel(path)}](${mediaMarkdownHref(path)})`
 }
 
+/** A channel line split into prose and the MEDIA: references inside it.
+ *  Same syntax truth as renderMediaTags (both tag forms), so the room renders
+ *  exactly what the thread renders — the room just turns the references into
+ *  inline images instead of markdown links. */
+export type MediaSegment = { kind: 'media'; path: string } | { kind: 'text'; text: string }
+
+export function splitMediaRefs(text: string): MediaSegment[] {
+  const segments: MediaSegment[] = text ? [{ kind: 'text', text }] : []
+
+  // Rewrite each text segment in place into prose + media parts. The index
+  // advances past what the splice inserted, so later segments keep their
+  // positions even though the array grows under the loop.
+  const take = (regex: RegExp, group: string) => {
+    for (let index = 0; index < segments.length; index++) {
+      const segment = segments[index]
+
+      if (segment.kind !== 'text') {
+        continue
+      }
+
+      const parts: MediaSegment[] = []
+      const body = segment.text
+      let at = 0
+
+      for (const match of body.matchAll(regex)) {
+        const path = unquoteMediaPath(match.groups?.[group] ?? '')
+
+        if (!path) {
+          continue
+        }
+
+        if (match.index > at) {
+          parts.push({ kind: 'text', text: body.slice(at, match.index) })
+        }
+
+        parts.push({ kind: 'media', path })
+        at = match.index + match[0].length
+      }
+
+      if (!parts.length) {
+        continue
+      }
+
+      if (at < body.length) {
+        parts.push({ kind: 'text', text: body.slice(at) })
+      }
+
+      segments.splice(index, 1, ...parts)
+      index += parts.length - 1
+    }
+  }
+
+  take(MEDIA_LINE_RE, 'line')
+  take(MEDIA_TAG_RE, 'inline')
+
+  return segments
+}
+
 export function renderMediaTags(text: string): string {
   return text
     .replace(
