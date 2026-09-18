@@ -1680,6 +1680,9 @@ export interface Translations {
       pin: string
       unpin: string
       copyId: string
+      openConversation: string
+      markRead: string
+      agentActions: string
       export: string
       branchFrom: string
       duplicate: string

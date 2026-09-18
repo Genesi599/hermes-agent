@@ -2,17 +2,23 @@ import { useStore } from '@nanostores/react'
 import type * as React from 'react'
 import { memo, useEffect, useState } from 'react'
 
+import { openSession } from '@/app/open-session'
+import { ActionsContextMenu, type MenuKit, renderActionItem } from '@/components/ui/actions-menu'
+import { CopyButton } from '@/components/ui/copy-button'
 import { listAllProfileSessions } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { channelParticipants, roomBySession, type Channel } from '@/lib/channels'
 import { DEFAULT_AGENT_SPEAKER } from '@/lib/chat-identity'
-import { agentsForSession } from '@/lib/session-agents'
+import { triggerHaptic } from '@/lib/haptics'
+import { agentsForSession, type SessionAgent } from '@/lib/session-agents'
 import { useStoreSelector } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
 import { $agentActivity, $agentUnreadAt, agentWatchKey, type AgentWatch, markAgentRead, pollAgentWatch } from '@/store/agent-activity'
 import { $cronJobs } from '@/store/cron'
+import { notifyError } from '@/store/notifications'
 import { ensureGatewayProfile } from '@/store/profile'
 import { $projectScope, ALL_PROJECTS, projectIdForCwd } from '@/store/projects'
+import { canOpenSessionWindow } from '@/store/windows'
 
 import { sessionDotClassName } from '../session-status-dot'
 
@@ -25,6 +31,12 @@ import { sessionDotClassName } from '../session-status-dot'
  * does, so the gateway swap and tab wiring stay the app's own path. It does NOT
  * park you in the agent's profile: with the all-profiles view on, your own
  * sessions stay listed while the agent's chat opens beside them.
+ *
+ * A chip also answers to the right mouse button (2026-09-18): open its
+ * conversation, send that conversation to a tab or a window, copy its id, clear
+ * the unread dot. The set stays LEAN because a chip is not a session row — the
+ * agent itself (SOUL, name, color, export) is managed on the profile rail,
+ * which has its own right-click menu.
  *
  * The roster follows two truths (see `agentsForSession`): the delivery wiring,
  * and the room's own participant record. A ROOM (a session with a bound
@@ -141,15 +153,22 @@ const AGENT_POLL_MS = 10000
 function AgentChip({
   avatar,
   label,
-  onClick,
+  onOpen,
   profile,
+  resolveTarget,
   title,
   watchKey
 }: {
   avatar: React.ReactNode
   label: string
-  onClick: (event: React.MouseEvent) => void
+  /** Same as clicking the chip: open the agent's conversation, or land in its
+   *  context when it has none yet. */
+  onOpen: () => void
   profile: string
+  /** The agent's conversation id, resolved the way a CLICK resolves it (exact
+   *  `<项目> · <智能体>` name first). Asked for when the menu opens, not on
+   *  every render — it is a lookup, not a subscription. */
+  resolveTarget: () => Promise<null | string>
   title: string
   /** The activity-store key this chip reports on. Defaults to the profile;
    *  Hermes chips watch one conversation PER PROJECT inside the default
@@ -163,41 +182,130 @@ function AgentChip({
   const unread = useStoreSelector($agentUnreadAt, marks => key in marks)
   const running = status === 'working'
 
+  // What the right-click menu acts on. The roster's poll already published this
+  // chip's conversation, so the common case needs no lookup; opening the menu
+  // re-resolves anyway, because the poll follows a title PREFIX while a click
+  // demands the exact name — the two disagree once the namer appended a
+  // `… (2)` sibling (see sessionToOpenForAgent).
+  const polledId = useStoreSelector($agentActivity, activity => activity[key]?.sessionId ?? null)
+  const [lookedUpId, setLookedUpId] = useState<null | string>(null)
+  const targetId = lookedUpId ?? polledId
+
+  const lookUpTarget = () => {
+    void resolveTarget().then(id => {
+      if (id) {
+        setLookedUpId(id)
+      }
+    })
+  }
+
+  const items = (kit: MenuKit) => (
+    <>
+      {renderActionItem(kit, {
+        icon: 'comment-discussion',
+        label: r.openConversation,
+        onSelect: () => {
+          triggerHaptic('selection')
+          onOpen()
+        }
+      })}
+      {renderActionItem(kit, {
+        disabled: !targetId,
+        icon: 'browser',
+        label: r.openInNewTab,
+        onSelect: () => {
+          triggerHaptic('selection')
+
+          if (targetId) {
+            openSession(targetId, () => undefined, 'tab')
+          }
+        }
+      })}
+      {canOpenSessionWindow()
+        ? [
+            renderActionItem(kit, {
+              disabled: !targetId,
+              icon: 'link-external',
+              label: r.newWindow,
+              onSelect: () => {
+                triggerHaptic('selection')
+
+                if (targetId) {
+                  openSession(targetId, () => undefined, 'window')
+                }
+              }
+            })
+          ]
+        : []}
+      <kit.Separator />
+      <CopyButton
+        appearance={kit.copyAppearance}
+        disabled={!targetId}
+        errorMessage={r.copyIdFailed}
+        iconClassName="size-3.5 text-current"
+        key={r.copyId}
+        label={r.copyId}
+        onCopyError={err => notifyError(err, r.copyIdFailed)}
+        text={targetId ?? ''}
+      />
+      {unread
+        ? [
+            renderActionItem(kit, {
+              icon: 'check',
+              label: r.markRead,
+              onSelect: () => {
+                triggerHaptic('selection')
+                markAgentRead(key)
+              }
+            })
+          ]
+        : []}
+    </>
+  )
+
   return (
-    <button
-      className="relative flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-[0.625rem] leading-4 text-(--ui-text-tertiary) transition-colors hover:bg-(--ui-control-active-background) hover:text-foreground"
-      data-agent={label}
-      data-agent-state={running ? 'working' : unread ? 'unread' : 'idle'}
-      onClick={onClick}
-      title={running ? `${title} · ${r.sessionRunning}` : unread ? `${title} · ${r.finishedUnread}` : title}
-      type="button"
-    >
-      {/* The arc is a CHILD span, never a class on the button: `.arc-border` is
-          `position: absolute` (that is how the session row draws it), so putting
-          it on the chip itself takes the chip out of flow and makes it vanish.
-          Same primitive, same place — the chip's own box never moves. */}
-      {running ? <span aria-hidden="true" className="arc-border arc-row arc-bottom" /> : null}
-      <span className="relative inline-grid shrink-0 place-items-center">
-        <span
-          aria-hidden="true"
-          className="inline-grid size-3.5 place-items-center overflow-hidden rounded-full bg-(--ui-bg-tertiary) text-[0.5rem] leading-none"
-        >
-          {avatar}
-        </span>
-        {unread && !running ? (
+    <ActionsContextMenu ariaLabel={r.agentActions} contentClassName="w-40" items={items}>
+      <button
+        className="relative flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-[0.625rem] leading-4 text-(--ui-text-tertiary) transition-colors hover:bg-(--ui-control-active-background) hover:text-foreground"
+        data-agent={label}
+        data-agent-state={running ? 'working' : unread ? 'unread' : 'idle'}
+        onClick={event => {
+          // The row underneath opens the PARENT session; this opens the AGENT.
+          event.preventDefault()
+          event.stopPropagation()
+          onOpen()
+        }}
+        onContextMenu={lookUpTarget}
+        title={running ? `${title} · ${r.sessionRunning}` : unread ? `${title} · ${r.finishedUnread}` : title}
+        type="button"
+      >
+        {/* The arc is a CHILD span, never a class on the button: `.arc-border` is
+            `position: absolute` (that is how the session row draws it), so putting
+            it on the chip itself takes the chip out of flow and makes it vanish.
+            Same primitive, same place — the chip's own box never moves. */}
+        {running ? <span aria-hidden="true" className="arc-border arc-row arc-bottom" /> : null}
+        <span className="relative inline-grid shrink-0 place-items-center">
           <span
-            aria-label={r.finishedUnread}
-            className={cn(
-              sessionDotClassName('unread'),
-              'absolute -right-1 -top-1 ring-2 ring-(--ui-sidebar-surface-background)'
-            )}
-            data-slot="agent-unread-dot"
-            role="status"
-          />
-        ) : null}
-      </span>
-      <span className="truncate">{label}</span>
-    </button>
+            aria-hidden="true"
+            className="inline-grid size-3.5 place-items-center overflow-hidden rounded-full bg-(--ui-bg-tertiary) text-[0.5rem] leading-none"
+          >
+            {avatar}
+          </span>
+          {unread && !running ? (
+            <span
+              aria-label={r.finishedUnread}
+              className={cn(
+                sessionDotClassName('unread'),
+                'absolute -right-1 -top-1 ring-2 ring-(--ui-sidebar-surface-background)'
+              )}
+              data-slot="agent-unread-dot"
+              role="status"
+            />
+          ) : null}
+        </span>
+        <span className="truncate">{label}</span>
+      </button>
+    </ActionsContextMenu>
   )
 }
 
@@ -251,7 +359,7 @@ function AgentRosterImpl({
   // Who to watch: each agent's newest conversation, plus Hermes's own project
   // conversation (found by name, the same rule its chip opens by). Stable key
   // so the poller restarts only when the cast changes, not on every render.
-  const watchKey = [project, ...agents.map(agent => agent.profile ?? '')].join(' ')
+  const watchKey = [project, ...agents.map(agent => agent.profile ?? '')].join('\u0000')
 
   const watch: AgentWatch[] = [
     { profile: 'default', titlePrefix: project ? `${project} · ${DEFAULT_AGENT_SPEAKER.name}` : undefined },
@@ -304,14 +412,42 @@ function AgentRosterImpl({
     titlePrefix: project ? `${project} · ${DEFAULT_AGENT_SPEAKER.name}` : undefined
   })
 
-  const openHermes = async (event: React.MouseEvent) => {
-    event.preventDefault()
-    event.stopPropagation()
+  const openHermes = async () => {
     markAgentRead(hermesWatchKey)
 
     const target = await hermesConversationFor(project)
 
     onOpenSession?.(target ?? sessionId)
+  }
+
+  // The agent chips' two halves, so the click and the right-click menu land on
+  // the SAME conversation: `resolveAgentTarget` only looks, `openAgent` also
+  // goes there (the agent's own chat, or its bare context when it has none).
+  const resolveAgentTarget = (agent: SessionAgent) =>
+    agent.profile
+      ? sessionToOpenForAgent(agent.profile, project && agent.label ? `${project} · ${agent.label}` : '')
+      : Promise.resolve<null | string>(null)
+
+  const openAgent = async (agent: SessionAgent) => {
+    const profile = agent.profile
+
+    if (!profile) {
+      return
+    }
+
+    markAgentRead(profile)
+
+    const target = await resolveAgentTarget(agent)
+
+    if (target && onOpenSession) {
+      onOpenSession(target)
+
+      return
+    }
+
+    // No conversation yet — land in the agent's context so the next message
+    // starts one.
+    void ensureGatewayProfile(profile)
   }
 
   return (
@@ -322,8 +458,9 @@ function AgentRosterImpl({
       <AgentChip
         avatar={<img alt="" className="size-full object-cover" src={DEFAULT_AGENT_SPEAKER.avatarImage} />}
         label={DEFAULT_AGENT_SPEAKER.name}
-        onClick={openHermes}
+        onOpen={() => void openHermes()}
         profile="default"
+        resolveTarget={() => hermesConversationFor(project)}
         title={`打开与「${DEFAULT_AGENT_SPEAKER.name}」的对话（管理者：群聊/看板/智能体调度）`}
         watchKey={hermesWatchKey}
       />
@@ -332,35 +469,9 @@ function AgentRosterImpl({
           avatar={agent.avatar ?? agent.label.charAt(0)}
           key={agent.label}
           label={agent.label}
-          onClick={async event => {
-            // The row underneath opens the PARENT session; this opens the AGENT.
-            event.preventDefault()
-            event.stopPropagation()
-
-            const profile = agent.profile
-
-            if (!profile) {
-              return
-            }
-
-            markAgentRead(profile)
-
-            const target = await sessionToOpenForAgent(
-              profile,
-              project && agent.label ? `${project} · ${agent.label}` : ''
-            )
-
-            if (target && onOpenSession) {
-              onOpenSession(target)
-
-              return
-            }
-
-            // No conversation yet — land in the agent's context so the next
-            // message starts one.
-            void ensureGatewayProfile(profile)
-          }}
+          onOpen={() => void openAgent(agent)}
           profile={agent.profile ?? agent.label}
+          resolveTarget={() => resolveAgentTarget(agent)}
           title={`跟「${agent.label}」对话`}
         />
       ))}
