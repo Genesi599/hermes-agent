@@ -432,3 +432,27 @@ CDP 实测：星阶/胸腺房间人声行均显示 user-avatar 图，无 emoji�
 inline），而 `_rest_turn` 的读超时只有 20s——短轮次能过、长轮次必超时；超时一旦被当成"后端拒绝"，
 就会叠加 `-z` 回退（同一条 prompt 跑两遍、多出一个新会话）。修复把"失败"的判据从"HTTP 层有没有
 异常"改成"**transcript 里这条 prompt 在不在**"。
+
+## 名册芯片的右键菜单（2026-09-18，`939694f328`）
+
+用户：「侧边栏的agent怎么没有右键选项」。会话行有 `SessionContextMenu`、profile 轨道方块有
+`ProfileSquare` 右键菜单，**只有房间行下面的 agent 芯片没有**（`agent-roster.tsx` 的 `AgentChip`
+以前只挂 `onClick`）——不一致造成的"看起来坏了"。
+
+- 包一层 `ActionsContextMenu`（`components/ui/actions-menu.tsx` 通用套件，与 kebab 同一套 item 渲染），
+  五项：打开对话 / 在新标签页中打开 / 新窗口（`canOpenSessionWindow()` 才出现）/ 复制 ID /
+  标记已读（仅未读时出现）。
+- **点击与菜单共用同一解析**：原来写死在 `onClick` 里的逻辑抽成 `openAgent(agent)`（会导航）与
+  `resolveAgentTarget(agent)`（只查，供标签页/窗口/复制 ID）；Hermes 芯片对应 `hermesConversationFor(project)`。
+- 菜单用哪个会话 id：常态取轮询已发布的 `$agentActivity[key].sessionId`；右键时**再查一次**——
+  轮询按标题**前缀**匹配、点击要**精确名**，命名脚本追加过 `… (2)` 兄弟时两者会分叉（`lookedUpId ?? polledId`）。
+- 刻意不套整套会话菜单：置顶/分支/删除在此处没有回调（套过来就是半屏灰项），且"重命名"会打断
+  `<项目> · <智能体>` 的名字查找约定；智能体本体（SOUL/改名/颜色/导出）仍在 profile 轨道右键里管。
+- 顺带修：该文件第 254 行 `join('\x00')` 里是**裸 NUL 字节**（Read 工具报"二进制"、grep 跳过整个文件、
+  git diff 显示异常），改成 `'\u0000'` 转义——运行时同值，文件从此是纯文本。
+- CDP 实测（打包版 `--remote-debugging-port`，端口读 `%APPDATA%\Hermes\DevToolsActivePort`）：
+  对星阶房间的 Hermes 芯片发**真实右键事件**（`Input.dispatchMouseEvent` button=right）→
+  菜单 `aria-label="Agent actions"`、四项可见且均可用；再点"复制 ID" → 剪贴板 `20260917_092821_6083f2`，
+  DB 里该行标题正是 `星阶 · Hermes`——解析到智能体自己的对话，不是散落会话。
+- 语言：文案进 `t.sidebar.row`（`openConversation` / `markRead` / `agentActions`），五语言 + `i18n/types.ts` 同步；
+  `i18n/languages.test.ts` 键一致性测试通过。
