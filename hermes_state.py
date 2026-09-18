@@ -8304,19 +8304,54 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
     # that one is impossible by design). Everything here touches only the two
     # channel tables.
 
-    def get_or_create_channel(self, project: str, title: str = "") -> str:
+    def get_or_create_channel(
+        self,
+        project: str,
+        title: str = "",
+        session_id: Optional[str] = None,
+    ) -> str:
         """Id of the channel for `project`, created on first use.
 
         Keyed by project: a project has ONE room, and the project name is
         already its identity everywhere else (board directory, dispatch).
+
+        With `session_id` the binding is authoritative: the channel already
+        bound to that session wins (renames cannot break the link), an
+        unbound channel of the same project name is CLAIMED for the session,
+        and a name held by another session's room dedupes the project name
+        ("name (2)") so two conversations never merge into one room.
         """
         name = (project or "").strip()
         if not name:
             raise ValueError("channel project is required")
 
+        sid = (session_id or "").strip() or None
+        if sid:
+            bound = self.get_channel_for_session(sid)
+            if bound:
+                return str(bound["id"])
+
         existing = self.get_channel_for_project(name)
-        if existing:
+        if existing and not sid:
             return str(existing["id"])
+
+        if existing and sid:
+            if not existing.get("session_id"):
+                def _claim(conn):
+                    conn.execute(
+                        "UPDATE channels SET session_id = ? WHERE id = ? AND session_id IS NULL",
+                        (sid, existing["id"]),
+                    )
+
+                self._execute_write(_claim)
+                claimed = self.get_channel_for_session(sid)
+                if claimed:
+                    return str(claimed["id"])
+
+            n = 2
+            while self.get_channel_for_project(f"{name} ({n})"):
+                n += 1
+            name = f"{name} ({n})"
 
         channel_id = "ch_" + uuid.uuid4().hex[:12]
         now = time.time()
@@ -8324,14 +8359,24 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
 
         def _do(conn):
             conn.execute(
-                "INSERT INTO channels (id, project, title, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (channel_id, name, display_title, now, now),
+                "INSERT INTO channels (id, project, title, created_at, updated_at, session_id) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (channel_id, name, display_title, now, now, sid),
             )
 
         self._execute_write(_do)
 
         return channel_id
+
+    def get_channel_for_session(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """The channel bound to a session, or None when it has no room."""
+        with self._read_ctx() as conn:
+            row = conn.execute(
+                "SELECT * FROM channels WHERE session_id = ? LIMIT 1",
+                ((session_id or "").strip(),),
+            ).fetchone()
+
+        return dict(row) if row else None
 
     def get_channel_for_project(self, project: str) -> Optional[Dict[str, Any]]:
         with self._read_ctx() as conn:
@@ -8471,6 +8516,83 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
             )
 
         self._execute_write(_do)
+
+    # Housekeeping rows nobody said in the room: cron prompt echoes, model
+    # switches, compaction carriers. Same filter the shared-context builder
+    # and scripts/channel_import.py use.
+    _CHANNEL_IMPORT_SKIP_PREFIXES = (
+        "[System:",
+        "[CONTEXT COMPACTION",
+        "[PRIOR CONTEXT",
+        "[IMPORTANT: You are running as a scheduled cron job",
+    )
+
+    def import_session_into_channel(self, channel_id: str, session_id: str) -> Dict[str, Any]:
+        """Move a session's spoken lines into its channel (one-time promotion).
+
+        A conversation that becomes its project's room carries what people and
+        agents SAID there — tool results, tool calls and plumbing rows are not
+        speech and stay behind. Imported human lines are stamped as already
+        routed (history was handled in its own time); only NEW human lines
+        reach the routing watchdog. No-op once the channel has any lines, so
+        the call is idempotent for every opener.
+        """
+        existing = self.get_channel_messages(channel_id, limit=1)
+        if existing:
+            return {"imported": 0, "skipped": 0, "reason": "channel_not_empty"}
+
+        with self._read_ctx() as conn:
+            rows = conn.execute(
+                "SELECT role, content, display_kind, display_metadata, timestamp FROM messages "
+                "WHERE session_id = ? AND active = 1 ORDER BY id",
+                (session_id,),
+            ).fetchall()
+
+        imported = 0
+        skipped = 0
+
+        for role, content, display_kind, display_metadata, timestamp in rows:
+            body = (content or "").strip()
+
+            if role not in ("user", "assistant"):
+                skipped += 1
+                continue
+
+            if not body or body.startswith(self._CHANNEL_IMPORT_SKIP_PREFIXES) or body.startswith('{"output"'):
+                skipped += 1
+                continue
+
+            author_kind = "human" if role == "user" else "agent"
+            label = "杨航" if role == "user" else "Hermes"
+            avatar: Optional[str] = None
+            metadata: Optional[Dict[str, Any]] = None
+
+            if display_metadata:
+                try:
+                    metadata = json.loads(display_metadata)
+                    label = str(metadata.get("agent") or label)
+                    avatar = str(metadata.get("agent_avatar") or "") or None
+                except (TypeError, ValueError):
+                    metadata = None
+
+            message_id = self.append_channel_message(
+                channel_id,
+                body,
+                author_kind=author_kind,
+                author_label=label,
+                author_avatar=avatar,
+                role=role,
+                display_kind=display_kind,
+                display_metadata=metadata,
+                timestamp=timestamp,
+            )
+
+            if author_kind == "human":
+                self.mark_channel_message_routed(message_id)
+
+            imported += 1
+
+        return {"imported": imported, "skipped": skipped}
 
     def append_message(
         self,

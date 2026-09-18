@@ -20,7 +20,7 @@ import { ErrorState } from '@/components/ui/error-state'
 import { TitleMenuTrigger } from '@/components/ui/title-menu-trigger'
 import { type HermesGateway } from '@/hermes'
 import { useI18n } from '@/i18n'
-import { type Channel, channelForProject } from '@/lib/channels'
+import { type Channel, ensureChannelForSession } from '@/lib/channels'
 import type { ChatMessage } from '@/lib/chat-messages'
 import { NEW_SESSION_TITLE, quickModelOptions, sessionTitle } from '@/lib/chat-runtime'
 import { useIncrementalExternalStoreRuntime } from '@/lib/incremental-external-store-runtime'
@@ -506,16 +506,27 @@ export const ChatView = memo(function ChatView({
     return (row?.title || '').trim()
   }, [selectedSessionId, sessions])
 
+  // A conversation IS its project's room: the channel bound to the session is
+  // what this surface shows (posting is an insert, not a turn). The binding is
+  // by session id, so renames cannot break it; the backend creates the channel
+  // and imports what the session said on first call — which is exactly how a
+  // NEW conversation becomes a group chat: its first turn runs as a thread
+  // (that is what earns the title), and once the turn settles this swaps the
+  // surface to the room. While a turn streams we stay on the thread.
   useEffect(() => {
-    if (!roomTitle) {
+    if (!selectedSessionId || !roomTitle) {
       setRoom(null)
 
       return
     }
 
+    if (busy || awaitingResponse) {
+      return
+    }
+
     let live = true
 
-    void channelForProject(roomTitle)
+    void ensureChannelForSession(selectedSessionId)
       .then(channel => {
         if (live) {
           setRoom(channel)
@@ -530,7 +541,7 @@ export const ChatView = memo(function ChatView({
     return () => {
       live = false
     }
-  }, [roomTitle])
+  }, [selectedSessionId, roomTitle, busy, awaitingResponse])
 
   const showChatBar = !loadingSession && !resumeExhausted && !isWatchWindow() && !room
   const threadKey = selectedSessionId || activeSessionId || (isRoutedSessionView ? location.pathname : 'new')

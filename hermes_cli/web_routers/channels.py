@@ -11,7 +11,9 @@ The store lives on SessionDB (`get_or_create_channel`, `get_channel`,
 `mark_channel_message_routed`); these handlers only shape HTTP around it.
 """
 
+import json
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -88,6 +90,96 @@ def create_channel(body: ChannelCreate, profile: Optional[str] = Query(None)) ->
         channel_id = db.get_or_create_channel(body.project, body.title or "")
 
         return {"id": channel_id, "channel": db.get_channel(channel_id)}
+    finally:
+        db.close()
+
+
+class ChannelEnsureFromSession(BaseModel):
+    """Promote a session to its project's room (idempotent; history imported)."""
+
+    session_id: str
+
+
+# The maintainer's own per-project talk: `<project> · Hermes` (with the
+# dedupe counter the session namer appends). Mirrors
+# apps/desktop/src/lib/session-agents.ts isHermesConversation.
+_HERMES_OWN_TITLE_RE = re.compile(r" · Hermes( \(\d+\))?$")
+
+
+def _cron_bound_session_ids() -> set:
+    """Sessions a cron still runs its turns IN (attach_to_session targets).
+
+    A content cron (复盘/巡查) reports into its session's transcript; a room
+    cannot show that, so those sessions stay conversations. Plumbing crons
+    (投递/频道路由) deliver channel-first and are exempt via the bound-channel
+    check that runs before this one.
+    """
+    home = Path(os.environ.get("LOCALAPPDATA", "")) / "hermes"
+
+    try:
+        data = json.loads((home / "cron" / "jobs.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+
+    jobs = data if isinstance(data, list) else data.get("jobs", [])
+    targets = set()
+
+    for job in jobs:
+        if isinstance(job, dict) and job.get("attach_to_session"):
+            target = job.get("target_session_id")
+            if target:
+                targets.add(str(target))
+
+    return targets
+
+
+@router.post("/api/channels/ensure-from-session")
+def ensure_channel_from_session(
+    body: ChannelEnsureFromSession,
+    profile: Optional[str] = Query(None),
+) -> Dict[str, Any]:
+    """The channel for a session — bound (and the transcript imported) on first call.
+
+    Every conversation is its project's room, so this is how a session BECOMES
+    a group chat: the first call binds channel↔session by id (renames cannot
+    break it), imports what was said there, and from then on the desktop
+    surface for that session is the channel. Sessions that must stay
+    conversations return `channel: null` with a reason: platform threads
+    (weixin/feishu), the maintainer's own `· Hermes` talks, untitled
+    newborns, and sessions a content cron still reports into.
+    """
+    session_id = (body.session_id or "").strip()
+
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id is required")
+
+    db = _open(profile, read_only=False)
+
+    try:
+        session = db.get_session(session_id) or {}
+
+        # A session with a bound channel IS its project's room, whatever its
+        # origin (the first room started life as a weixin thread): the binding
+        # outranks every keep-it-a-conversation rule below.
+        bound = db.get_channel_for_session(session_id)
+        if bound:
+            return {"channel": bound, "created": False}
+
+        if not (session.get("title") or "").strip():
+            return {"channel": None, "reason": "untitled"}
+        if str(session.get("source") or "").lower() in {"weixin", "feishu"}:
+            return {"channel": None, "reason": "platform_session"}
+        if _HERMES_OWN_TITLE_RE.search((session.get("title") or "").strip()):
+            return {"channel": None, "reason": "agent_conversation"}
+
+        if session_id in _cron_bound_session_ids():
+            return {"channel": None, "reason": "cron_reports_here"}
+
+        title = session["title"].strip()
+        channel_id = db.get_or_create_channel(title, title, session_id=session_id)
+        counts = db.import_session_into_channel(channel_id, session_id)
+
+        return {"channel": db.get_channel(channel_id), "created": True, **counts}
     finally:
         db.close()
 

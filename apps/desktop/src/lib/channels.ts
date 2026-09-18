@@ -17,6 +17,7 @@ export interface Channel {
   last_routed_message_id?: null | number
   message_count: number
   project: string
+  session_id?: null | string
   title: string
   updated_at: number
 }
@@ -63,6 +64,27 @@ export async function channelForProject(project: string): Promise<Channel | null
   const channels = await listChannels()
 
   return channels.find(channel => channel.project === name) ?? null
+}
+
+/**
+ * The channel BOUND to a session — every conversation is its project's room.
+ * The backend binds channel↔session by id on first call and imports what the
+ * session said, so this is also how a new conversation is promoted to a group
+ * chat. `null` = this session must stay a conversation (platform thread, the
+ * maintainer's own `· Hermes` talk, an untitled newborn, a cron-bound report).
+ */
+export async function ensureChannelForSession(sessionId: string): Promise<Channel | null> {
+  if (!sessionId.trim()) {
+    return null
+  }
+
+  const result = await bridge().api<{ channel: null | Channel }>({
+    body: { session_id: sessionId },
+    method: 'POST',
+    path: '/api/channels/ensure-from-session'
+  })
+
+  return result?.channel ?? null
 }
 
 export async function fetchChannelMessages(channelId: string, limit = 200): Promise<ChannelMessage[]> {

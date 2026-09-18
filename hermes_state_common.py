@@ -445,7 +445,8 @@ CREATE TABLE IF NOT EXISTS channels (
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL,
     message_count INTEGER NOT NULL DEFAULT 0,
-    last_routed_message_id INTEGER
+    last_routed_message_id INTEGER,
+    session_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS channel_messages (
@@ -484,6 +485,8 @@ CREATE INDEX IF NOT EXISTS idx_sessions_handoff_state
     ON sessions(handoff_state, started_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_system_prompt_hash
     ON sessions(system_prompt_hash);
+CREATE INDEX IF NOT EXISTS idx_channels_session
+    ON channels(session_id);
 """
 
 
