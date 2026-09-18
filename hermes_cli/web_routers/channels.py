@@ -15,6 +15,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -163,6 +164,20 @@ def ensure_channel_from_session(
         # outranks every keep-it-a-conversation rule below.
         bound = db.get_channel_for_session(session_id)
         if bound:
+            title = (session.get("title") or "").strip()
+            if (
+                title
+                and bound.get("project") != title
+                and time.time() - float(bound.get("created_at") or 0) < 900
+                and db.get_channel_for_project(title) is None
+            ):
+                # The room was born during the naming window (auto-title can
+                # land after the transient first-message echo); carry the real
+                # name before the board directory or agent naming anchor to
+                # the placeholder. Older rooms keep a frozen project name.
+                db.rename_channel(bound["id"], title)
+                bound = db.get_channel(bound["id"])
+
             return {"channel": bound, "created": False}
 
         if not (session.get("title") or "").strip():

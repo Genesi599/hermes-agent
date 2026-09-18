@@ -27,7 +27,6 @@ import { emitGatewayEvent } from '@/contrib/events'
 import { getLatestSessionMessages, triggerCronJob } from '@/hermes'
 import { type ChatMessage, chatMessageText, preserveLocalAssistantErrors, toChatMessages } from '@/lib/chat-messages'
 import { createClientSessionState } from '@/lib/chat-runtime'
-import { sessionMessagesSignature } from '@/lib/session-signatures'
 import { latestSessionTodos } from '@/lib/todos'
 import { activateWakeIndicator } from '@/lib/wake-indicator'
 import { playWakeSound } from '@/lib/wake-sound'
@@ -124,6 +123,7 @@ import { TitlebarControls } from '../shell/titlebar-controls'
 import { UpdatesOverlay } from '../updates-overlay'
 
 import { ContribWiringContext } from './context'
+import { useActiveStoredTranscriptRefresh } from './hooks/use-active-stored-transcript-refresh'
 import { useBackgroundSync } from './hooks/use-background-sync'
 import { useDesktopIntegrations } from './hooks/use-desktop-integrations'
 import { usePetBridge } from './hooks/use-pet-bridge'
@@ -162,7 +162,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   // context (the sticky toast). The shell owns `navigate`, so it consumes the
   // intent counter here; the ref skips the initial mount value.
   const billingSettingsSeenRef = useRef(0)
-  const transcriptSignatureRef = useRef(new Map<string, string>())
   // Stable identity for the whole callback surface (see WiringActions). Mutated
   // in place each render so memoized surfaces never re-render on churn.
   const actionsRef = useRef<WiringActions | null>(null)
@@ -443,47 +442,15 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     [activeSessionIdRef, selectedStoredSessionIdRef, updateSessionState]
   )
 
-  // Refresh the open messaging transcript (inbound platform turns arrive via
-  // the background gateway, not the desktop websocket); external
-  // Desktop-compatible clients can also write the selected stored session
-  // without this renderer receiving a websocket event. Signature-gate the
-  // durable-history refresh and never replace a local active stream.
-  // Signature-gated so a no-change poll doesn't churn the thread.
-  const refreshActiveStoredTranscript = useCallback(async () => {
-    const storedSessionId = selectedStoredSessionIdRef.current
-    const runtimeSessionId = activeSessionIdRef.current
-
-    if (!storedSessionId || !runtimeSessionId || busyRef.current) {
-      return
-    }
-
-    const stored = $sessions.get().find(s => sessionMatchesStoredId(s, storedSessionId))
-
-    if (!stored) {
-      return
-    }
-
-    try {
-      const latest = await getLatestSessionMessages(storedSessionId, stored.profile)
-      const signatureKey = `${stored.profile ?? 'default'}:${storedSessionId}`
-      const sig = sessionMessagesSignature(latest.messages)
-
-      if (transcriptSignatureRef.current.get(signatureKey) === sig) {
-        return
-      }
-
-      transcriptSignatureRef.current.set(signatureKey, sig)
-      const messages = toChatMessages(latest.messages)
-
-      updateSessionState(
-        runtimeSessionId,
-        state => ({ ...state, messages: preserveLocalAssistantErrors(messages, state.messages) }),
-        storedSessionId
-      )
-    } catch {
-      // Non-fatal: next poll or manual refresh can hydrate.
-    }
-  }, [activeSessionIdRef, busyRef, selectedStoredSessionIdRef, updateSessionState])
+  // Refresh the open messaging transcript (external clients / background
+  // gateway writes the desktop websocket never sees). Lives in its own hook so
+  // the agent-chip refresh behavior is testable in isolation.
+  const refreshActiveStoredTranscript = useActiveStoredTranscriptRefresh({
+    activeSessionIdRef,
+    busyRef,
+    selectedStoredSessionIdRef,
+    updateSessionState
+  })
 
   const { handleGatewayEvent } = useMessageStream({
     activeGatewayProfile,

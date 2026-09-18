@@ -8378,6 +8378,26 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
 
         return dict(row) if row else None
 
+    def rename_channel(self, channel_id: str, project: str, title: Optional[str] = None) -> None:
+        """Re-name a room's project (and display title).
+
+        Only used while a room is young: a session's auto-title can land a
+        beat AFTER the room was created from its transient first-message
+        echo, and the room should carry the real name (board directory,
+        dispatch naming) before anything anchors to the placeholder.
+        """
+        name = (project or "").strip()
+        if not name:
+            return
+
+        def _do(conn):
+            conn.execute(
+                "UPDATE channels SET project = ?, title = COALESCE(?, title) WHERE id = ?",
+                (name, (title or name).strip(), channel_id),
+            )
+
+        self._execute_write(_do)
+
     def get_channel_for_project(self, project: str) -> Optional[Dict[str, Any]]:
         with self._read_ctx() as conn:
             row = conn.execute(
