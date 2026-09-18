@@ -37,46 +37,57 @@ function flag(source: unknown, key: string): boolean {
 /**
  * The agents participating in `sessionId`.
  *
- * Derived, not declared: a job whose output is attached INTO a conversation
- * (`attach_to_session` + `target_session_id`) and that carries a producer label
- * is, by construction, an agent speaking in that conversation. So the roster
- * follows the delivery wiring — add a delivery job for an agent and it appears
- * under the parent session; remove it and it goes away.
+ * Derived, not declared, from two truths:
+ * 1. Delivery wiring — a job whose output is attached INTO a conversation
+ *    (`attach_to_session` + `target_session_id`) with a producer label is, by
+ *    construction, an agent speaking in that conversation.
+ * 2. The room's own record — `participants` on the bound channel lists the
+ *    agent labels that have actually SAID something in the room, which is how
+ *    a woken agent appears under a project that has no delivery job of its own.
+ *
+ * The maintainer (Hermes) is NOT in this list: the roster renders its chip
+ * itself, for every room, whether or not it has spoken yet.
  */
-export function agentsForSession(jobs: CronJob[] | undefined, sessionId: string | undefined): SessionAgent[] {
-  if (!jobs?.length || !sessionId) {
-    return []
-  }
-
-  const target = sessionId.trim()
+export function agentsForSession(
+  jobs: CronJob[] | undefined,
+  sessionId: string | undefined,
+  participants?: string[],
+): SessionAgent[] {
   const agents: SessionAgent[] = []
   const seen = new Set<string>()
 
-  for (const job of jobs) {
-    if (!flag(job, 'attach_to_session')) {
-      continue
-    }
-
-    if (str(job, 'target_session_id') !== target) {
-      continue
-    }
-
-    const label = str(job, 'agent_label')
-
-    // The room's maintainer is rendered by the roster ITSELF (it owns the
-    // conversation the row belongs to, and its chip is the first one). Its
-    // delivery job exists so its replies can be posted like anyone else's —
-    // that job must not add a second chip for it.
+  const push = (label: string, profile?: string, avatar?: string) => {
     if (!label || label === MAIN_AGENT_LABEL || seen.has(label)) {
-      continue
+      return
     }
 
     seen.add(label)
-    agents.push({
+    agents.push({ label, avatar, profile })
+  }
+
+  if (jobs?.length && sessionId) {
+    const target = sessionId.trim()
+
+    for (const job of jobs) {
+      if (!flag(job, 'attach_to_session') || str(job, 'target_session_id') !== target) {
+        continue
+      }
+
+      push(str(job, 'agent_label'), str(job, 'agent_profile') || undefined, str(job, 'agent_avatar') || undefined)
+    }
+  }
+
+  for (const label of participants ?? []) {
+    // Profile/avatar come from the delivery wiring when it exists; an agent
+    // that only spoke in the room still chips (label only — its conversation
+    // cannot be reached by profile without wiring).
+    const wired = (jobs ?? []).find(job => str(job, 'agent_label') === label)
+
+    push(
       label,
-      avatar: str(job, 'agent_avatar') || undefined,
-      profile: str(job, 'agent_profile') || undefined
-    })
+      wired ? str(wired, 'agent_profile') || undefined : undefined,
+      wired ? str(wired, 'agent_avatar') || undefined : undefined,
+    )
   }
 
   return agents

@@ -8471,6 +8471,24 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
                 "WHERE id = ?",
                 (when, channel_id),
             )
+            # The room's roster follows who SPOKE in it: an agent line merges its
+            # label into `participants` so the sidebar can chip it without a
+            # second registry. The maintainer ('Hermes') is rendered by the
+            # roster itself and stays out of the list.
+            if author_kind == "agent" and author_label and author_label != "Hermes":
+                row = conn.execute(
+                    "SELECT participants FROM channels WHERE id = ?", (channel_id,)
+                ).fetchone()
+                try:
+                    labels = json.loads(row[0]) if row and row[0] else []
+                except (TypeError, ValueError):
+                    labels = []
+                if isinstance(labels, list) and author_label not in labels:
+                    labels.append(author_label)
+                    conn.execute(
+                        "UPDATE channels SET participants = ? WHERE id = ?",
+                        (json.dumps(labels, ensure_ascii=False), channel_id),
+                    )
             return message_id
 
         return self._execute_write(_do)

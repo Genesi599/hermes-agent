@@ -1,9 +1,10 @@
 import { useStore } from '@nanostores/react'
 import type * as React from 'react'
-import { memo, useEffect } from 'react'
+import { memo, useEffect, useState } from 'react'
 
 import { listAllProfileSessions } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { channelParticipants, roomBySession, type Channel } from '@/lib/channels'
 import { DEFAULT_AGENT_SPEAKER } from '@/lib/chat-identity'
 import { agentsForSession } from '@/lib/session-agents'
 import { useStoreSelector } from '@/lib/use-session-slice'
@@ -25,8 +26,11 @@ import { sessionDotClassName } from '../session-status-dot'
  * park you in the agent's profile: with the all-profiles view on, your own
  * sessions stay listed while the agent's chat opens beside them.
  *
- * The roster follows the delivery wiring (see `agentsForSession`), so there is
- * no second registry to keep in sync. Rows without agents render nothing.
+ * The roster follows two truths (see `agentsForSession`): the delivery wiring,
+ * and the room's own participant record. A ROOM (a session with a bound
+ * channel) always renders — the maintainer's chip is the model itself: Hermes
+ * keeps the group chat, the board and the agent cast for every project.
+ * Non-room rows without delivery agents render nothing.
  */
 /**
  * The agent's conversation to open: its newest session IN THE CURRENT PROJECT
@@ -204,8 +208,39 @@ function AgentRosterImpl({
   sessionTitle?: string
 }) {
   const jobs = useStore($cronJobs)
-  const agents = agentsForSession(jobs, sessionId)
   const project = (sessionTitle ?? '').trim()
+
+  // The room bound to this session is what makes the row a ROOM: its roster
+  // carries the maintainer (Hermes) even before anyone else has spoken — that
+  // is the model, not a special case. Polled lightly; `roomBySession` shares
+  // one TTL-cached channel fetch across every roster on the sidebar.
+  const [room, setRoom] = useState<Channel | null>(null)
+
+  useEffect(() => {
+    let live = true
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const tick = async () => {
+      const found = await roomBySession(sessionId)
+
+      if (live) {
+        setRoom(found)
+        timer = setTimeout(() => void tick(), 30_000)
+      }
+    }
+
+    void tick()
+
+    return () => {
+      live = false
+
+      if (timer) {
+        clearTimeout(timer)
+      }
+    }
+  }, [sessionId])
+
+  const agents = agentsForSession(jobs, sessionId, channelParticipants(room))
 
   // Who to watch: each agent's newest conversation, plus Hermes's own project
   // conversation (found by name, the same rule its chip opens by). Stable key
@@ -254,7 +289,7 @@ function AgentRosterImpl({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- watchKey encodes the cast
   }, [watchKey, project])
 
-  if (!agents.length) {
+  if (!agents.length && !room) {
     return null
   }
 
@@ -278,7 +313,7 @@ function AgentRosterImpl({
         label={DEFAULT_AGENT_SPEAKER.name}
         onClick={openHermes}
         profile="default"
-        title={`打开与「${DEFAULT_AGENT_SPEAKER.name}」的对话`}
+        title={`打开与「${DEFAULT_AGENT_SPEAKER.name}」的对话（管理者：群聊/看板/智能体调度）`}
       />
       {agents.map(agent => (
         <AgentChip

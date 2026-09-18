@@ -16,6 +16,8 @@ export interface Channel {
   id: string
   last_routed_message_id?: null | number
   message_count: number
+  /** Agent labels that have spoken in the room (raw JSON string from the API). */
+  participants?: null | string | string[]
   project: string
   session_id?: null | string
   title: string
@@ -51,6 +53,60 @@ export async function listChannels(): Promise<Channel[]> {
   const result = await bridge().api<{ channels: Channel[] }>({ path: '/api/channels' })
 
   return result?.channels ?? []
+}
+
+/** Agent labels that have spoken in a room, as a clean array. */
+export function channelParticipants(channel: null | Channel | undefined): string[] {
+  const raw = channel?.participants
+
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw)
+
+      return Array.isArray(parsed) ? parsed.filter(label => typeof label === 'string') : []
+    } catch {
+      return []
+    }
+  }
+
+  return Array.isArray(raw) ? raw : []
+}
+
+/**
+ * The room bound to a session — which is what makes the row a ROOM (its roster
+ * always carries the maintainer). Shared 30s TTL cache: the sidebar renders a
+ * roster per row and must not fetch the channel list once per row per poll.
+ */
+let roomsCache: { at: number; bySession: Map<string, Channel> } | null = null
+let roomsInflight: Promise<Map<string, Channel>> | null = null
+const ROOMS_TTL_MS = 30_000
+
+export async function roomBySession(sessionId: string): Promise<Channel | null> {
+  const id = sessionId.trim()
+
+  if (!id) {
+    return null
+  }
+
+  if (!roomsCache || Date.now() - roomsCache.at > ROOMS_TTL_MS) {
+    roomsInflight ??= listChannels()
+      .then(channels => {
+        roomsCache = {
+          at: Date.now(),
+          bySession: new Map(channels.filter(channel => channel.session_id).map(channel => [channel.session_id as string, channel]))
+        }
+
+        return roomsCache.bySession
+      })
+      .catch(() => roomsCache?.bySession ?? new Map())
+      .finally(() => {
+        roomsInflight = null
+      })
+
+    await roomsInflight
+  }
+
+  return roomsCache?.bySession.get(id) ?? null
 }
 
 /** The channel for a project, or null when that project has no room yet. */

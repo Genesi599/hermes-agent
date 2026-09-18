@@ -446,7 +446,8 @@ CREATE TABLE IF NOT EXISTS channels (
     updated_at REAL NOT NULL,
     message_count INTEGER NOT NULL DEFAULT 0,
     last_routed_message_id INTEGER,
-    session_id TEXT
+    session_id TEXT,
+    participants TEXT
 );
 
 CREATE TABLE IF NOT EXISTS channel_messages (
