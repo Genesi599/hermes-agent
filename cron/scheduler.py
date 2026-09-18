@@ -926,6 +926,125 @@ def _get_hermes_home() -> Path:
     return _hermes_home or get_hermes_home()
 
 
+_job_profile_stack: contextvars.ContextVar = contextvars.ContextVar(
+    "cron_job_profile_scope_stack", default=None
+)
+
+# Profiles the running process is allowed to enter. ``None`` = unrestricted.
+_profile_scope_allowlist: Optional[set] = None
+
+
+def _enter_job_profile_scope(profile: str):
+    """Enter ``profile``'s HERMES_HOME + secret scope for THIS job's turn.
+
+    Returns an ``ExitStack`` (exit it in ``run_job``'s finally), or ``None``
+    when the job declares no ``agent_profile`` or the profile cannot be
+    resolved — in which case the job runs in the ticking profile's home
+    exactly as before.
+
+    Fail-open on purpose: a bad profile name must not silently kill a job.
+    The gateway's multiplexer fails CLOSED for inbound traffic (a rejection is
+    visible); a cron job that vanished is not, so we log and continue.
+    """
+    import contextlib
+
+    if not profile or profile in {"default", "hermes"}:
+        return None
+
+    try:
+        from hermes_cli.profiles import (
+            get_profile_dir,
+            normalize_profile_name,
+            profile_exists,
+            validate_profile_name,
+        )
+    except Exception:
+        logger.debug("Job profile scope: profiles module unavailable", exc_info=True)
+        return None
+
+    try:
+        name = normalize_profile_name(profile)
+        validate_profile_name(name)
+        home = Path(get_profile_dir(name))
+    except Exception:
+        logger.warning(
+            "Cron job profile scope: invalid profile %r; running in the active home",
+            profile,
+        )
+        return None
+
+    if not home.exists():
+        logger.warning(
+            "Cron job profile scope: profile %r is not installed at %s; running in the active home",
+            profile,
+            home,
+        )
+        return None
+
+    try:
+        from agent.secret_scope import (
+            build_profile_secret_scope,
+            reset_secret_scope,
+            set_secret_scope,
+        )
+        from hermes_cli.env_loader import hydrate_profile_secret_sources
+        from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+    except Exception:
+        logger.debug("Job profile scope: scope helpers unavailable", exc_info=True)
+        return None
+
+    stack = contextlib.ExitStack()
+    prev = _job_profile_stack.get() or []
+    _job_profile_stack.set(prev + [name])
+
+    # ``set_hermes_home_override`` / ``set_secret_scope`` return *reset tokens*
+    # (ContextVar tokens), not context managers — hence the explicit unwind
+    # instead of ``stack.enter_context``. Order matters: secrets first, home
+    # last, mirroring how the gateway's ``_profile_runtime_scope`` unwinds.
+    home_token = secret_token = None
+    try:
+        home_token = set_hermes_home_override(str(home))
+        hydrate_profile_secret_sources(home)
+        secret_token = set_secret_scope(build_profile_secret_scope(home))
+
+        def _unwind() -> None:
+            nonlocal home_token, secret_token
+            if secret_token is not None:
+                try:
+                    reset_secret_scope(secret_token)
+                except Exception:
+                    logger.debug("Job profile scope: secret scope reset failed", exc_info=True)
+                secret_token = None
+            if home_token is not None:
+                try:
+                    reset_hermes_home_override(home_token)
+                except Exception:
+                    logger.debug("Job profile scope: home override reset failed", exc_info=True)
+                home_token = None
+            current = _job_profile_stack.get() or []
+            if current:
+                _job_profile_stack.set(current[:-1])
+
+        stack.callback(_unwind)
+        return stack
+    except Exception:
+        try:
+            if secret_token is not None:
+                reset_secret_scope(secret_token)
+            if home_token is not None:
+                reset_hermes_home_override(home_token)
+        except Exception:
+            pass
+        if _job_profile_stack.get():
+            _job_profile_stack.set((_job_profile_stack.get() or [])[:-1])
+        logger.warning(
+            "Cron job profile scope: failed to enter profile %r; running in the active home",
+            profile,
+            exc_info=True,
+        )
+        return None
+
+
 def _get_lock_paths() -> tuple[Path, Path]:
     """Resolve cron lock paths at call time so profile/env changes are honored."""
     hermes_home = _get_hermes_home()
@@ -4094,7 +4213,35 @@ def run_job(
     _cron_session_var = _VAR_MAP["HERMES_CRON_SESSION"]
     _cron_session_token = None
     _non_dispatcher_token = None
+    _profile_scope = None
     try:
+        # ---------------------------------------------------------------
+        # Per-job profile scope (#4707 follow-up, 2026-09-17).
+        #
+        # Cron resolves HERMES_HOME dynamically (`_get_hermes_home`), so a job
+        # that declares ``agent_profile`` should execute INSIDE that profile's
+        # home: its .env, config.yaml, skills, memories, SOUL and — crucially —
+        # its session store. Without this, an "agent" job runs as whoever owns
+        # the ticking gateway, which made a job labelled 管家 run as 主 Hermes
+        # and left the agent's own conversation untouched (the exact complaint
+        # that led here).
+        #
+        # Same two seams the gateway multiplexer uses
+        # (``gateway/run.py::_profile_runtime_scope``): a contextvar home
+        # redirect plus an isolated secret scope. Contextvars propagate into
+        # the agent worker thread via copy_context(), and the secret scope
+        # keeps this profile's keys out of os.environ, so concurrent jobs on
+        # the parallel pool never see each other's credentials.
+        #
+        # No ``agent_profile`` on the job → no scope, behavior byte-identical
+        # to before.
+        _job_profile = str(job.get("agent_profile") or "").strip()
+        _profile_scope = _enter_job_profile_scope(_job_profile)
+        if _profile_scope is not None:
+            logger.info(
+                "Job '%s': scoped to profile '%s' (%s)",
+                job_id, _job_profile, _get_hermes_home(),
+            )
         if not _cwd_lock_acquired:
             # Fail closed (#79768): running without the lock would let a
             # concurrent workdir job's process-global TERMINAL_CWD override
@@ -4903,6 +5050,15 @@ def run_job(
         return False, output, "", error_msg
 
     finally:
+        # Exit the per-job profile scope FIRST: every later cleanup line below
+        # (session-var clears, session lease release, DB finalization) resolves
+        # paths and stores through the active HERMES_HOME, so unwinding after
+        # them would touch the profile's files with the wrong home in scope.
+        if _profile_scope is not None:
+            try:
+                _profile_scope.close()
+            except Exception:
+                logger.debug("Job '%s': profile scope unwind failed", job_id, exc_info=True)
         # Restore TERMINAL_CWD to whatever it was before this job ran.  We
         # only ever mutate it when the job has a workdir AND actually held
         # the write lock — a fail-closed timeout raised before the env-set,

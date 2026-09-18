@@ -3590,19 +3590,47 @@ def _cron_sig():
 
 
 def _sessions_sig():
-    """Newest mtime across state.db and its WAL — the cross-process change
-    signal. Messaging-gateway turns and cron runs are written by OTHER
-    processes that never touch this gateway's transports; the shared SQLite
-    file is the one thing they all move (#58671)."""
+    """Newest mtime across every profile's state.db and its WAL — the
+    cross-process change signal. Messaging-gateway turns and cron runs are
+    written by OTHER processes that never touch this gateway's transports; the
+    shared SQLite file is the one thing they all move (#58671).
+
+    EVERY profile home, not just the active one (2026-09-17): an agent's own
+    conversation lives in ``profiles/<name>/state.db``, and a wake-up run by a
+    separate CLI process writes there. Watching only the active home meant the
+    desktop kept rendering a stale transcript for exactly those sessions — the
+    agent's thinking was on disk and invisible until the app restarted.
+    """
     home = _watcher_home()
     sig = None
-    for name in ("state.db", "state.db-wal"):
-        try:
-            mtime = (home / name).stat().st_mtime_ns
-        except OSError:
-            continue
-        sig = mtime if sig is None else max(sig, mtime)
+    for db_home in _all_sessions_homes(home):
+        for name in ("state.db", "state.db-wal"):
+            try:
+                mtime = (db_home / name).stat().st_mtime_ns
+            except OSError:
+                continue
+            sig = mtime if sig is None else max(sig, mtime)
     return sig
+
+
+def _all_sessions_homes(home: Path) -> list:
+    """``home`` plus every named profile home under it, newest-db first.
+
+    Cheap: one ``iterdir`` over ``profiles/`` plus a stat per candidate db. A
+    missing/unreadable ``profiles/`` degrades to just ``home`` so the watcher
+    never dies on a fresh install.
+    """
+    homes = [home]
+    try:
+        profiles_dir = home / "profiles"
+        for entry in profiles_dir.iterdir():
+            if not entry.is_dir():
+                continue
+            if (entry / "state.db").exists():
+                homes.append(entry)
+    except OSError:
+        pass
+    return homes
 
 
 def _platforms_sig():

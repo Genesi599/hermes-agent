@@ -243,3 +243,20 @@ Android/应用开发/中性粒项目/Journal Club/game/脑和脑膜/探索/神�
   "频道直接进侧栏+归档旧房间会话"留作后续整理。
 - `补充 SKILL.md 图表工具文档` 频道由并行会话经同一机制自然产生（cli 会话被打开即成房），
   佐证机制对"任何来源的 interactive 会话"都成立。
+
+## 名册随房间走：Hermes 芯片常驻 + 频道参与者（2026-09-18，`929b381c03`）
+
+用户报：转换后的房间一个 agent 芯片都没有——名册（`agent-roster.tsx`）只从"投递 cron 挂在该会话"
+推导（只有星阶挂了），`agents` 为空时**连 Hermes 芯片一起 return null**。按模型 Hermes 是每个房间
+的管理者（群聊记录/黑板/调度），不该依赖恰好有投递 cron。
+
+- `channels.participants`（JSON 数组）：`append_channel_message` 在 agent 行落库时把 label 并进
+  （事务内读改写；Hermes 本人不进表，芯片由名册自渲染）。存量已回填：星阶=[管家,流程搭档]，其余=[]。
+- 桌面 `roomBySession(sessionId)`：共享 30s TTL 的 session→channel 缓存（名册每行一个组件，不能
+  每行每轮各拉一次频道列表）；`agentsForSession(jobs, sessionId, participants)` = 投递接线 ∪
+  房间参与者（参与者按 label 反查 cron 接线补 profile/avatar，查不到也上芯片，仅名）。
+- 渲染条件 `!agents.length && !room`：**是房间就渲染**，Hermes 芯片常驻第一，点击仍开 `<项目> ·
+  Hermes`（没有则回落本行=它今天说话的地方）。
+- CDP 实测：21 个房间全部有名册——星阶=Hermes+管家+流程搭档，其余 20 个=Hermes。
+- 语义：被唤醒的 agent 在某房间**说过话**（投递按项目名插行）→ participants 自动添 → 芯片出现，
+  无需为每个项目手配投递 cron。
