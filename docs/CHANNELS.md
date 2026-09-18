@@ -385,3 +385,10 @@ agent 芯片仍是裸 profile 键，行为不变）；`pollAgentWatch` 按复合
 **必须走 touch_session_activity 写 `last_activity_at`**）。存量 21 房间按最后一条消息时间对齐；
 CDP 实测分组：星阶/胸腺/Log/A股复盘/Book → Today，其余按真实时间落 Yesterday/Last week。
 顺带清掉两个绑定会话已删除的孤儿测试频道（"回复确认二字"“修复 UMAP…”）。
+
+## 房间人声头像（2026-09-18，`1b55a404e4`）
+
+用户报"我的头像变了"：房间 SpeakerChip 对人声行写死 `🧑` emoji 兜底，从未接
+`USER_SPEAKER.avatarImage`（线程视图用的正式用户头像）——进了群聊头像就变样。修：人声行
+回退 `USER_SPEAKER`（名+头像图），agent 行不变；行自带 `author_avatar` 时仍优先。
+CDP 实测：星阶/胸腺房间人声行均显示 user-avatar 图，无 emoji。
