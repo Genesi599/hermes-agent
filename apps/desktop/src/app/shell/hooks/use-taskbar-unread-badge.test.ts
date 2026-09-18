@@ -57,8 +57,8 @@ describe('subscribeTaskbarUnreadBadge', () => {
     $unreadFinishedSessionIds.set(['deleted', 'live', 'archived'])
     vi.mocked(listAllProfileSessions).mockResolvedValue({
       sessions: [
-        { archived: false, id: 'live' },
-        { archived: true, id: 'archived' }
+        { title: '', archived: false, id: 'live' },
+        { title: '', archived: true, id: 'archived' }
       ]
     } as never)
 
@@ -71,8 +71,8 @@ describe('subscribeTaskbarUnreadBadge', () => {
   it('counts one unread item for duplicate compression tips', () => {
     expect(
       canonicalUnreadSessionIds(['old-tip', 'new-tip'], [
-        { id: 'old-tip', _lineage_root_id: 'root', last_active: 10, started_at: 10 },
-        { id: 'new-tip', _lineage_root_id: 'root', last_active: 20, started_at: 20 }
+        { title: '', id: 'old-tip', _lineage_root_id: 'root', last_active: 10, started_at: 10 },
+        { title: '', id: 'new-tip', _lineage_root_id: 'root', last_active: 20, started_at: 20 }
       ])
     ).toEqual(['new-tip'])
   })
@@ -82,8 +82,8 @@ describe('subscribeTaskbarUnreadBadge', () => {
       canonicalUnreadSessionIds(
         ['working', 'idle'],
         [
-          { id: 'working', last_active: 20, started_at: 10, status: 'working' },
-          { id: 'idle', last_active: 10, started_at: 10, status: 'idle' }
+          { title: '', id: 'working', last_active: 20, started_at: 10, status: 'working' },
+          { title: '', id: 'idle', last_active: 10, started_at: 10, status: 'idle' }
         ],
         new Set(['working'])
       )
@@ -97,16 +97,31 @@ describe('subscribeTaskbarUnreadBadge', () => {
     expect(
       canonicalUnreadSessionIds(
         ['just-finished'],
-        [{ id: 'just-finished', last_active: 20, started_at: 10, status: 'working' }],
+        [{ title: '', id: 'just-finished', last_active: 20, started_at: 10, status: 'working' }],
         new Set()
       )
     ).toEqual(['just-finished'])
   })
 
+  it('never badges conversations the sidebar hides (agent talks, `<项目> · Hermes`)', () => {
+    // Phantom-badge regression (2026-09-18): a routing turn finished in a
+    // hidden `Book · Hermes` talk, the badge counted it, but no visible row
+    // or chip could ever show that dot.
+    expect(
+      canonicalUnreadSessionIds(
+        ['hermes-talk', 'visible'],
+        [
+          { id: 'hermes-talk', title: 'Book · Hermes', last_active: 30, started_at: 30 },
+          { id: 'visible', title: 'Book', last_active: 20, started_at: 20 }
+        ]
+      )
+    ).toEqual(['visible'])
+  })
+
   it('migrates a lineage-root unread alias to the current tip', () => {
     expect(
       canonicalUnreadSessionIds(['root'], [
-        { id: 'current-tip', _lineage_root_id: 'root', last_active: 20, started_at: 20 }
+        { title: '', id: 'current-tip', _lineage_root_id: 'root', last_active: 20, started_at: 20 }
       ])
     ).toEqual(['current-tip'])
   })
@@ -115,8 +130,8 @@ describe('subscribeTaskbarUnreadBadge', () => {
     $unreadFinishedSessionIds.set(['old-tip', 'new-tip'])
     vi.mocked(listAllProfileSessions).mockResolvedValue({
       sessions: [
-        { archived: false, id: 'old-tip', _lineage_root_id: 'root', last_active: 10, started_at: 10 },
-        { archived: false, id: 'new-tip', _lineage_root_id: 'root', last_active: 20, started_at: 20 }
+        { title: '', archived: false, id: 'old-tip', _lineage_root_id: 'root', last_active: 10, started_at: 10 },
+        { title: '', archived: false, id: 'new-tip', _lineage_root_id: 'root', last_active: 20, started_at: 20 }
       ]
     } as never)
 
@@ -132,7 +147,7 @@ describe('subscribeTaskbarUnreadBadge', () => {
 
       return {
         sessions: [
-          { archived: false, id: 'current-tip', _lineage_root_id: 'root', last_active: 20, started_at: 20 }
+          { title: '', archived: false, id: 'current-tip', _lineage_root_id: 'root', last_active: 20, started_at: 20 }
         ]
       } as never
     })
@@ -178,16 +193,16 @@ describe('subscribeTaskbarUnreadBadge', () => {
   it('clears unread aliases when a loaded session starts working again', () => {
     $unreadFinishedSessionIds.set(['root', 'tip', 'idle'])
     setSessions([
-      { id: 'tip', _lineage_root_id: 'root', status: 'idle' } as never,
-      { id: 'idle', status: 'idle' } as never
+      { title: '', id: 'tip', _lineage_root_id: 'root', status: 'idle' } as never,
+      { title: '', id: 'idle', status: 'idle' } as never
     ])
     const unsubscribe = subscribeWorkingSessionsRead()
 
     // The live event flips busy first; the list row then catches up.
     publishSessionState('rt-working', { ...createClientSessionState('tip'), busy: true })
     setSessions([
-      { id: 'tip', _lineage_root_id: 'root', status: 'working' } as never,
-      { id: 'idle', status: 'idle' } as never
+      { title: '', id: 'tip', _lineage_root_id: 'root', status: 'working' } as never,
+      { title: '', id: 'idle', status: 'idle' } as never
     ])
 
     expect($unreadFinishedSessionIds.get()).toEqual(['idle'])
@@ -200,14 +215,14 @@ describe('subscribeTaskbarUnreadBadge', () => {
 
     // Snapshot lag: the list still says working, but the live set knows the
     // turn ended (empty). The just-finished unread must survive the refresh.
-    setSessions([{ id: 'tip', status: 'working' } as never])
+    setSessions([{ title: '', id: 'tip', status: 'working' } as never])
 
     expect($unreadFinishedSessionIds.get()).toEqual(['tip'])
     unsubscribe()
   })
 
   it('reconciles unread ids after a background merge removes the child session', async () => {
-    setSessions([{ id: 'branch-child', _lineage_root_id: 'branch-root' } as never])
+    setSessions([{ title: '', id: 'branch-child', _lineage_root_id: 'branch-root' } as never])
     $unreadFinishedSessionIds.set(['branch-child'])
     vi.mocked(listAllProfileSessions).mockResolvedValue({ sessions: [] } as never)
     const unsubscribe = subscribeUnreadSessionReconciliation()
@@ -222,7 +237,7 @@ describe('subscribeTaskbarUnreadBadge', () => {
   it('rechecks a new unread id after a deferred merge deletion settles', async () => {
     vi.useFakeTimers()
     vi.mocked(listAllProfileSessions)
-      .mockResolvedValueOnce({ sessions: [{ archived: false, id: 'branch-child' }] } as never)
+      .mockResolvedValueOnce({ sessions: [{ title: '', archived: false, id: 'branch-child' }] } as never)
       .mockResolvedValueOnce({ sessions: [] } as never)
     const unsubscribe = subscribeUnreadSessionReconciliation()
 

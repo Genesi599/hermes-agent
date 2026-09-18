@@ -1,6 +1,9 @@
 import { useEffect } from 'react'
 
 import { listAllProfileSessions } from '@/hermes'
+import { agentProfileSet, isHermesConversation } from '@/lib/session-agents'
+import { $cronJobs } from '@/store/cron'
+import { normalizeProfileKey } from '@/store/profile'
 import {
   $gatewayState,
   $selectedStoredSessionId,
@@ -17,8 +20,21 @@ type SetTaskbarBadgeCount = (count: number) => void
 
 type UnreadSessionRow = Pick<
   SessionInfo,
-  'archived' | 'id' | 'last_active' | 'started_at' | 'status' | '_lineage_root_id'
+  'archived' | 'id' | 'last_active' | 'profile' | 'started_at' | 'status' | 'title' | '_lineage_root_id'
 >
+
+/** The SAME visibility rule the sidebar hides rows by. An unread mark on a
+ *  hidden conversation (an agent's own talk, `<项目> · Hermes`) can never be
+ *  "come back and read" — the user cannot see the row — so it must not feed
+ *  the taskbar badge. It still lights the roster chip's unread dot, which is
+ *  the surface that conversation is reached from (2026-09-18: a routing turn
+ *  in a hidden `· Hermes` talk left a phantom badge with no visible dot). */
+function hiddenFromSidebar(row: UnreadSessionRow): boolean {
+  return (
+    isHermesConversation(row.title) ||
+    agentProfileSet($cronJobs.get()).has(normalizeProfileKey(row.profile))
+  )
+}
 
 const UNREAD_RECONCILIATION_RETRY_MS = 2_500
 // The backend rejects larger pages with HTTP 422. Keep this aligned with
@@ -93,6 +109,12 @@ export function canonicalUnreadSessionIds(
     const current = currentByLineage.get(lineage)
 
     if (!current || seenLineages.has(lineage)) {
+      continue
+    }
+
+    // Hidden conversations are not badge-able; leaving them out also makes the
+    // reconcile treat the raw id as STALE and clear it from the durable store.
+    if (hiddenFromSidebar(current)) {
       continue
     }
 
