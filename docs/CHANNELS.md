@@ -350,3 +350,16 @@ Hermes 芯片也都读它 → 一个项目思考 = 全部 Hermes 芯片齐亮，
 agent 芯片仍是裸 profile 键，行为不变）；`pollAgentWatch` 按复合键写，AgentChip 加 `watchKey`
 属性按同一键读，`markAgentRead` 同步。部署后 CDP 实测（星阶路由轮真实运行中）：
 星阶 Hermes=working，Book/胸腺/Tiddlywiki/Log/应用开发/Cashew/AI出题 全部 idle——一一对应。
+
+## 任务栏幽灵角标（2026-09-18 修，`6e06b13967`）
+
+用户报：任务栏出现"完成未读"角标，但没有任何可见 agent/行带这个状态。根因：角标 =
+`$unreadFinishedSessionIds` 条数，而这个集合由通用的 working→idle 标记逻辑写入——路由轮在
+**侧栏隐藏的** `<项目> · Hermes` 会话里结束时同样被记未读：行不可见、名册芯片的未读又是另一
+个存储（`$agentUnreadAt`），于是角标计数 1 却无处可点。
+
+修复：角标对账（`canonicalUnreadSessionIds`）套用**与侧栏完全相同的可见性规则**
+（`isHermesConversation` + `agentProfileSet`，from session-agents）——隐藏会话不进 canonicalIds，
+对账把残留 id 当 stale 从持久集合清除（启动即清扫存量幽灵）。名册芯片的未读点不受影响（那是
+它自己的存储，隐藏会话的"可回读入口"本来就是芯片）。回归测试：隐藏的 `Book · Hermes` 不计数、
+可见行正常计数（17 测试全过）。实测：包一层角标回调观测整轮隐藏思考-完成，计数从未变 1。
