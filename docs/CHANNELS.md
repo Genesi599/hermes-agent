@@ -375,3 +375,13 @@ agent 芯片仍是裸 profile 键，行为不变）；`pollAgentWatch` 按复合
 `ChannelMedia`（resolveMediaDisplaySrc 解析 + ZoomableImage 复用线程的看大图/下载外观；视频/音频
 留一行名字，房间以文字为先）。CDP 实测 Book 房间：图 8-1(448×184)/图 8-2(256×256) 内嵌加载成功，
 导入历史里的图 7-1/图 9-1 也一并渲染，裸路径文本消失。
+
+## 房间活跃度盖到会话（2026-09-18，`10f56580af`）
+
+用户报：有的项目在群聊发了消息，侧栏分组还在 yesterday。根因：分组/排序的键是**会话 recency**
+（`max(last_activity_at, 最新消息时间)`——注意 DB 无 `last_active` 列，是 API 派生表达式
+`_sql_session_last_active`），而房间模式的消息落 `channel_messages`，从不碰会话行。
+修复：`append_channel_message` 落行后 `touch_session_activity`（单调；`last_active` 不是真列，
+**必须走 touch_session_activity 写 `last_activity_at`**）。存量 21 房间按最后一条消息时间对齐；
+CDP 实测分组：星阶/胸腺/Log/A股复盘/Book → Today，其余按真实时间落 Yesterday/Last week。
+顺带清掉两个绑定会话已删除的孤儿测试频道（"回复确认二字"“修复 UMAP…”）。
