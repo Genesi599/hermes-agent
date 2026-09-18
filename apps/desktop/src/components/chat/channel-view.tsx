@@ -8,7 +8,7 @@ import { useI18n } from '@/i18n'
 import { type Channel, type ChannelMessage, fetchChannelMessages, postChannelMessage } from '@/lib/channels'
 import { splitMediaRefs } from '@/lib/chat-messages'
 import { mediaKind, mediaName, resolveMediaDisplaySrc } from '@/lib/media'
-import { DEFAULT_AGENT_SPEAKER } from '@/lib/chat-identity'
+import { DEFAULT_AGENT_SPEAKER, USER_SPEAKER } from '@/lib/chat-identity'
 import { cn } from '@/lib/utils'
 
 /**
@@ -161,11 +161,15 @@ export function ChannelView({ channel, className }: { channel: Channel; classNam
         {lines.map(line => (
           <article className="mb-4" data-channel-author={line.author_label ?? ''} key={line.id}>
             <SpeakerChip
-              avatar={line.author_avatar || (line.author_kind === 'human' ? '🧑' : undefined)}
+              avatar={line.author_avatar || undefined}
               avatarImage={
-                line.author_kind === 'human' || line.author_avatar ? undefined : DEFAULT_AGENT_SPEAKER.avatarImage
+                line.author_avatar
+                  ? undefined
+                  : line.author_kind === 'human'
+                    ? USER_SPEAKER.avatarImage
+                    : DEFAULT_AGENT_SPEAKER.avatarImage
               }
-              name={line.author_label || DEFAULT_AGENT_SPEAKER.name}
+              name={line.author_label || (line.author_kind === 'human' ? USER_SPEAKER.name : DEFAULT_AGENT_SPEAKER.name)}
             />
             <div className="mt-1 text-foreground/90">
               {splitMediaRefs(line.content).map((segment, index) =>
