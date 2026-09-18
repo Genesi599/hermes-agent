@@ -54,6 +54,15 @@ export interface AgentWatch {
   titlePrefix?: string
 }
 
+/** The store key for a watch. PROFILE ALONE IS NOT ENOUGH: every room's
+ *  Hermes chip watches the default profile (one conversation per project, by
+ *  title prefix), and keying by profile made them share ONE activity entry —
+ *  a routing turn in one project lit the Hermes chip on every room's roster
+ *  (2026-09-18). Agents keep the bare profile key (one conversation each). */
+export function agentWatchKey(watch: { profile: string; titlePrefix?: string }): string {
+  return watch.titlePrefix ? `${watch.profile}::${watch.titlePrefix}` : watch.profile
+}
+
 interface PolledSession {
   id?: null | string
   status?: null | string
@@ -99,18 +108,19 @@ export async function pollAgentWatch(watch: AgentWatch): Promise<void> {
       return
     }
 
-    const previous = $agentActivity.get()[watch.profile]
+    const key = agentWatchKey(watch)
+    const previous = $agentActivity.get()[key]
 
     $agentActivity.set({
       ...$agentActivity.get(),
-      [watch.profile]: { sessionId: picked.id, status: picked.status }
+      [key]: { sessionId: picked.id, status: picked.status }
     })
 
     // A turn that finishes while its own conversation is the one on screen is
     // not "unread" — the user watched it land. Only a finish they were looking
     // AWAY from earns the dot.
     if (previous?.status === 'working' && picked.status === 'idle' && picked.id !== $selectedStoredSessionId.get()) {
-      $agentUnreadAt.set({ ...$agentUnreadAt.get(), [watch.profile]: Date.now() })
+      $agentUnreadAt.set({ ...$agentUnreadAt.get(), [key]: Date.now() })
     }
   } catch {
     // A poll that fails changes nothing: the chip keeps its last known state.

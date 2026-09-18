@@ -9,7 +9,7 @@ import { DEFAULT_AGENT_SPEAKER } from '@/lib/chat-identity'
 import { agentsForSession } from '@/lib/session-agents'
 import { useStoreSelector } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
-import { $agentActivity, $agentUnreadAt, type AgentWatch, markAgentRead, pollAgentWatch } from '@/store/agent-activity'
+import { $agentActivity, $agentUnreadAt, agentWatchKey, type AgentWatch, markAgentRead, pollAgentWatch } from '@/store/agent-activity'
 import { $cronJobs } from '@/store/cron'
 import { ensureGatewayProfile } from '@/store/profile'
 import { $projectScope, ALL_PROJECTS, projectIdForCwd } from '@/store/projects'
@@ -143,18 +143,24 @@ function AgentChip({
   label,
   onClick,
   profile,
-  title
+  title,
+  watchKey
 }: {
   avatar: React.ReactNode
   label: string
   onClick: (event: React.MouseEvent) => void
   profile: string
   title: string
+  /** The activity-store key this chip reports on. Defaults to the profile;
+   *  Hermes chips watch one conversation PER PROJECT inside the default
+   *  profile, so they pass the composite key (see agentWatchKey). */
+  watchKey?: string
 }) {
   const { t } = useI18n()
   const r = t.sidebar.row
-  const status = useStoreSelector($agentActivity, activity => activity[profile]?.status ?? 'idle')
-  const unread = useStoreSelector($agentUnreadAt, marks => profile in marks)
+  const key = watchKey ?? profile
+  const status = useStoreSelector($agentActivity, activity => activity[key]?.status ?? 'idle')
+  const unread = useStoreSelector($agentUnreadAt, marks => key in marks)
   const running = status === 'working'
 
   return (
@@ -293,10 +299,15 @@ function AgentRosterImpl({
     return null
   }
 
+  const hermesWatchKey = agentWatchKey({
+    profile: 'default',
+    titlePrefix: project ? `${project} · ${DEFAULT_AGENT_SPEAKER.name}` : undefined
+  })
+
   const openHermes = async (event: React.MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()
-    markAgentRead('default')
+    markAgentRead(hermesWatchKey)
 
     const target = await hermesConversationFor(project)
 
@@ -314,6 +325,7 @@ function AgentRosterImpl({
         onClick={openHermes}
         profile="default"
         title={`打开与「${DEFAULT_AGENT_SPEAKER.name}」的对话（管理者：群聊/看板/智能体调度）`}
+        watchKey={hermesWatchKey}
       />
       {agents.map(agent => (
         <AgentChip
