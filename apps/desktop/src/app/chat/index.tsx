@@ -724,7 +724,7 @@ export const ChatView = memo(function ChatView({
               column of the transcript on the right, not a card over it. Renders
               nothing at all for a conversation without a board, and the rail
               hides itself when the pane is too narrow for a second column. */}
-          <ConversationBoard storedSessionId={selectedSessionId} />
+          <ConversationBoard room={Boolean(room)} storedSessionId={selectedSessionId} />
         </div>
         {/* Composer renders OUTSIDE the contain:[layout paint] wrapper above:
             that wrapper is a containing block for — and clips — position:fixed

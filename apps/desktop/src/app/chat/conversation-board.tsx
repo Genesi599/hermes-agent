@@ -28,10 +28,13 @@ import { $sessions, sessionMatchesStoredId } from '@/store/session'
  * rail rather than crushing the transcript.
  *
  * Resolution is by TITLE, not by session id: the board is a property of the
- * project, and the title is what names the project. A conversation with no
- * board directory renders NOTHING — no empty rail, no border — so an ordinary
- * chat pays only a failed stat, at a slow cadence that still picks up a board
- * created later (a project promoted to a shared conversation) without a reload.
+ * project, and the title is what names the project. A ROOM (a conversation
+ * with a bound channel — every conversation is its project's room now) always
+ * renders its rail, even before the board files exist: the board is part of
+ * the room's identity, and an absent file is the empty state, not the absence
+ * of the column. A non-room conversation with no board directory still renders
+ * NOTHING — no empty rail, no border — and pays only a failed stat at a slow
+ * cadence that still picks up a board created later without a reload.
  */
 
 const BOARD_ROOT = 'hermes_board'
@@ -95,10 +98,13 @@ async function readBoard(path: string): Promise<BoardContent> {
 }
 
 export interface ConversationBoardProps {
+  /** A room (conversation with a bound channel) always shows its board rail —
+   *  an absent board file renders as the empty state, not as no column. */
+  room?: boolean
   storedSessionId: null | string
 }
 
-export function ConversationBoard({ storedSessionId }: ConversationBoardProps) {
+export function ConversationBoard({ room = false, storedSessionId }: ConversationBoardProps) {
   const { t } = useI18n()
   const copy = t.assistant.board
 
@@ -159,7 +165,7 @@ export function ConversationBoard({ storedSessionId }: ConversationBoardProps) {
     }
   }, [collapsed, file, title])
 
-  if (!title || !content.present) {
+  if (!title || (!content.present && !room)) {
     return null
   }
 
