@@ -182,6 +182,11 @@ def ensure_channel_from_session(
 
         if not (session.get("title") or "").strip():
             return {"channel": None, "reason": "untitled"}
+        if str(session.get("live_status") or "") == "working":
+            # A turn is still running: importing now would snapshot half the
+            # conversation into the room (a second view opening the same
+            # session — a tile — must not convert it mid-stream).
+            return {"channel": None, "reason": "live"}
         if str(session.get("source") or "").lower() in {"weixin", "feishu"}:
             return {"channel": None, "reason": "platform_session"}
         if _HERMES_OWN_TITLE_RE.search((session.get("title") or "").strip()):
