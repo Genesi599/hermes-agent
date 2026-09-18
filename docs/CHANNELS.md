@@ -456,3 +456,59 @@ inline），而 `_rest_turn` 的读超时只有 20s——短轮次能过、长�
   DB 里该行标题正是 `星阶 · Hermes`——解析到智能体自己的对话，不是散落会话。
 - 语言：文案进 `t.sidebar.row`（`openConversation` / `markRead` / `agentActions`），五语言 + `i18n/types.ts` 同步；
   `i18n/languages.test.ts` 键一致性测试通过。
+
+## 群聊输入框：接上图片粘贴 + 打字卡顿的根因（2026-09-18）
+
+用户：「群聊那个输出框怎么没法粘贴图片呀」＋「我在群聊那里打字感觉明显的卡顿」。
+
+**为什么粘不进去**：房间的 `<textarea data-slot="channel-composer">` 从来没挂 `onPaste`/`onDrop`，
+而房间又是**只认 `MEDIA:` 引用**才显示图（`lib/chat-messages.ts` 的 `splitMediaRefs`）。线程输入框那套
+现成的桥（`window.hermesDesktop.saveImageBuffer` / `saveClipboardImage`）压根没接到房间上，所以粘图
+在房间里是「静默无反应」，不是报错。
+
+**卡顿的机制（可量化）**：draft 状态原本与消息列表同在 `ChannelView`，于是**每敲一个字**都重渲染整个
+房间（最多 200 行），每行各自跑 `splitMediaRefs`（两条正则扫全文）；再加上 5 秒一次的轮询每次都返回
+**全新对象数组**，一次轮询同样整房重解析。改法：
+- `ChannelLine` 用 `memo` 包住、行内解析进 `useMemo`（依赖 `line.content`）；
+- 轮询结果先过 `mergeMessages`：内容没变的行**复用旧对象**（React 跳过该子树），整房没变时**返回原数组**
+  （React 连更新都不进）；
+- draft 下沉到 `ChannelComposer`（自己的 state）——打字只重渲染输入框这一个组件；
+- `ChannelView` 自身 `memo` 化，父层（chat surface 订阅很多）的重渲染不再灌进房间。
+
+**测试**（`apps/desktop/src/components/chat/channel-view.test.tsx`，8 个）：把 `splitMediaRefs` 包一层计数，
+断言「打 3 个字后解析次数不变」「内容无变化的轮询不增加解析」「轮询只多一行时恰好只多解析 1 行」，
+外加「轮询带来新行时草稿不被冲掉」。**旧实现下 7/8 失败**，三条计数断言分别报
+`24 !== 6`（6 行 × 3 次按键）、`12 !== 6`、`13 !== 7` —— 这组数字就是卡顿的量化证据。
+粘贴 4 条：图片文件写盘+插引用、带空格路径加引号、纯文本粘贴不拦（`defaultPrevented === false`）、
+空粘贴才问剪贴板且剪贴板无图时保持静默。
+
+**实测**（打包版 + CDP；星阶房间 200 行；显示器 143Hz，一帧 7ms）：
+
+| 指标 | 改前 | 改后 |
+|---|---|---|
+| 单次按键同步渲染（中位 / p90） | 6.0 / 6.5 ms | **1.8 / 2.1 ms** |
+| 真实按键延迟（Event Timing，中位 / 峰值） | 24 / 32 ms | **16 / 24 ms** |
+| 10.6 秒内掉帧（超 50ms 的帧数，最差一帧） | 3 次（91ms） | **1 次（62ms）** |
+| 16 秒轮询长任务（超 50ms） | 1 次 68ms | **0** |
+
+打字两项为同房间同口径（改前文档里曾同时挂着两个房间视图共 400 行，但触发重渲染的始终是被输入的那个
+200 行房间）；掉帧一项改前是「两个房间视图同时轮询」，改后只剩一个，故只作趋势参考。
+
+**粘贴实测**：造一张 240×140 测试图放进剪贴板 → 聚焦房间输入框 → CDP 发真实 `Ctrl+V`
+（`Input.dispatchKeyEvent` rawKeyDown + `modifiers=2`）→ 输入框出现
+`MEDIA: C:\Users\<user>\AppData\Roaming\Hermes\composer-images\composer_<stamp>_<rand>.png`
+（走 `saveImageBuffer` 落盘到应用附件目录，与线程输入框同一条路径）。测完清空输入框、还原剪贴板、
+删掉测试图与落盘副本，房间 DB 无新增消息。
+
+**顺带**：`blobExtension` 从 `use-composer-actions.ts` 提到 `lib/media.ts`，线程与房间共用同一套
+MIME→扩展名映射（原来那份是模块私有的，房间要用就得复制一份）。
+
+**验收笔记（给下次驱动打包版的人）**：
+- 房间视图会随应用界面切换**挂载/卸载**（同一坐标上可能同时存在多个 `[data-slot="channel-view"]`，
+  底部还叠着线程的 `composer-rich-input` 建议输入层）——要测打字必须先用
+  `document.elementsFromPoint()` 找出**当前置顶**的那个 `[data-slot="channel-composer"]` 再点它。
+- 窗口被遮挡/最小化时 `document.visibilityState === 'hidden'`：轮询会停、渲染开销被低估，
+  实测前先用 user32 `ShowWindow(SW_RESTORE)` + `SetForegroundWindow` 把窗口显出来，并核对
+  `hasFocus`/`visibility`。
+- 用户随时可能在房间里打字：驱动 UI 前除了查 `live_status='working'`，还要看房间里最近有没有**用户**
+  发言（本次用户就在我测量期间往房间发了一条 2706 字的共享上下文）。

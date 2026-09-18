@@ -6,7 +6,7 @@ import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { useI18n } from '@/i18n'
 import { attachmentId, contextPath, pathLabel } from '@/lib/chat-runtime'
 import { readDesktopFileDataUrl, selectDesktopPaths } from '@/lib/desktop-fs'
-import { normalize } from '@/lib/text'
+import { blobExtension } from '@/lib/media'
 import {
   addComposerAttachment,
   type ComposerAttachment,
@@ -18,23 +18,6 @@ import { notify, notifyError } from '@/store/notifications'
 import type { ImageDetachResponse } from '../../types'
 
 const IMAGE_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|bmp|tiff?|svg|ico)$/i
-
-const BLOB_MIME_EXTENSION: Record<string, string> = {
-  'image/bmp': '.bmp',
-  'image/gif': '.gif',
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/svg+xml': '.svg',
-  'image/tiff': '.tiff',
-  'image/webp': '.webp',
-  'image/x-icon': '.ico'
-}
-
-function blobExtension(blob: Blob): string {
-  const mime = normalize(blob.type.split(';')[0])
-
-  return BLOB_MIME_EXTENSION[mime] || '.png'
-}
 
 export function isImagePath(filePath: string): boolean {
   return IMAGE_EXTENSION_PATTERN.test(filePath)

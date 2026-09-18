@@ -58,6 +58,26 @@ export function mediaMarkdownHref(path: string): string {
   return `#media:${encodeURIComponent(path)}`
 }
 
+const BLOB_MIME_EXTENSION: Record<string, string> = {
+  'image/bmp': '.bmp',
+  'image/gif': '.gif',
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/svg+xml': '.svg',
+  'image/tiff': '.tiff',
+  'image/webp': '.webp',
+  'image/x-icon': '.ico'
+}
+
+/** The extension to SAVE a clipboard/drop blob under (the composer writes the
+ *  bytes to disk before attaching a path). Shared by the thread composer and
+ *  the room composer so both name a pasted screenshot the same way. */
+export function blobExtension(blob: Blob): string {
+  const mime = blob.type.split(';')[0].trim().toLowerCase()
+
+  return BLOB_MIME_EXTENSION[mime] || '.png'
+}
+
 export function isInlineMediaSrc(path: string): boolean {
   return /^(?:https?|data):/i.test(path)
 }
