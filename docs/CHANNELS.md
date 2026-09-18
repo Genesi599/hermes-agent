@@ -298,3 +298,27 @@ Android/应用开发/中性粒项目/Journal Club/game/脑和脑膜/探索/神�
   （`hermes_board/<项目>/{state.md,decisions.md}`，骨架一句话说明由 Hermes 维护），路由与
   唤醒共用此入口，新项目从此自动有看板。存量 19 个房间已补骨架（星阶跳过，有真实看板）。
 - CDP 实测：视网膜项目（骨架）栏+骨架内容 ✓；game（临时删骨架）栏+空态 ✓。
+
+## 「看不到 Hermes 在思考 / 点开没有思考记录」（2026-09-18 修，scripts 侧）
+
+两个表象一个根因：**`hermes -z` 的 oneshot 根本不支持续接**——`run_oneshot()` 没有 resume 参数，
+`--resume` 被静默忽略（实测：对有 12 条消息的会话 `--resume` 后原会话不动、另起新会话）。于是每轮
+路由/唤醒都开**全新会话**：思考记录被撕碎在 `· Hermes (2)(3)…` 里（点开正式名那自然没有记录），
+且 headless 轮次不置 `live_status`（名册芯片永远不动）——用户看不到"开始思考"。
+
+修复：`agent_dispatch` 对**默认 profile 一律走桌面后端的会话轮次接口**（镜像 cron attach 的
+`_submit_attached_prompt_via_backend`+`_await_attached_dialog_turn`：`POST /api/sessions/{id}/prompt`，
+token 用 psutil 从 8803 进程 env 读；等待=轮询 live_status working→idle，回复=会话最后一条
+assistant 行）。无既有会话则**预建带名行**（`title_source='user'`，REST 对空行照样能跑——实测），
+出生即命名即隐藏；后端不可达才回退 -z+运行中改名（回退时空预建行删除，不留可见空壳）。
+
+实测（胸腺项目）：dispatch → `resumed: 20260918_102212_f8874c`（落在既有 `胸腺项目 · Hermes`），
+`live_status: working`（t+4s/t+8s）→ idle，消息 5→7，**零新建会话**。live_status=working 正是
+名册芯片动效的驱动信号（working→arc 已于 `5897d9b637` CDP 实测）；芯片轮询 10s，比探测轮次
+短的 Turn 可能错过动画窗口，真实路由轮（30s~数分钟）不会。
+
+顺带整理：`Book · Hermes` 系重复会话归位——删除我的链路测试会话与 "1" 测试路由会话，
+把 54 条真实"继续带读"思考的 `(3)` 升为正式名（existing_session_id 取最老匹配，此后续接它）。
+
+**已知边界**：管家/流程搭档（非默认 profile）的派活仍走 -z（同名撕碎问题仍在），待按 profile
+后端端口扩展 REST 或上游修 oneshot resume。
