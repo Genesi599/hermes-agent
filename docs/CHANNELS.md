@@ -186,3 +186,60 @@ CREATE INDEX IF NOT EXISTS idx_channel_messages_channel ON channel_messages(chan
 3. **先认领再派活**：`mark_channel_message_routed` 移到 dispatch 之前——快路径与看门狗会同时触发
    （实测 #740 就被路由了两次，唤醒了两轮 agent）；派活失败时把 `routed_at` 置回 NULL 交给看门狗重试。
 4. 失败不再消失：整个派活块包 try/except 并写 `logs/channel_router.log`。
+
+
+## 全局切换：每条会话都是它项目的房间（2026-09-18）
+
+用户定调：**群聊+智能体是唯一的会话形态**——所有既有对话转成项目房间，以后新建的会话也是。
+落地（commit `5f0ecc4633` + `29932fb38e`）：
+
+### 存储：绑定按 id，不按名字猜
+
+- `channels` 加 `session_id` 列（声明式 DDL；索引放 `DEFERRED_INDEX_SQL`——引用新列的索引必须等
+  `_reconcile_columns` 先加列，放 `SCHEMA_SQL` 会在旧库上 executescript 炸"no such column"）。
+- `get_or_create_channel(project, title, session_id=…)`：绑定优先于项目名（**改名不断链**）；
+  未绑定的同名频道可被**认领**（星阶房间即此例——它出生于 weixin 线程）；同名他 session 房间
+  **去重** `名字 (2)`，两条对话绝不并进一个房间。
+- `import_session_into_channel`：会话历史一次性搬进频道（只搬 user/assistant "说过的话"，
+  过滤规则同 `scripts/channel_import.py`；**人声盖 routed 章**——只有新行进路由；频道非空即幂等）。
+
+### API：`POST /api/channels/ensure-from-session`
+
+会话 → 房间的唯一提升入口。规则次序（**绑定检查在最前**，第一个房间出生于 weixin 线程，
+平台来源不能把它拒掉）：已绑定 → 无标题 newborn → weixin/feishu 平台线程 → `· Hermes (n)`
+维护者自对话 → **cron 仍在此输出的会话**（读 `cron/jobs.json` 的 `attach_to_session`+`target_session_id`；
+Stelscala/A股复盘的 cron 往会话 transcript 写内容，转了房间用户就看不见了——**有意保持线程**）。
+
+### 桌面：打开即房间；新会话一轮后成房间
+
+`index.tsx` 的 room 查找从"标题==project"换成 `ensureChannelForSession(selectedSessionId)`；
+`busy || awaitingResponse` 时跳过（流式中留在线程，回合落定才切）。**新会话的第一条消息仍是
+普通线程回合**——正是它挣得标题（`title_source: llm`）的方式；回合完成 → ensure 建房+导入 →
+视图切成房间。之后输入框就是房间的（发帖=插行+触发路由），会话 transcript 冻结为历史。
+
+### 命名竞态（`29932fb38e`）
+
+建房可能发生在正式命名落地前（实测 project 曾是首条消息回显）。ensure 的已绑定分支：
+房间出生 <15min 且 project != 会话当前标题且目标名未被占用 → `rename_channel` 跟随正式标题。
+更老的房间项目名**冻结**（改名会孤儿化看板目录/agent 会话命名）。
+
+### 批量迁移（`%LOCALAPPDATA%\hermes\scripts\channel_backfill_all.py`，脚本不在 git）
+
+2026-09-18 实跑：**19 条会话转房间**（视网膜项目/Tiddlywiki/B细胞清除项目/骨髓微环境/Hermes Sync
+Android/应用开发/中性粒项目/Journal Club/game/脑和脑膜/探索/神经空间/Log/AI出题/改革与发展/胸腺/Book/
+雨课堂/Cashew Local，共导入 ~3250 行），星阶**认领**既有频道；跳过 4 条（Stelscala、A股复盘=cron
+输出会话；飞书平台；星阶 · Hermes）。规则与 ensure 接口逐字一致。
+
+### CDP 实测（2026-09-18，09:3x）
+
+- 视网膜项目（已转换）→ 房间 108 行（=导入数）✓；星阶回归 218 行 ✓。
+- A股复盘（cron）→ 线程 ✓；星阶 · Hermes → 线程 ✓。
+- **新会话端到端**：新建标签 → 发"链路自检" → 模型回"收到" + `title_source: llm` → 房间自动创建
+  绑定（2 行导入、人声 routed）→ 视图切成房间 → ensure 改名跟随正式标题。测试会话/频道已删。
+
+### 已知边界
+
+- 侧栏仍是**会话行**（行点开=房间），不是频道一等列表——会话行即项目行的形态已可日用；
+  "频道直接进侧栏+归档旧房间会话"留作后续整理。
+- `补充 SKILL.md 图表工具文档` 频道由并行会话经同一机制自然产生（cli 会话被打开即成房），
+  佐证机制对"任何来源的 interactive 会话"都成立。
