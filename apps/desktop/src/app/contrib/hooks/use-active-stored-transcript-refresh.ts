@@ -113,7 +113,7 @@ export function useActiveStoredTranscriptRefresh({
         // refresh because a fuse-gap pull kept clobbering the stream. While
         // deltas have arrived within the last 5s, the local stream IS the
         // live view; do not pull.
-        if (sessionStreamAliveRecently(runtimeSessionId)) {
+        if (sessionStreamAliveRecently(storedSessionId)) {
           return
         }
         if (!rowSaysIdle && !chipSaysIdle && !fuseElapsed) {

@@ -69,7 +69,7 @@ import {
   setYoloActive,
 } from '@/store/session'
 import { broadcastSessionsChanged } from '@/store/session-sync'
-import { dropSessionState } from '@/store/session-states'
+import { $sessionStates, dropSessionState } from '@/store/session-states'
 import { pruneDelegateFallbackSubagents, pruneFinishedSessionSubagents, upsertSubagent } from '@/store/subagents'
 import { clearActiveSessionTodos } from '@/store/todos'
 import { recordToolDiff } from '@/store/tool-diffs'
@@ -693,7 +693,13 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
         }
       } else if (event.type === 'message.delta') {
         if (sessionId) {
-          markSessionStreamAlive(sessionId)
+          // Key the liveness mark by the STORED id: the event carries the
+          // TURN's runtime id (the backend session the dispatcher submitted
+          // to), while the busy gate looks up THIS window's runtime id —
+          // two different runtimes over one stored session. Resolve through
+          // the session-state map so both sides meet on storedSessionId.
+          const streamKey = $sessionStates.get()[sessionId]?.storedSessionId ?? sessionId
+          markSessionStreamAlive(streamKey)
           appendAssistantDelta(sessionId, coerceGatewayText(payload?.text))
         }
       } else if (event.type === 'message.interim') {
