@@ -26,6 +26,7 @@ import { refreshBackgroundProcesses } from '@/store/composer-status'
 import { $gateway } from '@/store/gateway'
 import { applyGoalStatusText } from '@/store/goals'
 import {
+  markSessionStreamAlive,
   notifyCronChanged,
   notifyPairingChanged,
   notifyPetChanged,
@@ -692,6 +693,7 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
         }
       } else if (event.type === 'message.delta') {
         if (sessionId) {
+          markSessionStreamAlive(sessionId)
           appendAssistantDelta(sessionId, coerceGatewayText(payload?.text))
         }
       } else if (event.type === 'message.interim') {

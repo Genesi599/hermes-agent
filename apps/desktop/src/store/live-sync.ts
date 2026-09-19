@@ -37,6 +37,26 @@ export function setChangeEventsAvailable(available: boolean): void {
   $changeEventsAvailable.set(available)
 }
 
+/** Last time a streaming delta ARRIVED for a session (ms epoch). The busy
+ *  gate refuses to pull while a LOCAL stream is alive — a durable pull that
+ *  races live deltas reads the not-yet-flushed DB and REPLACES the fresher
+ *  streamed rows (2026-09-19 flicker: Book·Hermes alternated 26↔25 message
+ *  roots every refresh because a fuse-gap pull kept clobbering the stream). */
+const sessionStreamAlive = new Map<string, number>()
+const STREAM_ALIVE_WINDOW_MS = 5_000
+
+export function markSessionStreamAlive(sessionId: string): void {
+  if (sessionId) {
+    sessionStreamAlive.set(sessionId, Date.now())
+  }
+}
+
+export function sessionStreamAliveRecently(sessionId: string): boolean {
+  const at = sessionStreamAlive.get(sessionId)
+
+  return typeof at === 'number' && Date.now() - at < STREAM_ALIVE_WINDOW_MS
+}
+
 export function notifyPetChanged(meta?: PetChangeMeta): void {
   $petChange.set({ meta, tick: $petChange.get().tick + 1 })
 }

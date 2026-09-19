@@ -4,6 +4,7 @@ import { getLatestSessionMessages, getSessionMessagesAfter, type SessionMessage 
 import { preserveLocalAssistantErrors, toChatMessages } from '@/lib/chat-messages'
 import { sessionMessagesSignature } from '@/lib/session-signatures'
 import { $agentActivity } from '@/store/agent-activity'
+import { sessionStreamAliveRecently } from '@/store/live-sync'
 import { $sessions, sessionMatchesStoredId } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
 
@@ -106,6 +107,15 @@ export function useActiveStoredTranscriptRefresh({
         const turnStartedAt = state?.turnStartedAt ?? null
         const fuseElapsed = turnStartedAt !== null && Date.now() - turnStartedAt > BUSY_STALE_FUSE_MS
 
+        // LOCAL-STREAM GUARD (2026-09-19 flicker): a durable pull that races
+        // live deltas reads the not-yet-flushed DB and REPLACES the fresher
+        // streamed rows — Book·Hermes alternated 26↔25 message roots every
+        // refresh because a fuse-gap pull kept clobbering the stream. While
+        // deltas have arrived within the last 5s, the local stream IS the
+        // live view; do not pull.
+        if (sessionStreamAliveRecently(runtimeSessionId)) {
+          return
+        }
         if (!rowSaysIdle && !chipSaysIdle && !fuseElapsed) {
           return
         }
