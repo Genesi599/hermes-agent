@@ -724,6 +724,17 @@ def _backend_candidates_for_session(profile: str = "") -> list:
                     token = str(env.get("HERMES_DASHBOARD_SESSION_TOKEN") or "").strip()
                     if not token:
                         return ("", False)
+                    # HOME GUARD (2026-09-19): a non-default job must NEVER be
+                    # submitted to a backend whose HERMES_HOME is the ROOT —
+                    # the prompt endpoint auto-creates an unknown session id
+                    # there, minting a same-id CLONE in the wrong database
+                    # (16:29: the steward id appeared in the DEFAULT db as an
+                    # api_server row during a pool-backend gap).
+                    if profile and profile != "default":
+                        guard = _profile_home_guard(profile)
+                        env_home = str(env.get("HERMES_HOME") or "").lower().rstrip("\\")
+                        if guard and env_home and env_home != guard:
+                            return ("", False)
                     cmdline = " ".join(proc.cmdline())
                     names_pool = bool(profile) and (
                         f"--profile {profile}" in cmdline or f"-p {profile}" in cmdline
@@ -732,6 +743,13 @@ def _backend_candidates_for_session(profile: str = "") -> list:
         except Exception:
             pass
         return ("", False)
+
+    def _profile_home_guard(name: str) -> str:
+        try:
+            root = __import__("hermes_constants").get_default_hermes_root()
+            return str(root / "profiles" / name).lower().rstrip("\\")
+        except Exception:
+            return ""
 
     pool_first, rest = [], []
     for p in ports:
@@ -3901,6 +3919,38 @@ def run_job(
     # _running_job_ids never runs, so the job stays wedged "running" until
     # the whole gateway process is restarted, silently skipping every
     # scheduled fire in between with "already running — skipping".
+    # ---------------------------------------------------------------
+    # Per-job profile scope (#4707 follow-up, 2026-09-17).
+    #
+    # Cron resolves HERMES_HOME dynamically (`_get_hermes_home`), so a job
+    # that declares ``agent_profile`` should execute INSIDE that profile's
+    # home: its .env, config.yaml, skills, memories, SOUL and — crucially —
+    # its session store. Without this, an "agent" job runs as whoever owns
+    # the ticking gateway, which made a job labelled 管家 run as 主 Hermes
+    # and left the agent's own conversation untouched (the exact complaint
+    # that led here).
+    #
+    # Same two seams the gateway multiplexer uses
+    # (``gateway/run.py::_profile_runtime_scope``): a contextvar home
+    # redirect plus an isolated secret scope. Contextvars propagate into
+    # the agent worker thread via copy_context(), and the secret scope
+    # keeps this profile's keys out of os.environ, so concurrent jobs on
+    # the parallel pool never see each other's credentials.
+    #
+    # No ``agent_profile`` on the job → no scope, behavior byte-identical
+    # to before.
+    _job_profile = str(job.get("agent_profile") or "").strip()
+    _profile_scope = _enter_job_profile_scope(_job_profile)
+    if _profile_scope is not None:
+        logger.info(
+            "Job '%s': scoped to profile '%s' (%s)",
+            job_id, _job_profile, _get_hermes_home(),
+        )
+
+    # ---------------------------------------------------------------------------
+    # Session store (profile-scoped: constructed AFTER the profile scope so a
+    # job with agent_profile opens ITS profile's state.db, not the ticking
+    # process's).
     _session_db = None
     try:
         from hermes_state import SessionDB
@@ -3936,7 +3986,18 @@ def run_job(
         if _session_db_timeout > 0:
             _session_db_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
             try:
-                _session_db = _session_db_pool.submit(SessionDB).result(timeout=_session_db_timeout)
+                # Copy the CURRENT context into the pool worker so the
+                # per-job profile home override (a ContextVar) follows the
+                # SessionDB construction into the thread — otherwise the
+                # default ThreadPoolExecutor runs it in an EMPTY context,
+                # SessionDB() opens the ticking process's state.db, and the
+                # job's agent_profile is silently ignored.
+                _submit_ctx = contextvars.copy_context()
+
+                def _build_session_db() -> "SessionDB":
+                    return _submit_ctx.run(SessionDB)
+
+                _session_db = _session_db_pool.submit(_build_session_db).result(timeout=_session_db_timeout)
             finally:
                 # Don't wait for a wedged connect() to unwind — abandon the
                 # worker thread (same pattern as the agent inactivity timeout
@@ -4345,35 +4406,11 @@ def run_job(
     _cron_session_var = _VAR_MAP["HERMES_CRON_SESSION"]
     _cron_session_token = None
     _non_dispatcher_token = None
-    _profile_scope = None
+    # NOTE: do NOT reset _profile_scope here — it was entered at the top of
+    # run_job (before the no_agent short-circuit) so scripts and SessionDB
+    # resolve inside the job's profile home. Resetting would orphan the
+    # scope token and leak the home override past this job.
     try:
-        # ---------------------------------------------------------------
-        # Per-job profile scope (#4707 follow-up, 2026-09-17).
-        #
-        # Cron resolves HERMES_HOME dynamically (`_get_hermes_home`), so a job
-        # that declares ``agent_profile`` should execute INSIDE that profile's
-        # home: its .env, config.yaml, skills, memories, SOUL and — crucially —
-        # its session store. Without this, an "agent" job runs as whoever owns
-        # the ticking gateway, which made a job labelled 管家 run as 主 Hermes
-        # and left the agent's own conversation untouched (the exact complaint
-        # that led here).
-        #
-        # Same two seams the gateway multiplexer uses
-        # (``gateway/run.py::_profile_runtime_scope``): a contextvar home
-        # redirect plus an isolated secret scope. Contextvars propagate into
-        # the agent worker thread via copy_context(), and the secret scope
-        # keeps this profile's keys out of os.environ, so concurrent jobs on
-        # the parallel pool never see each other's credentials.
-        #
-        # No ``agent_profile`` on the job → no scope, behavior byte-identical
-        # to before.
-        _job_profile = str(job.get("agent_profile") or "").strip()
-        _profile_scope = _enter_job_profile_scope(_job_profile)
-        if _profile_scope is not None:
-            logger.info(
-                "Job '%s': scoped to profile '%s' (%s)",
-                job_id, _job_profile, _get_hermes_home(),
-            )
         if not _cwd_lock_acquired:
             # Fail closed (#79768): running without the lock would let a
             # concurrent workdir job's process-global TERMINAL_CWD override
