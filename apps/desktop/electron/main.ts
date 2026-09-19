@@ -8541,6 +8541,9 @@ async function startHermes() {
     await Promise.race([waitForHermes(baseUrl, token), backendStartFailed])
     backendReady = true
     backendStartFailure = null
+    // Boot-critical path is done — schedule the pool prewarm (delayed,
+    // serial, never inside this path).
+    schedulePoolPrewarm()
 
     const authToken = await adoptServedDashboardToken(baseUrl, token, {
       childAlive: () => hermesProcess.exitCode === null && !hermesProcess.killed,
@@ -12383,6 +12386,13 @@ app.on('open-url', (event, url) => {
 })
 
 app.whenReady().then(() => {
+  // Pool prewarm entry point (2026-09-19): anchored HERE rather than inside
+  // startHermes/ensureBackend because a desktop relaunch often ADOPTS an
+  // already-running local backend and never passes through the spawn branch.
+  // The 15s delay inside keeps it off the boot-critical path, and ensureBackend
+  // reuses the in-flight boot promise, so it cannot race or double-spawn.
+  schedulePoolPrewarm()
+
   const systemCa = installWindowsSystemCaTrust(tls)
 
   if (systemCa.applied) {
