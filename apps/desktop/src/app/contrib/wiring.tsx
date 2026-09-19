@@ -302,7 +302,17 @@ export function ContribWiring({ children }: { children: ReactNode }) {
             awaitingResponse: true,
             busy: true,
             storedSessionId,
-            turnStartedAt: current.turnStartedAt ?? startedAt
+            turnStartedAt: current.turnStartedAt ?? startedAt,
+            // DURABLE-BUSY = A TURN RUNNING ELSEWHERE (2026-09-19): a
+            // REST/cron-submitted turn's events stream only to the
+            // submitting transport, so this window never sees message.start
+            // and never earns adoptedRunningTurn the hard way. Without the
+            // flag the busy gate's three fuses all read "working" and the
+            // transcript refresh froze for the WHOLE turn — the pane said
+            // "thinking" but rendered nothing until it ended (~1min dead
+            // air). Same semantics as an adopted turn: no local stream to
+            // protect, the durable pull IS the live view.
+            adoptedRunningTurn: true
           })
         }
 
