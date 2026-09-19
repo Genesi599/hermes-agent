@@ -3633,6 +3633,51 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
         except Exception as exc:
             logger.warning("WAL checkpoint (PASSIVE) failed: %s", exc)
 
+    def read_change_feed(self, since: int = 0, limit: int = 2000) -> dict:
+        """Read the trigger-written change feed strictly after ``since``.
+
+        The change_log table is appended by SQLite triggers (see SCHEMA_SQL),
+        so every writer is covered regardless of process. Callers poll with
+        their watermark and apply per-row upsert/delete. The response carries:
+
+        - ``generation`` — stable per-database id (state_meta); a watermark
+          from a DIFFERENT generation belongs to another database file
+          (restored backup, copied store) and must be discarded.
+        - ``last_seq`` — current head; record it even on ``resync``.
+        - ``resync`` — ``since`` predates retained history (or the bootstrap
+          ``since=0``): do one full pull before switching to deltas. Overlap
+          between that pull and this watermark is harmless — events are
+          idempotent upserts/deletes.
+        """
+        row = self._conn.execute(
+            "SELECT COALESCE(MAX(seq), 0), COALESCE(MIN(seq), 0), "
+            "(SELECT value FROM state_meta WHERE key = 'change_log_generation') "
+            "FROM change_log"
+        ).fetchone()
+        last_seq, min_seq, generation = row
+        resync = (
+            since <= 0
+            or last_seq == 0
+            or (min_seq > 1 and since < min_seq - 1)
+        )
+        events: list = []
+        if not resync and since < last_seq:
+            events = [
+                {"seq": seq, "kind": kind, "table": table_name, "pk": row_pk}
+                for seq, kind, table_name, row_pk in self._conn.execute(
+                    "SELECT seq, kind, table_name, row_pk FROM change_log "
+                    "WHERE seq > ? ORDER BY seq LIMIT ?",
+                    (since, limit),
+                )
+            ]
+        return {
+            "generation": generation,
+            "last_seq": last_seq,
+            "min_seq": min_seq,
+            "resync": resync,
+            "events": events,
+        }
+
     def close(self):
         """Close the database connection.
 

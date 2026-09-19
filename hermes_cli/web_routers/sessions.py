@@ -51,6 +51,32 @@ _session_latest_descendant = late("_session_latest_descendant")
 _strip_session_list_rows = late("_strip_session_list_rows")
 
 
+@list_router.get("/api/changes")
+def get_changes(
+    since: int = Query(0, ge=0),
+    limit: int = Query(2000, ge=1, le=20000),
+    profile: Optional[str] = None,
+):
+    """Monotonic row-level change feed for incremental UI sync.
+
+    Backed by the trigger-written ``change_log`` table, so writes from ANY
+    process (backend turns, cron, dispatch scripts, raw sqlite3) are all
+    visible. Poll with the last seen ``seq``; on ``resync`` (or a
+    ``generation`` different from the one your watermark came from) do one
+    full pull and re-arm from this response's ``last_seq``. Events are
+    per-row ``upsert``/``delete`` keyed by table + pk, so a client can fetch
+    just the touched rows by primary key instead of re-pulling whole lists.
+    """
+    profile_name: Optional[str] = None
+    if profile:
+        profile_name, _ = _cron_profile_home(profile)
+    db = _open_session_db_for_profile(profile_name, read_only=True)
+    try:
+        return db.read_change_feed(since=since, limit=limit)
+    finally:
+        db.close()
+
+
 @list_router.get("/api/sessions")
 def get_sessions(
     # ``le=100`` caps the page size (idea from #39200): an unbounded limit

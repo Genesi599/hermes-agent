@@ -172,7 +172,7 @@ def _sql_session_last_active_by_id(session_id_expr: str) -> str:
     )
 
 
-SCHEMA_VERSION = 25
+SCHEMA_VERSION = 26
 
 
 # FTS storage-layout version, tracked INDEPENDENTLY of SCHEMA_VERSION in the
@@ -466,6 +466,76 @@ CREATE TABLE IF NOT EXISTS channel_messages (
 
 CREATE INDEX IF NOT EXISTS idx_channel_messages_channel
     ON channel_messages(channel_id, id);
+
+
+-- ── Change log (schema v26): monotonic row-level change feed ──
+-- Written by TRIGGERS so EVERY writer is covered, including raw
+-- sqlite3 connections from other processes (cron, dispatch scripts,
+-- CLI) that never go through SessionDB. Readers poll
+-- GET /api/changes?since=<seq> and apply per-row upsert/delete.
+-- `seq` is AUTOINCREMENT under SQLite's single-writer serialization,
+-- so it equals commit order. `generation` (state_meta, set once)
+-- lets a reader detect a replaced/restored database (watermark from
+-- a different generation ⇒ full resync). Retention is reader-side
+-- pruning (see /api/changes); a pruned gap is detected via min_seq.
+CREATE TABLE IF NOT EXISTS change_log (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts REAL NOT NULL,
+    kind TEXT NOT NULL,
+    table_name TEXT NOT NULL,
+    row_pk TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_change_log_table_seq
+    ON change_log(table_name, seq);
+
+INSERT OR IGNORE INTO state_meta(key, value)
+    VALUES ('change_log_generation', lower(hex(randomblob(16))));
+
+CREATE TRIGGER IF NOT EXISTS trg_change_log_sessions_ins
+AFTER INSERT ON sessions BEGIN
+    INSERT INTO change_log(ts, kind, table_name, row_pk)
+    VALUES (julianday('now'), 'upsert', 'sessions', NEW.id);
+END;
+CREATE TRIGGER IF NOT EXISTS trg_change_log_sessions_upd
+AFTER UPDATE ON sessions BEGIN
+    INSERT INTO change_log(ts, kind, table_name, row_pk)
+    VALUES (julianday('now'), 'upsert', 'sessions', NEW.id);
+END;
+CREATE TRIGGER IF NOT EXISTS trg_change_log_sessions_del
+AFTER DELETE ON sessions BEGIN
+    INSERT INTO change_log(ts, kind, table_name, row_pk)
+    VALUES (julianday('now'), 'delete', 'sessions', OLD.id);
+END;
+CREATE TRIGGER IF NOT EXISTS trg_change_log_messages_ins
+AFTER INSERT ON messages BEGIN
+    INSERT INTO change_log(ts, kind, table_name, row_pk)
+    VALUES (julianday('now'), 'upsert', 'messages', CAST(NEW.id AS TEXT));
+END;
+CREATE TRIGGER IF NOT EXISTS trg_change_log_messages_upd
+AFTER UPDATE ON messages BEGIN
+    INSERT INTO change_log(ts, kind, table_name, row_pk)
+    VALUES (julianday('now'), 'upsert', 'messages', CAST(NEW.id AS TEXT));
+END;
+CREATE TRIGGER IF NOT EXISTS trg_change_log_messages_del
+AFTER DELETE ON messages BEGIN
+    INSERT INTO change_log(ts, kind, table_name, row_pk)
+    VALUES (julianday('now'), 'delete', 'messages', CAST(OLD.id AS TEXT));
+END;
+CREATE TRIGGER IF NOT EXISTS trg_change_log_channel_messages_ins
+AFTER INSERT ON channel_messages BEGIN
+    INSERT INTO change_log(ts, kind, table_name, row_pk)
+    VALUES (julianday('now'), 'upsert', 'channel_messages', CAST(NEW.id AS TEXT));
+END;
+CREATE TRIGGER IF NOT EXISTS trg_change_log_channel_messages_upd
+AFTER UPDATE ON channel_messages BEGIN
+    INSERT INTO change_log(ts, kind, table_name, row_pk)
+    VALUES (julianday('now'), 'upsert', 'channel_messages', CAST(NEW.id AS TEXT));
+END;
+CREATE TRIGGER IF NOT EXISTS trg_change_log_channel_messages_del
+AFTER DELETE ON channel_messages BEGIN
+    INSERT INTO change_log(ts, kind, table_name, row_pk)
+    VALUES (julianday('now'), 'delete', 'channel_messages', CAST(OLD.id AS TEXT));
+END;
 """
 
 
