@@ -78,6 +78,14 @@ const ChainToolFallback: FC<ToolCallMessagePartProps> = props => {
   return <ToolFallback {...props} />
 }
 
+// Per-timerKey disclosure memory: survives transcript replacements (0.5s
+// adopted-turn refreshes remount parts) so a thinking block the user opened
+// — or one auto-opened while streaming — does not visibly collapse/reopen
+// in a loop. `openAt` powers a short sticky window that absorbs the refresh
+// cadence; entries are tiny and capped defensively.
+const thinkingDisclosureMemory = new Map<string, { userOpen: boolean | null; openAt: number }>()
+const THINKING_STICKY_OPEN_MS = 2000
+
 const ThinkingDisclosure: FC<{
   children: ReactNode
   messageRunning?: boolean
@@ -91,15 +99,40 @@ const ThinkingDisclosure: FC<{
   // The default is "auto-open while streaming, auto-collapse when done" so
   // reasoning surfaces a live preview without manual interaction. The first
   // explicit toggle wins from then on.
-  const [userOpen, setUserOpen] = useState<boolean | null>(null)
+  // The memory + sticky window survive transcript REPLACEMENTS: the 0.5s
+  // adopted-turn refresh remounts every message part, which reset this
+  // local state to null and let the flapping `pending` signal collapse and
+  // re-expand the block in a visible loop (the 2026-09-19 flicker).
+  const [userOpen, setUserOpenState] = useState<boolean | null>(
+    () => thinkingDisclosureMemory.get(timerKey)?.userOpen ?? null
+  )
   const elapsed = useElapsedSeconds(pending, timerKey)
   const thoughtFor = useMeasuredDuration(pending, timerKey)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
   const enterRef = useEnterAnimation(messageRunning, timerKey)
 
-  const open = userOpen ?? pending
+  const stickyOpen =
+    Date.now() - (thinkingDisclosureMemory.get(timerKey)?.openAt ?? 0) <
+    THINKING_STICKY_OPEN_MS
+  const open = (userOpen ?? pending) || stickyOpen
   const isPreview = pending && userOpen === null
+
+  useEffect(() => {
+    if (open) {
+      const prev = thinkingDisclosureMemory.get(timerKey)
+      thinkingDisclosureMemory.set(timerKey, {
+        userOpen: prev?.userOpen ?? null,
+        openAt: Date.now(),
+      })
+    }
+  })
+
+  const setUserOpen = (value: boolean) => {
+    setUserOpenState(value)
+    const prev = thinkingDisclosureMemory.get(timerKey)
+    thinkingDisclosureMemory.set(timerKey, { userOpen: value, openAt: prev?.openAt ?? 0 })
+  }
 
   // Three ways a finished block can report itself. With a measured duration it
   // says so, unless the timer's whole seconds round it to "0s" — accurate and
