@@ -7900,6 +7900,10 @@ async function ensureBackend(profile) {
   if (route.backend === 'primary') {
     const connection = await startHermes()
 
+    // Primary backend is up — the boot-critical path is done. Kick off the
+    // pool prewarm (idempotent, delayed: never inside the boot path itself).
+    schedulePoolPrewarm()
+
     // A shared backend still owes the caller its profile scope, so renderer-side
     // WebSocket, filesystem, and cache routing target the selected profile.
     return route.descriptorProfile ? { ...connection, profile: route.descriptorProfile } : connection
@@ -7932,6 +7936,59 @@ async function ensureBackend(profile) {
   startPoolIdleReaper()
 
   return entry.connectionPromise
+}
+
+// Prewarm pool backends for every named profile (2026-09-19): opening an
+// agent's private chat cost a full Python cold boot (~5-10s) the first time
+// after every desktop restart because the pool is lazy. Warm them serially
+// AFTER the primary backend is ready — never in the boot path itself (concurrent
+// cold boots would steal disk/CPU from the primary and slow startup) — one
+// every few seconds. Idempotent across reconnects/soft restarts.
+const PREWARM_DELAY_MS = 15_000
+const PREWARM_STAGGER_MS = 8_000
+let poolPrewarmScheduled = false
+
+function listNamedProfiles() {
+  const profilesRoot = path.join(ACTIVE_HERMES_ROOT, 'profiles')
+  try {
+    return fs
+      .readdirSync(profilesRoot, { withFileTypes: true })
+      .filter(
+        entry =>
+          entry.isDirectory() &&
+          fs.existsSync(path.join(profilesRoot, entry.name, 'state.db'))
+      )
+      .map(entry => entry.name)
+      .filter(name => name !== 'default')
+  } catch {
+    return []
+  }
+}
+
+function schedulePoolPrewarm() {
+  if (poolPrewarmScheduled) {
+    return
+  }
+  poolPrewarmScheduled = true
+
+  setTimeout(() => {
+    void (async () => {
+      for (const name of listNamedProfiles()) {
+        if (backendPool.has(name)) {
+          continue
+        }
+        try {
+          await ensureBackend(name)
+          rememberLog(`[prewarm] profile backend '${name}' ready`)
+        } catch (error) {
+          rememberLog(
+            `[prewarm] profile backend '${name}' failed: ${error?.message ?? error}`
+          )
+        }
+        await new Promise(resolve => setTimeout(resolve, PREWARM_STAGGER_MS))
+      }
+    })()
+  }, PREWARM_DELAY_MS)
 }
 
 // Mark a pool profile as recently used so the idle reaper spares it. The
