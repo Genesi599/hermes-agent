@@ -15,6 +15,7 @@
  *     the bridge has no session-window support.
  */
 import { $activeSessionId, $selectedStoredSessionId } from '@/store/session'
+import { notifySessionsChanged } from '@/store/live-sync'
 import {
   focusedSessionNeedsRoute,
   focusOpenSession,
@@ -107,6 +108,14 @@ export function openSession(
     // focusing, or try to relocate an existing tile — neither is right for a
     // soft "open beside" link.
     if (focusOpenSession(storedSessionId)) {
+      // REACTIVATION REFRESH (2026-09-19): fronting an ALREADY-OPEN tile used
+      // to be a pure focus flip with zero data work — a tile whose backend
+      // died (or whose restore never connected) stayed frozen forever and
+      // re-clicking its chip did nothing. Fire the catch-up tick: the active
+      // transcript refresher resolves the profile itself and its REST pull
+      // makes main ensure the backend, so the pane catches up to the DB.
+      notifySessionsChanged()
+
       return
     }
 
@@ -137,6 +146,11 @@ export function openSession(
   // every switch while it is only a blank draft), preserving the old
   // single-pane feel until a second chat is actually involved.
   const focused = focusOpenSession(storedSessionId)
+
+  if (focused) {
+    // Same reactivation refresh as the 'tab' path above (2026-09-19).
+    notifySessionsChanged()
+  }
 
   if (!focused && spendBlankDraftMainForTile()) {
     openSessionTile(storedSessionId, 'center')
