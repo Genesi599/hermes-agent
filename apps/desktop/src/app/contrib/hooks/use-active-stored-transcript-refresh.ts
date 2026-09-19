@@ -1,6 +1,6 @@
 import { type MutableRefObject, useCallback, useRef } from 'react'
 
-import { getLatestSessionMessages } from '@/hermes'
+import { getLatestSessionMessages, getSessionMessagesAfter, type SessionMessage } from '@/hermes'
 import { preserveLocalAssistantErrors, toChatMessages } from '@/lib/chat-messages'
 import { sessionMessagesSignature } from '@/lib/session-signatures'
 import { $sessions, sessionMatchesStoredId } from '@/store/session'
@@ -10,6 +10,10 @@ import { resolveSessionProfile } from '../../session/hooks/use-session-actions/u
 import type { useSessionStateCache } from '../../session/hooks/use-session-state-cache'
 
 type SessionStateCache = ReturnType<typeof useSessionStateCache>
+
+/** How often the incremental tail falls back to a full re-pull. after_id only
+ *  ever sees APPENDS, so edits/deletes/compaction need this periodic sweep. */
+const TRANSCRIPT_FULL_BACKSTOP_MS = 30_000
 
 interface ActiveTranscriptRefreshParams {
   activeSessionIdRef: SessionStateCache['activeSessionIdRef']
@@ -46,6 +50,11 @@ export function useActiveStoredTranscriptRefresh({
 }: ActiveTranscriptRefreshParams) {
   const transcriptSignatureRef = useRef(new Map<string, string>())
   const profileCacheRef = useRef(new Map<string, string>())
+  /** Per-session incremental state: the raw rows the view was last derived
+   *  from plus their head id. A poll within the backstop window fetches ONLY
+   *  the tail after `maxId` and re-derives; the periodic full re-pull (still
+   *  signature-gated) catches edits/deletes that after_id cannot see. */
+  const transcriptTailRef = useRef(new Map<string, { lastFullAt: number; maxId: number; raw: SessionMessage[] }>())
 
   return useCallback(async () => {
     const storedSessionId = selectedStoredSessionIdRef.current
@@ -89,28 +98,74 @@ export function useActiveStoredTranscriptRefresh({
       profileCacheRef.current.set(storedSessionId, profile)
     }
 
-    try {
-      const latest = await getLatestSessionMessages(storedSessionId, profile)
-      const signatureKey = `${profile ?? 'default'}:${storedSessionId}`
-      const sig = sessionMessagesSignature(latest.messages)
+    const signatureKey = `${profile ?? 'default'}:${storedSessionId}`
 
-      if (transcriptSignatureRef.current.get(signatureKey) === sig) {
-        return
+    // One cached session at a time — switching conversations must not keep
+    // growing the cache, and a stale tail for a revisited session only costs
+    // one full re-pull.
+    for (const key of transcriptTailRef.current.keys()) {
+      if (key !== signatureKey) {
+        transcriptTailRef.current.delete(key)
       }
+    }
 
-      transcriptSignatureRef.current.set(signatureKey, sig)
-      const messages = toChatMessages(latest.messages)
+    const applyDerived = (raw: SessionMessage[]) => {
+      const messages = toChatMessages(raw)
 
       updateSessionState(
         runtimeSessionId,
         state => ({ ...state, messages: preserveLocalAssistantErrors(messages, state.messages) }),
         storedSessionId
       )
+    }
+
+    try {
+      const tail = transcriptTailRef.current.get(signatureKey)
+
+      if (tail && Date.now() - tail.lastFullAt < TRANSCRIPT_FULL_BACKSTOP_MS) {
+        const grown = await getSessionMessagesAfter(storedSessionId, profile, tail.maxId)
+
+        if (grown.messages.length === 0) {
+          return
+        }
+
+        const maxId = grown.messages.reduce(
+          (head, message) => Math.max(head, Number(message.id ?? message.row_id ?? 0) || 0),
+          tail.maxId
+        )
+
+        tail.raw = [...tail.raw, ...grown.messages].slice(-800)
+        tail.maxId = maxId
+        applyDerived(tail.raw)
+
+        return
+      }
+
+      const latest = await getLatestSessionMessages(storedSessionId, profile)
+      const sig = sessionMessagesSignature(latest.messages)
+
+      if (transcriptSignatureRef.current.get(signatureKey) === sig) {
+        if (tail) {
+          tail.lastFullAt = Date.now()
+        }
+
+        return
+      }
+
+      transcriptSignatureRef.current.set(signatureKey, sig)
+      transcriptTailRef.current.set(signatureKey, {
+        lastFullAt: Date.now(),
+        maxId: latest.messages.reduce((head, message) => Math.max(head, Number(message.id ?? message.row_id ?? 0) || 0), 0),
+        raw: latest.messages
+      })
+      applyDerived(latest.messages)
     } catch {
       // Non-fatal: next poll or manual refresh can hydrate. Drop the memoized
       // profile so a fetch that no longer routes (backend re-homed) re-resolves
-      // instead of retrying a dead profile forever.
+      // instead of retrying a dead profile forever, and drop the tail so the
+      // next poll re-pulls fully instead of appending onto a stale cache.
       profileCacheRef.current.delete(storedSessionId)
+      transcriptTailRef.current.delete(signatureKey)
     }
   }, [activeSessionIdRef, busyRef, selectedStoredSessionIdRef, updateSessionState])
 }

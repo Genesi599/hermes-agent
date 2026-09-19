@@ -1969,3 +1969,17 @@ export function getSessionRowDetail(id: string, profile?: string | null): Promis
     path: `/api/sessions/${encodeURIComponent(id)}`
   })
 }
+
+/** Incremental transcript tail: rows with durable id strictly greater than
+ *  `afterId`, oldest-first (the endpoint forces oldest for after_id). The
+ *  append-only counterpart of getLatestSessionMessages for poll loops. */
+export function getSessionMessagesAfter(
+  id: string,
+  profile?: string | null,
+  afterId = 0
+): Promise<SessionMessagesResponse> {
+  return window.hermesDesktop.api<SessionMessagesResponse>({
+    ...(profile ? { profile } : {}),
+    path: `/api/sessions/${encodeURIComponent(id)}/messages?after_id=${afterId}&limit=500`
+  })
+}

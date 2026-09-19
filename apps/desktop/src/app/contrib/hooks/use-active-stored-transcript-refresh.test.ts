@@ -14,7 +14,8 @@ import { useActiveStoredTranscriptRefresh } from './use-active-stored-transcript
 
 vi.mock('@/hermes', async importActual => ({
   ...(await importActual<typeof HermesModule>()),
-  getLatestSessionMessages: vi.fn(async () => ({ messages: [], session_id: '' }))
+  getLatestSessionMessages: vi.fn(async () => ({ messages: [], session_id: '' })),
+  getSessionMessagesAfter: vi.fn(async () => ({ messages: [], session_id: '' }))
 }))
 
 vi.mock('../../session/hooks/use-session-actions/utils', async importActual => ({
@@ -22,7 +23,7 @@ vi.mock('../../session/hooks/use-session-actions/utils', async importActual => (
   resolveSessionProfile: vi.fn(async () => undefined)
 }))
 
-const { getLatestSessionMessages } = await import('@/hermes')
+const { getLatestSessionMessages, getSessionMessagesAfter } = await import('@/hermes')
 const { resolveSessionProfile } = await import('../../session/hooks/use-session-actions/utils')
 
 const row = (over: Partial<SessionInfo>): SessionInfo =>
@@ -76,6 +77,8 @@ describe('useActiveStoredTranscriptRefresh', () => {
     $sessionStates.set({})
     vi.mocked(getLatestSessionMessages).mockReset()
     vi.mocked(getLatestSessionMessages).mockResolvedValue({ messages: [], session_id: '' })
+    vi.mocked(getSessionMessagesAfter).mockReset()
+    vi.mocked(getSessionMessagesAfter).mockResolvedValue({ messages: [], session_id: '' })
     vi.mocked(resolveSessionProfile).mockReset()
     vi.mocked(resolveSessionProfile).mockResolvedValue(undefined)
   })
@@ -118,9 +121,10 @@ describe('useActiveStoredTranscriptRefresh', () => {
     await refresh()
     await refresh()
 
-    // The poll DID fetch again, but the identical signature must gate the
-    // second state write (no churn on a no-change poll).
-    expect(getLatestSessionMessages).toHaveBeenCalledTimes(2)
+    // The second poll fetches ONLY the tail (after_id), not the full page —
+    // and an empty tail writes no state (no churn on a no-change poll).
+    expect(getLatestSessionMessages).toHaveBeenCalledTimes(1)
+    expect(getSessionMessagesAfter).toHaveBeenCalledTimes(1)
     expect(resolveSessionProfile).toHaveBeenCalledTimes(1)
     expect(updateSessionState).toHaveBeenCalledTimes(1)
   })
@@ -132,18 +136,22 @@ describe('useActiveStoredTranscriptRefresh', () => {
       session_id: 'stored-x'
     })
 
-    const { refresh, updateSessionState } = renderRefresh()
+    const { applied, refresh, updateSessionState } = renderRefresh()
 
     await refresh()
 
-    vi.mocked(getLatestSessionMessages).mockResolvedValue({
-      messages: [msg('user', 'hi'), msg('assistant', 'new turn')],
+    vi.mocked(getSessionMessagesAfter).mockResolvedValue({
+      messages: [msg('assistant', 'new turn')],
       session_id: 'stored-x'
     })
 
     await refresh()
 
+    // The tail row is APPENDED to the cached raw rows and re-derived —
+    // no second full-page fetch happened.
+    expect(getLatestSessionMessages).toHaveBeenCalledTimes(1)
     expect(updateSessionState).toHaveBeenCalledTimes(2)
+    expect(applied[1].messages).toHaveLength(2)
   })
 
   it('quietly skips when no profile library owns the id', async () => {
@@ -223,5 +231,48 @@ describe('useActiveStoredTranscriptRefresh', () => {
 
     expect(getLatestSessionMessages).not.toHaveBeenCalled()
     expect(updateSessionState).not.toHaveBeenCalled()
+  })
+
+  it('falls back to a full re-pull after the backstop window', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_000_000)
+    setSessions([row({ id: 'stored-x', profile: 'default' })])
+    vi.mocked(getLatestSessionMessages).mockResolvedValue({
+      messages: [msg('user', 'hi')],
+      session_id: 'stored-x'
+    })
+
+    const { refresh, updateSessionState } = renderRefresh()
+
+    await refresh()
+    vi.setSystemTime(1_000_000 + 31_000)
+    await refresh()
+
+    // after_id only sees appends; the periodic full pull catches edits and
+    // deletes (signature-gated), which is why it must keep running.
+    expect(getLatestSessionMessages).toHaveBeenCalledTimes(2)
+    expect(updateSessionState).toHaveBeenCalledTimes(1) // identical signature: no write
+
+    vi.useRealTimers()
+  })
+
+  it('drops the tail cache on a fetch failure so the next poll re-pulls fully', async () => {
+    setSessions([row({ id: 'stored-x', profile: 'default' })])
+    vi.mocked(getLatestSessionMessages).mockResolvedValue({
+      messages: [msg('user', 'hi')],
+      session_id: 'stored-x'
+    })
+
+    const { refresh, updateSessionState } = renderRefresh()
+
+    await refresh()
+
+    vi.mocked(getSessionMessagesAfter).mockRejectedValue(new Error('backend gone'))
+    await refresh() // fails; cache must be dropped
+
+    await refresh()
+
+    expect(getLatestSessionMessages).toHaveBeenCalledTimes(2)
+    expect(updateSessionState).toHaveBeenCalledTimes(1)
   })
 })
