@@ -784,7 +784,15 @@ def _submit_attached_prompt_via_backend(
     candidates = _backend_candidates_for_session(profile)
     if not candidates:
         # Legacy single-target probe (env port → 8803) keeps working when the
-        # psutil scan fails outright (restricted hosts, exotic sandboxes).
+        # psutil scan fails outright (restricted hosts, exotic sandboxes) —
+        # but NEVER for an agent profile: the env port is the ROOT-home
+        # backend, and its prompt endpoint auto-creates an unknown session id,
+        # minting a same-id clone in the wrong database (17:00 节拍-收假 fell
+        # here during a pool-backend gap and ran in the DEFAULT db clone).
+        # An agent job with no eligible backend falls through to the
+        # in-process direct run, which writes the CORRECT profile store.
+        if profile and profile != "default":
+            return None
         token = _desktop_backend_token(_desktop_backend_port())
         if token:
             candidates = [(_desktop_backend_port(), token)]
