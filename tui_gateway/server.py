@@ -3739,7 +3739,11 @@ _CHANGE_WATCHES: dict[str, tuple[float, Any, Any]] = {
 # gateway rewrites gateway_state.json for in-flight-count bookkeeping; the
 # floor coalesces those bursts to one broadcast per window (trailing edge
 # included — a floored change keeps its old signature and re-fires next tick).
-_CHANGE_BROADCAST_FLOOR_S = {"sessions.changed": 2.0, "platforms.changed": 5.0}
+# 0.5s (was 2.0): clients now consume the payload incrementally (change_log
+# watermarks + after_id tails), so a broadcast is a cheap nudge, not a
+# full-list re-pull — coalescing harder than the probe interval buys
+# nothing and adds up to ~2.5s of visible staleness.
+_CHANGE_BROADCAST_FLOOR_S = {"sessions.changed": 0.5, "platforms.changed": 5.0}
 
 _change_sigs: dict[str, Any] = {}
 _change_checked_at: dict[str, float] = {}

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type * as HermesModule from '@/hermes'
 import { createClientSessionState } from '@/lib/chat-runtime'
+import { $agentActivity } from '@/store/agent-activity'
 import { setSessions } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
 import type { SessionInfo, SessionMessage } from '@/types/hermes'
@@ -75,6 +76,7 @@ describe('useActiveStoredTranscriptRefresh', () => {
   beforeEach(() => {
     setSessions([])
     $sessionStates.set({})
+    $agentActivity.set({})
     vi.mocked(getLatestSessionMessages).mockReset()
     vi.mocked(getLatestSessionMessages).mockResolvedValue({ messages: [], session_id: '' })
     vi.mocked(getSessionMessagesAfter).mockReset()
@@ -86,6 +88,7 @@ describe('useActiveStoredTranscriptRefresh', () => {
   afterEach(() => {
     setSessions([])
     $sessionStates.set({})
+    $agentActivity.set({})
   })
 
   it('refreshes an off-list agent conversation by resolving its profile', async () => {
@@ -216,6 +219,67 @@ describe('useActiveStoredTranscriptRefresh', () => {
     expect(getLatestSessionMessages).toHaveBeenCalledTimes(1)
     expect(updateSessionState).toHaveBeenCalledTimes(1)
     expect(applied[0].messages).toHaveLength(2)
+  })
+
+  it('stale-busy fuse: a sidebar row reporting idle un-freezes the poll', async () => {
+    // The 2026-09-19 freeze: a streamed turn whose completion event was lost
+    // leaves busyRef stuck true and the transcript frozen forever. The row's
+    // live_status (polled for the sidebar anyway) says idle → pull anyway.
+    $sessionStates.set({
+      'runtime-1': { ...createClientSessionState(null), busy: true, adoptedRunningTurn: false }
+    })
+    setSessions([row({ id: 'stored-x', profile: 'default', status: 'idle' })])
+    vi.mocked(getLatestSessionMessages).mockResolvedValue({
+      messages: [msg('user', 'hi'), msg('assistant', 'recovered')],
+      session_id: 'stored-x'
+    })
+
+    const { applied, refs, refresh, updateSessionState } = renderRefresh()
+
+    refs.busyRef.current = true
+    await refresh()
+
+    expect(getLatestSessionMessages).toHaveBeenCalledTimes(1)
+    expect(updateSessionState).toHaveBeenCalledTimes(1)
+    expect(applied[0].messages).toHaveLength(2)
+  })
+
+  it('stale-busy fuse: an agent-chip entry for this conversation un-freezes the poll', async () => {
+    // Chip-opened conversations never appear in the sidebar list, so the row
+    // signal above cannot exist for them — but the agent-chip activity store
+    // polls their live status and carries the conversation id.
+    $sessionStates.set({
+      'runtime-1': { ...createClientSessionState(null), busy: true, adoptedRunningTurn: false }
+    })
+    $agentActivity.set({ steward: { sessionId: 'stored-x', status: 'idle' as const } })
+    vi.mocked(resolveSessionProfile).mockResolvedValue('steward')
+    vi.mocked(getLatestSessionMessages).mockResolvedValue({
+      messages: [msg('assistant', 'recovered via chip')],
+      session_id: 'stored-x'
+    })
+
+    const { applied, refs, refresh, updateSessionState } = renderRefresh()
+
+    refs.busyRef.current = true
+    await refresh()
+
+    expect(updateSessionState).toHaveBeenCalledTimes(1)
+    expect(applied[0].messages).toHaveLength(1)
+  })
+
+  it('stale-busy fuse: a chip entry still working does NOT un-freeze (nor does no signal)', async () => {
+    $sessionStates.set({
+      'runtime-1': { ...createClientSessionState(null), busy: true, adoptedRunningTurn: false, turnStartedAt: Date.now() }
+    })
+    $agentActivity.set({ steward: { sessionId: 'stored-x', status: 'working' as const } })
+
+    const { refs, refresh, updateSessionState } = renderRefresh()
+
+    refs.busyRef.current = true
+    await refresh()
+
+    expect(getLatestSessionMessages).not.toHaveBeenCalled()
+    expect(updateSessionState).not.toHaveBeenCalled()
   })
 
   it('keeps the busy gate for a turn this window started', async () => {

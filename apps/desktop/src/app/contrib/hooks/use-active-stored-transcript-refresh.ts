@@ -3,6 +3,7 @@ import { type MutableRefObject, useCallback, useRef } from 'react'
 import { getLatestSessionMessages, getSessionMessagesAfter, type SessionMessage } from '@/hermes'
 import { preserveLocalAssistantErrors, toChatMessages } from '@/lib/chat-messages'
 import { sessionMessagesSignature } from '@/lib/session-signatures'
+import { $agentActivity } from '@/store/agent-activity'
 import { $sessions, sessionMatchesStoredId } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
 
@@ -14,6 +15,13 @@ type SessionStateCache = ReturnType<typeof useSessionStateCache>
 /** How often the incremental tail falls back to a full re-pull. after_id only
  *  ever sees APPENDS, so edits/deletes/compaction need this periodic sweep. */
 const TRANSCRIPT_FULL_BACKSTOP_MS = 30_000
+
+/** Last-resort stale-busy fuse: a local stream whose turnStartedAt is older
+ *  than this gets pulled anyway. High enough that genuinely running local
+ *  turns are never preempted by it (their interim text keeps priority); low
+ *  enough that a lost-completion freeze self-heals even when NO status signal
+ *  (sidebar row, agent chip) covers the conversation. */
+const BUSY_STALE_FUSE_MS = 15 * 60_000
 
 interface ActiveTranscriptRefreshParams {
   activeSessionIdRef: SessionStateCache['activeSessionIdRef']
@@ -74,10 +82,33 @@ export function useActiveStoredTranscriptRefresh({
       // start and never reach this window). For that turn this durable pull is
       // the only thing that can move the transcript; without the exception it
       // freezes at the open-time snapshot for the whole turn.
-      const adopted = $sessionStates.get()[runtimeSessionId]?.adoptedRunningTurn === true
+      const state = $sessionStates.get()[runtimeSessionId]
+      const adopted = state?.adoptedRunningTurn === true
 
       if (!adopted) {
-        return
+        // Stale-busy fuse (2026-09-19 freeze): a streamed turn whose completion
+        // event was lost (websocket blip, backend flap) leaves busyRef stuck
+        // true FOREVER — nothing local ever clears it and the poll dies with
+        // it. Cross-check signals that are already being polled for other
+        // reasons: the sidebar row's live_status, and the agent-chip activity
+        // store (its entries carry the conversation id + working status for
+        // conversations that never appear in the sidebar list). When either
+        // says the session is NOT working, the "local stream" this gate
+        // protects no longer exists — pull. A long turn whose status is
+        // genuinely still working falls through to the time fuse only.
+        const row = $sessions.get().find(s => sessionMatchesStoredId(s, storedSessionId))
+        const rowSaysIdle = row?.status === 'idle'
+
+        const chipSaysIdle = Object.values($agentActivity.get()).some(
+          entry => entry.sessionId === storedSessionId && entry.status !== 'working'
+        )
+
+        const turnStartedAt = state?.turnStartedAt ?? null
+        const fuseElapsed = turnStartedAt !== null && Date.now() - turnStartedAt > BUSY_STALE_FUSE_MS
+
+        if (!rowSaysIdle && !chipSaysIdle && !fuseElapsed) {
+          return
+        }
       }
     }
 

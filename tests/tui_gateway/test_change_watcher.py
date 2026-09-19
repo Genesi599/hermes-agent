@@ -128,14 +128,14 @@ def test_sessions_floor_coalesces_burst_but_keeps_trailing_edge(watcher_home):
     server._broadcast_watched_changes(now=10.0)
     events.clear()
 
-    # A second write lands inside the 2s floor: no broadcast yet…
+    # A second write lands inside the 0.5s floor: no broadcast yet…
     time.sleep(0.02)
     (home / "state.db").write_text("xy")
-    server._broadcast_watched_changes(now=11.0)
+    server._broadcast_watched_changes(now=10.3)
     assert events == []
 
     # …but the change is not lost — it fires once the window opens.
-    server._broadcast_watched_changes(now=13.0)
+    server._broadcast_watched_changes(now=11.2)
     assert ("sessions.changed", {"profiles": {}}) in events
 
 
