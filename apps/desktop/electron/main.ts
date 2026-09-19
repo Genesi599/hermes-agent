@@ -7949,7 +7949,10 @@ const PREWARM_STAGGER_MS = 8_000
 let poolPrewarmScheduled = false
 
 function listNamedProfiles() {
-  const profilesRoot = path.join(ACTIVE_HERMES_ROOT, 'profiles')
+  // HERMES_HOME (…\AppData\Local\hermes), NOT ACTIVE_HERMES_ROOT (that is
+  // the hermes-agent repo checkout — its "profiles" dir doesn't exist and
+  // the first deploy silently warmed nothing).
+  const profilesRoot = path.join(HERMES_HOME, 'profiles')
   try {
     return fs
       .readdirSync(profilesRoot, { withFileTypes: true })

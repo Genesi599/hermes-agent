@@ -345,6 +345,15 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
         // Backends with the change watcher broadcast pet/cron/sessions change
         // events; consumers demote their legacy polls to slow backstops.
         setChangeEventsAvailable(Boolean((payload as { change_events?: boolean } | undefined)?.change_events))
+        // RECONNECT CATCH-UP (2026-09-19): the socket's auto-reconnect brings
+        // the transport back, but any sessions.changed broadcasts fired while
+        // we were disconnected are gone forever — the change watcher only
+        // speaks when the DB moves AGAIN, so an open tile whose backend died
+        // mid-turn stayed frozen on its pre-disconnect snapshot forever.
+        // Treat a (re)connect as "everything may have changed": fire one
+        // catch-up tick so list + active-transcript refreshers re-pull now.
+        // Same signal the watcher uses, so every consumer already handles it.
+        notifySessionsChanged()
 
         return
       } else if (event.type === 'branch.batch.status') {
