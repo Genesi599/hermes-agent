@@ -635,26 +635,143 @@ def _desktop_backend_token(port: str) -> str:
     return ""
 
 
+def _backend_candidates_for_session(profile: str = "") -> list:
+    """[(port, token)] of local backends, the one a Desktop window is most
+    likely CONNECTED to first.
+
+    Why (2026-09-19): a single env-pinned target (HERMES_DESKTOP_BACKEND_PORT,
+    default 8803) only fits the DEFAULT profile — an agent-profile job's POST
+    404s there and silently falls back to the in-process direct run, which has
+    no stream: a window watching that conversation never sees the turn live
+    and only catches up through the mtime-broadcast pull. Backends whose
+    command line NAMES the job's profile are the Desktop pool's per-profile
+    spawns — the very processes renderer windows hold websockets to — so
+    trying those FIRST means the turn streams straight into the open window.
+    """
+    import psutil
+
+    ports = []
+    env_port = _desktop_backend_port()
+    if env_port.isdigit():
+        ports.append(int(env_port))
+    try:
+        for conn in psutil.net_connections(kind="tcp"):
+            if (
+                conn.status == psutil.CONN_LISTEN
+                and conn.laddr
+                and 8800 <= conn.laddr.port <= 8899
+                and conn.laddr.port not in ports
+            ):
+                ports.append(conn.laddr.port)
+    except Exception:
+        pass
+
+    def _pool_backends_for_profile() -> list:
+        """Backends spawned FOR this profile (Desktop pool shape: `--profile
+        <name> serve --port 0` on a system-assigned high port) — found by
+        process scan, NOT by port window: `--port 0` never lands in 8800-8899.
+        Renderer windows hold websockets to exactly these."""
+        out = []
+        if not profile:
+            return out
+        try:
+            # get_default_hermes_root(), NOT get_hermes_home().parent: this
+            # tick may itself run inside the job's profile scope, where
+            # HERMES_HOME already points at the profile home.
+            root = __import__("hermes_constants").get_default_hermes_root()
+            home_s = str(root / "profiles" / profile).lower().rstrip("\\")
+        except Exception:
+            home_s = ""
+        try:
+            for proc in psutil.process_iter(["pid", "cmdline"]):
+                try:
+                    cmdline = " ".join(proc.info["cmdline"] or [])
+                    if "hermes_cli.main" not in cmdline or "serve" not in cmdline:
+                        continue
+                    if f"--profile {profile}" not in cmdline and f"-p {profile}" not in cmdline:
+                        continue
+                    env = proc.environ()
+                    token = str(env.get("HERMES_DASHBOARD_SESSION_TOKEN") or "").strip()
+                    if not token:
+                        continue
+                    # Belt and braces: the HERMES_HOME must agree too (a
+                    # stale `--profile` flag on a backend since repointed at
+                    # another home would be a wrong routing).
+                    if home_s and str(env.get("HERMES_HOME") or "").lower().rstrip("\\") != home_s:
+                        continue
+                    for c in proc.net_connections(kind="tcp"):
+                        if c.status == psutil.CONN_LISTEN and c.laddr:
+                            out.append((str(c.laddr.port), token))
+                            break
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return out
+
+    def _probe(port: int):
+        """(token, is_profile_pool_backend) for one listening port."""
+        try:
+            for conn in psutil.net_connections(kind="tcp"):
+                if (
+                    conn.status == psutil.CONN_LISTEN
+                    and conn.laddr
+                    and conn.laddr.port == port
+                    and conn.pid
+                ):
+                    proc = psutil.Process(conn.pid)
+                    env = proc.environ()
+                    token = str(env.get("HERMES_DASHBOARD_SESSION_TOKEN") or "").strip()
+                    if not token:
+                        return ("", False)
+                    cmdline = " ".join(proc.cmdline())
+                    names_pool = bool(profile) and (
+                        f"--profile {profile}" in cmdline or f"-p {profile}" in cmdline
+                    )
+                    return (token, names_pool)
+        except Exception:
+            pass
+        return ("", False)
+
+    pool_first, rest = [], []
+    for p in ports:
+        token, names_pool = _probe(p)
+        if token:
+            (pool_first if names_pool else rest).append((str(p), token))
+    # Dedicated per-profile pool backends first (high ports, found by process
+    # scan), then the 8800-8899 window in `ports` order (env-pinned default
+    # backend stays first for default-profile jobs — unchanged behaviour).
+    for entry in _pool_backends_for_profile():
+        if entry not in pool_first:
+            pool_first.append(entry)
+    return pool_first + rest
+
+
 def _submit_attached_prompt_via_backend(
     target_session_id: str,
     text: str,
     *,
     provider: str = "",
     model: str = "",
+    profile: str = "",
     timeout_s: float = 20.0,
 ) -> dict | None:
-    """POST the turn to the Desktop backend. Returns its JSON response dict
+    """POST the turn to a backend that can host the session. Returns its JSON response dict
     ({"status": "streaming"|"queued", "session_id": ...}) or None when the
     backend is unreachable/refused (caller falls back to the direct path)."""
-    import time as _time
     import urllib.error
     import urllib.parse
     import urllib.request
 
-    port = _desktop_backend_port()
-    token = _desktop_backend_token(port)
-    if not token:
-        return None
+    candidates = _backend_candidates_for_session(profile)
+    if not candidates:
+        # Legacy single-target probe (env port → 8803) keeps working when the
+        # psutil scan fails outright (restricted hosts, exotic sandboxes).
+        token = _desktop_backend_token(_desktop_backend_port())
+        if token:
+            candidates = [(_desktop_backend_port(), token)]
+        else:
+            return None
 
     payload = {
         "text": text,
@@ -662,39 +779,53 @@ def _submit_attached_prompt_via_backend(
         "model": model or "",
         "queued": True,
     }
-    req = urllib.request.Request(
-        f"http://127.0.0.1:{port}/api/sessions/{urllib.parse.quote(target_session_id, safe='')}/prompt",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "X-Hermes-Session-Token": token,
-        },
-        method="POST",
-    )
     # The backend binds loopback only; never let a system proxy intercept it.
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    try:
-        with opener.open(req, timeout=timeout_s) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        body = ""
+
+    last_error = ""
+    for port, token in candidates:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/sessions/{urllib.parse.quote(target_session_id, safe='')}/prompt",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "X-Hermes-Session-Token": token,
+            },
+            method="POST",
+        )
         try:
-            body = exc.read().decode("utf-8", "replace")[:200]
-        except Exception:
-            pass
-        logger.warning(
-            "attached-session submit rejected by desktop backend: HTTP %s %s",
-            exc.code,
-            body,
-        )
-        return None
-    except Exception as exc:
-        logger.info(
-            "attached-session submit: desktop backend not reachable (%s); "
-            "falling back to direct run",
-            exc,
-        )
-        return None
+            with opener.open(req, timeout=timeout_s) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            # A backend that does not host the session 404s — that is EXPECTED
+            # for agent-profile jobs against the default backend; try the next
+            # candidate instead of falling back to the streamless direct run.
+            body = ""
+            try:
+                body = exc.read().decode("utf-8", "replace")[:200]
+            except Exception:
+                pass
+            last_error = f"HTTP {exc.code} {body}".strip()
+            logger.debug(
+                "attached-session submit rejected by backend :%s (%s); trying next candidate",
+                port,
+                last_error,
+            )
+            continue
+        except Exception as exc:
+            last_error = str(exc)
+            logger.debug(
+                "attached-session submit: backend :%s not reachable (%s); trying next candidate",
+                port,
+                exc,
+            )
+            continue
+    logger.warning(
+        "attached-session submit rejected by every backend candidate (%s); "
+        "falling back to direct run",
+        last_error,
+    )
+    return None
 
 
 def _await_attached_dialog_turn(
@@ -3908,6 +4039,7 @@ def run_job(
                 prompt,
                 provider=str(job.get("provider") or "").strip(),
                 model=str(job.get("model") or "").strip(),
+                profile=str(job.get("agent_profile") or "").strip(),
             )
             if isinstance(_dialog_submit, dict) and _dialog_submit.get("session_id"):
                 logger.info(
