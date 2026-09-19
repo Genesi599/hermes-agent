@@ -633,6 +633,7 @@ async def get_session_messages(
     limit: Optional[int] = Query(None, ge=0),
     offset: int = Query(0, ge=0),
     order: Optional[str] = Query(None),
+    after_id: Optional[int] = Query(None, ge=0),
 ):
     if order not in (None, "oldest", "latest"):
         raise HTTPException(
@@ -655,11 +656,18 @@ async def get_session_messages(
             default_page = limit is None
             latest_page = order == "latest" or (order is None and default_page)
             _limit = 500 if default_page else min(limit, 500)
+            if after_id is not None:
+                # Incremental tail fetch: rows strictly after the client's
+                # message-id watermark, oldest-first — the change-feed
+                # counterpart for transcripts (append-only; edits/deletes are
+                # the full-refresh backstop's job).
+                latest_page = False
             return sid, _limit, db.get_messages(
                 sid,
                 limit=_limit,
                 offset=offset,
                 latest=latest_page,
+                after_id=after_id,
             )
         finally:
             db.close()
