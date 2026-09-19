@@ -131,8 +131,18 @@ export const isDetachedSession = (session: SessionInfo): boolean =>
 export const branchLaneId = (repoRoot: string, branch?: string): string =>
   `${repoRoot}::branch::${(branch ?? '').trim()}`
 
-/** A session's recency stamp (last activity, falling back to creation). */
-export const sessionRecency = (session: SessionInfo): number => session.last_active || session.started_at || 0
+/** A session's recency stamp (last activity, falling back to creation),
+ *  quantized to the MINUTE. The sidebar renders minute granularity anyway
+ *  ("6m ago"), and second-level flapping — a channel write touching the row
+ *  a beat before/after a delta read races the touch — used to oscillate rows
+ *  between distant list slots every refresh (2026-09-19: the Book row
+ *  "disappeared and reappeared" while its project was active). Within the
+ *  same minute, ordering stays at the previous stable sort. */
+export const sessionRecency = (session: SessionInfo): number => {
+  const stamp = session.last_active || session.started_at || 0
+
+  return Math.floor(stamp / 60_000) * 60_000
+}
 
 /** Default-branch names that pin to the top and read as the repo's trunk. */
 const TRUNK_BRANCHES = new Set(['main', 'master', 'trunk', 'develop'])
