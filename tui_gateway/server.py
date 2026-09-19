@@ -3613,6 +3613,46 @@ def _sessions_sig():
     return sig
 
 
+def _sessions_changed_payload() -> dict:
+    """Per-database change-feed watermarks, riding the sessions.changed event.
+
+    Turns the old empty-payload nudge into actionable data: a client that
+    keeps a watermark can call ``GET /api/changes?since=<seq>`` directly on
+    receipt instead of firing a full-list re-pull to discover WHAT moved.
+    Keyed ``default`` for the home store, the profile name for
+    ``profiles/<name>`` — the same names the API ``profile`` param uses.
+
+    A store without the change_log table (not migrated yet) is omitted:
+    clients fall back to the legacy full refresh for that profile. Reads are
+    read-only URI connects; a locked/hot WAL just skips this broadcast's
+    payload (the mtime signature has already moved, so the next window
+    re-fires).
+    """
+    import sqlite3
+
+    home = _watcher_home()
+    out: dict = {}
+    for db_home in _all_sessions_homes(home):
+        path = db_home / "state.db"
+        profile = "default" if db_home == home else db_home.name
+        try:
+            con = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=2.0)
+            try:
+                row = con.execute(
+                    "SELECT COALESCE(MAX(seq), 0), "
+                    "(SELECT value FROM state_meta WHERE key = 'change_log_generation') "
+                    "FROM change_log"
+                ).fetchone()
+            finally:
+                con.close()
+        except sqlite3.Error:
+            continue
+        if not row or row[1] is None:
+            continue
+        out[profile] = {"generation": row[1], "last_seq": int(row[0])}
+    return {"profiles": out}
+
+
 def _all_sessions_homes(home: Path) -> list:
     """``home`` plus every named profile home under it, newest-db first.
 
@@ -3690,7 +3730,7 @@ def _pairing_sig():
 _CHANGE_WATCHES: dict[str, tuple[float, Any, Any]] = {
     "pet.changed": (2.0, _pet_sig, _pet_changed_payload),
     "cron.changed": (1.0, _cron_sig, lambda: {}),
-    "sessions.changed": (0.5, _sessions_sig, lambda: {}),
+    "sessions.changed": (0.5, _sessions_sig, _sessions_changed_payload),
     "platforms.changed": (2.0, _platforms_sig, lambda: {}),
     "pairing.changed": (2.0, _pairing_sig, lambda: {}),
 }

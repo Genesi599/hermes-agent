@@ -59,7 +59,7 @@ def test_state_db_move_broadcasts_sessions_changed(watcher_home):
     (home / "state.db").write_text("x")
     server._broadcast_watched_changes(now=10.0)
 
-    assert ("sessions.changed", {}) in events
+    assert ("sessions.changed", {"profiles": {}}) in events
 
 
 def test_gateway_state_move_broadcasts_platforms_changed(watcher_home):
@@ -136,7 +136,7 @@ def test_sessions_floor_coalesces_burst_but_keeps_trailing_edge(watcher_home):
 
     # …but the change is not lost — it fires once the window opens.
     server._broadcast_watched_changes(now=13.0)
-    assert ("sessions.changed", {}) in events
+    assert ("sessions.changed", {"profiles": {}}) in events
 
 
 def test_pet_sig_stays_off_without_a_renderable_pet(watcher_home):
@@ -190,4 +190,44 @@ def test_broken_probe_never_kills_the_pass(watcher_home, monkeypatch):
     server._broadcast_watched_changes(now=10.0)
 
     # The broken cron probe is skipped; sessions still broadcasts.
-    assert ("sessions.changed", {}) in events
+    assert ("sessions.changed", {"profiles": {}}) in events
+
+
+def test_sessions_changed_payload_carries_watermarks(watcher_home):
+    home, events = watcher_home
+    import sys
+
+    repo = str(home)  # SessionDB importable via the repo on sys.path
+    sys.path.insert(0, ".")
+    from hermes_state import SessionDB
+
+    server._broadcast_watched_changes(now=0.0)  # seed silently
+
+    db = SessionDB(db_path=home / "state.db")
+    try:
+        db.create_session("20260919_probe", "cli")
+    finally:
+        db.close()
+
+    server._broadcast_watched_changes(now=5.0)
+
+    fired = [payload for ev, payload in events if ev == "sessions.changed"]
+    assert fired, "sessions.changed must fire after a store write"
+    payload = fired[-1]
+    assert payload["profiles"]["default"]["last_seq"] >= 1
+    assert payload["profiles"]["default"]["generation"]
+
+
+def test_sessions_changed_payload_skips_unmigrated_store(watcher_home):
+    home, events = watcher_home
+    # A store that predates the change_log table: no crash, no entry.
+    (home / "state.db").write_bytes(b"")
+    import sqlite3
+
+    con = sqlite3.connect(str(home / "state.db"))
+    con.execute("CREATE TABLE sessions (id TEXT PRIMARY KEY)")
+    con.commit()
+    con.close()
+
+    payload = server._sessions_changed_payload()
+    assert payload == {"profiles": {}}
