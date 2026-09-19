@@ -67,3 +67,81 @@ def test_cron_storage_anchors_at_profile_home(tmp_path, monkeypatch):
         importlib.reload(jobs)
 
 
+
+
+def _write_jobs_file(path: Path, payload) -> None:
+    import json
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_mark_job_run_falls_back_to_root_store(tmp_path):
+    """A job DEFINED in the root store but EXECUTED under its agent_profile's
+    home (per-job profile scope) must still get its run mark written back to
+    the root store — the profile store has no copy of the definition, and
+    dropping the mark left last_run_at stale forever."""
+    import json
+
+    root = tmp_path / "root"
+    profile_home = root / "profiles" / "steward"
+    job = {
+        "id": "j1",
+        "name": "投递-管家",
+        "schedule": {"kind": "cron", "expr": "*/5 * * * *"},
+        "enabled": True,
+        "state": "scheduled",
+        "agent_profile": "steward",
+        "fire_claim": {"at": "x", "by": "y"},
+    }
+    _write_jobs_file(root / "cron" / "jobs.json", {"jobs": [job]})
+    profile_home.mkdir(parents=True)  # profile cron store stays empty
+
+    import cron.jobs as jobs
+
+    with jobs.use_cron_store(profile_home):
+        assert jobs.mark_job_run("j1", True) is True
+
+    marked = json.loads((root / "cron" / "jobs.json").read_text(encoding="utf-8"))["jobs"][0]
+    assert marked["last_status"] == "ok"
+    assert marked["last_run_at"]
+    assert marked["next_run_at"] is not None
+    assert marked["fire_claim"] is None
+
+
+def test_mark_job_run_unknown_id_stays_false(tmp_path):
+    import json
+
+    root = tmp_path / "root"
+    profile_home = root / "profiles" / "steward"
+    profile_home.mkdir(parents=True)
+    _write_jobs_file(root / "cron" / "jobs.json", {"jobs": []})
+
+    import cron.jobs as jobs
+
+    with jobs.use_cron_store(profile_home):
+        assert jobs.mark_job_run("nope", True) is False
+
+
+def test_mark_job_run_prefers_active_profile_store(tmp_path):
+    """The fallback must not flip #4707 isolation: a job DEFINED in the
+    profile's own store is marked there, and the root store stays untouched."""
+    import json
+
+    root = tmp_path / "root"
+    profile_home = root / "profiles" / "coder"
+    root_job = {"id": "rootjob", "schedule": {"kind": "cron", "expr": "* * * * *"}, "enabled": True}
+    profile_job = {"id": "profjob", "schedule": {"kind": "cron", "expr": "* * * * *"}, "enabled": True}
+    _write_jobs_file(root / "cron" / "jobs.json", {"jobs": [root_job]})
+    _write_jobs_file(profile_home / "cron" / "jobs.json", {"jobs": [profile_job]})
+
+    import cron.jobs as jobs
+
+    with jobs.use_cron_store(profile_home):
+        assert jobs.mark_job_run("profjob", True) is True
+
+    assert "last_run_at" in json.loads(
+        (profile_home / "cron" / "jobs.json").read_text(encoding="utf-8")
+    )["jobs"][0]
+    assert "last_run_at" not in json.loads(
+        (root / "cron" / "jobs.json").read_text(encoding="utf-8")
+    )["jobs"][0]

@@ -2114,7 +2114,49 @@ def clear_preflight_alerted(job_id: str) -> None:
 
 def mark_job_run(job_id: str, success: bool, error: Optional[str] = None,
                  delivery_error: Optional[str] = None,
-                 status: Optional[str] = None):
+                 status: Optional[str] = None) -> bool:
+    """
+    Mark a job as having been run.
+
+    A job that declares ``agent_profile`` executes INSIDE that profile's
+    home (scheduler per-job profile scope), where the active cron store is
+    the PROFILE's own — which has no copy of the job definition. When the
+    active store doesn't know ``job_id``, retry once against the ROOT
+    store before dropping the mark, so ``last_run_at`` / ``next_run_at`` /
+    claim clearing stay correct for agent jobs too.
+    """
+    with _jobs_lock():
+        if _mark_job_run_in_current_store(job_id, success, error, delivery_error, status):
+            return True
+        root_home = _profile_scope_root_store()
+        if root_home is not None:
+            with use_cron_store(root_home):
+                if _mark_job_run_in_current_store(job_id, success, error, delivery_error, status):
+                    return True
+        logger.warning("mark_job_run: job_id %s not found, skipping save", job_id)
+        return False
+
+
+def _profile_scope_root_store() -> Optional[Path]:
+    """Return the ROOT home when the active cron store is a profile home.
+
+    Matches the ``<root>/profiles/<name>/cron`` layout only. Anything else
+    (the root store itself, a custom HERMES_HOME) returns ``None`` so the
+    fallback path is a no-op.
+    """
+    try:
+        cron_dir = _current_cron_store().cron_dir
+        profile_home = cron_dir.parent
+        if profile_home.parent.name == "profiles":
+            return profile_home.parent.parent
+    except Exception:
+        pass
+    return None
+
+
+def _mark_job_run_in_current_store(job_id: str, success: bool, error: Optional[str] = None,
+                                   delivery_error: Optional[str] = None,
+                                   status: Optional[str] = None) -> bool:
     """
     Mark a job as having been run.
     
@@ -2190,7 +2232,7 @@ def mark_job_run(job_id: str, success: bool, error: Optional[str] = None,
                         job["state"] = "completed"
                         job["next_run_at"] = None
                         save_jobs(jobs)
-                        return
+                        return True
                 
                 # Compute next run
                 job["next_run_at"] = compute_next_run(job["schedule"], now)
@@ -2225,9 +2267,9 @@ def mark_job_run(job_id: str, success: bool, error: Optional[str] = None,
                     job["state"] = "scheduled"
 
                 save_jobs(jobs)
-                return
+                return True
 
-        logger.warning("mark_job_run: job_id %s not found, skipping save", job_id)
+        return False
 
 
 def _write_wedged_oneshot_diagnostic(job: Dict[str, Any]) -> None:
