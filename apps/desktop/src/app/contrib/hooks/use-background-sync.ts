@@ -2,11 +2,14 @@ import { useStore } from '@nanostores/react'
 import { useEffect } from 'react'
 
 import { finalizeInterruptedMessages } from '@/app/session/hooks/use-prompt-actions/rewind'
+import { getChangeFeed, getSessionRowDetail, type SessionInfo } from '@/hermes'
 import { createClientSessionState } from '@/lib/chat-runtime'
-import { $changeEventsAvailable, $cronChangeTick, $sessionsChangeTick, notifySessionsChanged } from '@/store/live-sync'
+import { applySessionDelta } from '@/lib/session-deltas'
+import { changeWatermark, setChangeWatermark } from '@/store/change-feed'
+import { $changeEventsAvailable, $cronChangeTick, $sessionsChangeInfo, $sessionsChangeTick, notifySessionsChanged } from '@/store/live-sync'
 import { $onBattery, batteryPollInterval } from '@/store/power'
 import { refreshActiveProfile } from '@/store/profile'
-import { $activeSessionId, $currentCwd, setCurrentCwd } from '@/store/session'
+import { $activeSessionId, $currentCwd, $sessions, setCurrentCwd, setSessions } from '@/store/session'
 import {
   $sessionStates,
   publishSessionState,
@@ -417,10 +420,83 @@ export function useBackgroundSync({
     let lastRunAt = 0
     let timer: null | number = null
 
+    // Delta-first: the sessions.changed payload carries per-database
+    // watermarks (trigger-written change_log). With a valid watermark the
+    // tick becomes "fetch only what changed" — a bounded point-query batch
+    // instead of the full list re-pull. Any doubt (no payload, generation
+    // mismatch, resync, fetch error) falls back to the full refresh, which
+    // also re-seeds the watermark from the next payload.
+    const runDelta = async (): Promise<boolean> => {
+      const payload = $sessionsChangeInfo.get()
+      const entry = payload?.profiles?.[activeGatewayProfile]
+
+      if (!entry) {
+        return false
+      }
+
+      const mark = changeWatermark(activeGatewayProfile)
+
+      if (!mark) {
+        setChangeWatermark(activeGatewayProfile, entry.generation, entry.last_seq)
+
+        return false
+      }
+
+      if (mark.generation !== entry.generation) {
+        // Watermark belongs to a different database (restored backup).
+        setChangeWatermark(activeGatewayProfile, entry.generation, entry.last_seq)
+
+        return false
+      }
+
+      let feed
+
+      try {
+        feed = await getChangeFeed(mark.seq, activeGatewayProfile)
+      } catch {
+        return false
+      }
+
+      if (!feed || feed.resync || feed.generation !== entry.generation) {
+        return false
+      }
+
+      const sessionEvents = feed.events.filter(event => event.table === 'sessions')
+
+      if (sessionEvents.length > 0) {
+        const upsertIds = [...new Set(sessionEvents.filter(event => event.kind === 'upsert').map(event => event.pk))]
+        const upserts: SessionInfo[] = []
+
+        for (const id of upsertIds) {
+          const row = await getSessionRowDetail(id, activeGatewayProfile).catch(() => null)
+
+          if (row) {
+            upserts.push(row)
+          }
+        }
+
+        const current = $sessions.get()
+
+        if (current.length > 0) {
+          setSessions(applySessionDelta(current, sessionEvents, upserts))
+        }
+        // An empty list store means the consumer hasn't bootstrapped yet —
+        // leave the full refresh to populate it.
+      }
+
+      setChangeWatermark(activeGatewayProfile, feed.generation, feed.last_seq)
+
+      return true
+    }
+
     const run = () => {
       lastRunAt = Date.now()
-      void refreshSessions()
-      void refreshMessagingSessions()
+      void runDelta().then(applied => {
+        if (!applied) {
+          void refreshSessions()
+          void refreshMessagingSessions()
+        }
+      })
     }
 
     const unsubscribe = $sessionsChangeTick.listen(() => {
@@ -443,7 +519,7 @@ export function useBackgroundSync({
         window.clearTimeout(timer)
       }
     }
-  }, [changeEventsAvailable, gatewayState, refreshMessagingSessions, refreshSessions])
+  }, [activeGatewayProfile, changeEventsAvailable, gatewayState, refreshMessagingSessions, refreshSessions])
 
   // Keep the cron-jobs section live without a user action (scheduler ticks in
   // the background). cron.changed (jobs.json moved: CRUD or a scheduler tick's

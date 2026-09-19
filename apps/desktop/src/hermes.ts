@@ -1937,3 +1937,35 @@ export function runDebugShare(): Promise<DebugShareResponse> {
     timeoutMs: 120_000
   })
 }
+
+/** One row-level change from the backend's trigger-written change_log. */
+export interface ChangeFeedEvent {
+  kind: 'delete' | 'upsert'
+  pk: string
+  seq: number
+  table: string
+}
+
+/** GET /api/changes — monotonic delta feed with per-database watermark. */
+export interface ChangeFeedResponse {
+  events: ChangeFeedEvent[]
+  generation: null | string
+  last_seq: number
+  min_seq: number
+  resync: boolean
+}
+
+export function getChangeFeed(since: number, profile?: string | null, limit = 2000): Promise<ChangeFeedResponse> {
+  return window.hermesDesktop.api<ChangeFeedResponse>({
+    ...(profile ? { profile } : {}),
+    path: `/api/changes?since=${since}&limit=${limit}`
+  })
+}
+
+/** GET /api/sessions/{id} — the full row (heavy fields included) for delta upserts. */
+export function getSessionRowDetail(id: string, profile?: string | null): Promise<SessionInfo> {
+  return window.hermesDesktop.api<SessionInfo>({
+    ...(profile ? { profile } : {}),
+    path: `/api/sessions/${encodeURIComponent(id)}`
+  })
+}

@@ -45,7 +45,15 @@ export function notifyCronChanged(): void {
   $cronChangeTick.set($cronChangeTick.get() + 1)
 }
 
-export function notifySessionsChanged(): void {
+/** Latest sessions.changed payload (per-database change-feed watermarks);
+ *  null when the backend broadcast carried none (older backend / probe skip). */
+export const $sessionsChangeInfo = atom<null | { profiles?: Record<string, { generation: string; last_seq: number }> }>(null)
+
+export function notifySessionsChanged(payload?: unknown): void {
+  if (payload && typeof payload === 'object' && 'profiles' in (payload as Record<string, unknown>)) {
+    $sessionsChangeInfo.set(payload as { profiles?: Record<string, { generation: string; last_seq: number }> })
+  }
+
   $sessionsChangeTick.set($sessionsChangeTick.get() + 1)
 }
 

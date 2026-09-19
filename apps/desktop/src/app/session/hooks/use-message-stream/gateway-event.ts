@@ -348,7 +348,7 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
 
         return
       } else if (event.type === 'branch.batch.status') {
-        notifySessionsChanged()
+        notifySessionsChanged(event.payload)
 
         return
       } else if (event.type === 'skin.changed') {
@@ -386,7 +386,7 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
           } else if (event.type === 'pairing.changed') {
             notifyPairingChanged()
           } else {
-            notifySessionsChanged()
+            notifySessionsChanged(event.payload)
           }
         }
 
@@ -405,7 +405,7 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
         }
 
         // The row's ended_at moved, so refresh the lists that render it.
-        notifySessionsChanged()
+        notifySessionsChanged(event.payload)
 
         return
       } else if (event.type === 'branch.batch.status') {
