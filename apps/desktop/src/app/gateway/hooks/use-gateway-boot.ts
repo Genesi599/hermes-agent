@@ -18,6 +18,7 @@ import {
   closeSecondaryGateways,
   configureGatewayRegistry,
   ensureGatewayForProfile,
+  openGatewayForProfile,
   pruneSecondaryGateways,
   reconnectSecondaryGateways,
   reportPrimaryGatewayState,
@@ -38,7 +39,7 @@ import {
   setCurrentCwd,
   setSessionsLoading
 } from '@/store/session'
-import { $attentionSessionIds, $workingSessionIds, resetTileRuntimeBindings } from '@/store/session-states'
+import { $attentionSessionIds, $workingSessionIds, $sessionTiles, resetTileRuntimeBindings } from '@/store/session-states'
 import { windowProfileOverride } from '@/store/windows'
 import type { RpcEvent } from '@/types/hermes'
 
@@ -91,6 +92,42 @@ export function useGatewayBoot({
     refreshHermesConfig,
     refreshSessions
   }
+
+  // RESTORED-TILE SOCKETS (2026-09-19): a restored tile renders its
+  // transcript through REST, but nothing ever opened its profile's
+  // BACKGROUND socket — token-level streaming and the auto-reconnect loop
+  // both live on that socket, so a restored agent tile was data-blind
+  // (frozen until clicked; backend restarts went unnoticed; killing its
+  // backend produced zero reconnect attempts). Mirror every open tile's
+  // profile into a non-active background socket: openGatewayForProfile is
+  // idempotent and never switches the active gateway, and the $sessions
+  // listen doubles as the retry driver while the pool backend is still
+  // booting (prewarm or respawn).
+  useEffect(() => {
+    const syncTileSockets = () => {
+      const sessions = $sessions.get()
+
+      for (const tile of $sessionTiles.get()) {
+        const row = sessions.find(
+          s => s.id === tile.storedSessionId || s._lineage_root_id === tile.storedSessionId
+        )
+        const profile = row?.profile
+
+        if (profile && normalizeProfileKey(profile) !== 'default') {
+          void openGatewayForProfile(profile)
+        }
+      }
+    }
+
+    const offTiles = $sessionTiles.listen(syncTileSockets)
+    const offSessions = $sessions.listen(syncTileSockets)
+    syncTileSockets()
+
+    return () => {
+      offTiles()
+      offSessions()
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
