@@ -4,6 +4,7 @@ import { getLatestSessionMessages } from '@/hermes'
 import { preserveLocalAssistantErrors, toChatMessages } from '@/lib/chat-messages'
 import { sessionMessagesSignature } from '@/lib/session-signatures'
 import { $sessions, sessionMatchesStoredId } from '@/store/session'
+import { $sessionStates } from '@/store/session-states'
 
 import { resolveSessionProfile } from '../../session/hooks/use-session-actions/utils'
 import type { useSessionStateCache } from '../../session/hooks/use-session-state-cache'
@@ -22,7 +23,9 @@ interface ActiveTranscriptRefreshParams {
  * the background gateway, not the desktop websocket); external
  * Desktop-compatible clients can also write the selected stored session
  * without this renderer receiving a websocket event. Signature-gate the
- * durable-history refresh and never replace a local active stream.
+ * durable-history refresh and never replace a local active stream — except a
+ * stream this window never had: an adopted running turn (resumed onto a
+ * session dispatched elsewhere) only ever moves through this pull.
  *
  * The sidebar row is only the cheap path to the owning profile — NOT a
  * precondition. A conversation opened from an agent chip lives outside the
@@ -48,8 +51,25 @@ export function useActiveStoredTranscriptRefresh({
     const storedSessionId = selectedStoredSessionIdRef.current
     const runtimeSessionId = activeSessionIdRef.current
 
-    if (!storedSessionId || !runtimeSessionId || busyRef.current) {
+    if (!storedSessionId || !runtimeSessionId) {
       return
+    }
+
+    if (busyRef.current) {
+      // Busy normally means THIS window submitted the turn and its deltas are
+      // streaming in over the websocket — a fetch-and-replace here would fight
+      // that live stream, so the poll stays off. One shape of busy has no local
+      // stream to protect: an ADOPTED running turn (this window resumed onto a
+      // session already running elsewhere — an agent-dispatch turn, submitted
+      // through REST, whose events stream to the transport pinned at turn
+      // start and never reach this window). For that turn this durable pull is
+      // the only thing that can move the transcript; without the exception it
+      // freezes at the open-time snapshot for the whole turn.
+      const adopted = $sessionStates.get()[runtimeSessionId]?.adoptedRunningTurn === true
+
+      if (!adopted) {
+        return
+      }
     }
 
     const stored = $sessions.get().find(s => sessionMatchesStoredId(s, storedSessionId))

@@ -2,7 +2,9 @@ import { renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type * as HermesModule from '@/hermes'
+import { createClientSessionState } from '@/lib/chat-runtime'
 import { setSessions } from '@/store/session'
+import { $sessionStates } from '@/store/session-states'
 import type { SessionInfo, SessionMessage } from '@/types/hermes'
 
 import type * as SessionActionsUtils from '../../session/hooks/use-session-actions/utils'
@@ -71,6 +73,7 @@ function renderRefresh() {
 describe('useActiveStoredTranscriptRefresh', () => {
   beforeEach(() => {
     setSessions([])
+    $sessionStates.set({})
     vi.mocked(getLatestSessionMessages).mockReset()
     vi.mocked(getLatestSessionMessages).mockResolvedValue({ messages: [], session_id: '' })
     vi.mocked(resolveSessionProfile).mockReset()
@@ -79,6 +82,7 @@ describe('useActiveStoredTranscriptRefresh', () => {
 
   afterEach(() => {
     setSessions([])
+    $sessionStates.set({})
   })
 
   it('refreshes an off-list agent conversation by resolving its profile', async () => {
@@ -171,6 +175,48 @@ describe('useActiveStoredTranscriptRefresh', () => {
 
   it('still refuses to refresh while a turn is running', async () => {
     const { refresh, refs, updateSessionState } = renderRefresh()
+
+    refs.busyRef.current = true
+    await refresh()
+
+    expect(getLatestSessionMessages).not.toHaveBeenCalled()
+    expect(updateSessionState).not.toHaveBeenCalled()
+  })
+
+  it('refreshes an adopted running turn despite busy', async () => {
+    // The chip-opened conversation of an agent turn: the resume reported the
+    // session running, busyRef is true, but the turn was submitted through
+    // REST by the dispatcher — its events stream to the transport pinned at
+    // turn start and never reach this window. With no local stream to
+    // protect, the durable pull is the only thing that can move the
+    // transcript while the turn runs; gating on busy froze it at the
+    // open-time snapshot for the whole turn ("can't see it thinking").
+    $sessionStates.set({
+      'runtime-1': { ...createClientSessionState(null), busy: true, adoptedRunningTurn: true }
+    })
+    setSessions([row({ id: 'stored-x', profile: 'default' })])
+    vi.mocked(getLatestSessionMessages).mockResolvedValue({
+      messages: [msg('user', '派活'), msg('assistant', '正在查')],
+      session_id: 'stored-x'
+    })
+
+    const { applied, refs, refresh, updateSessionState } = renderRefresh()
+
+    refs.busyRef.current = true
+    await refresh()
+
+    expect(getLatestSessionMessages).toHaveBeenCalledTimes(1)
+    expect(updateSessionState).toHaveBeenCalledTimes(1)
+    expect(applied[0].messages).toHaveLength(2)
+  })
+
+  it('keeps the busy gate for a turn this window started', async () => {
+    // busy with adoptedRunningTurn false = the local websocket stream owns
+    // the transcript; a fetch-and-replace would fight it. Must stay off.
+    $sessionStates.set({
+      'runtime-1': { ...createClientSessionState(null), busy: true, adoptedRunningTurn: false }
+    })
+    const { refs, refresh, updateSessionState } = renderRefresh()
 
     refs.busyRef.current = true
     await refresh()
