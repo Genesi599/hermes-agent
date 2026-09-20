@@ -1058,6 +1058,20 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
       return
     }
 
+    // 2026-09-20: the backend's mid-stream CONTINUE instruction (injected as a
+    // user-role message after a network cut) is plumbing, not conversation —
+    // hide it from the transcript like INTERNAL_TURN_PREFIX above. Rows that
+    // carry a display_kind keep their own projection (personality_switch and
+    // friends render as labelled system events).
+    if (
+      message.role === 'user' &&
+      !message.display_kind &&
+      typeof message.content === 'string' &&
+      /^\s*\[System:[^\]]*\]\s*$/.test(message.content.trim())
+    ) {
+      return
+    }
+
     if (message.role === 'tool') {
       const updatedPendingToolParts = applyStoredToolResultToParts(pendingToolParts, message)
 
