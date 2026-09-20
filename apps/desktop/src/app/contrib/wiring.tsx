@@ -125,6 +125,7 @@ import { UpdatesOverlay } from '../updates-overlay'
 import { ContribWiringContext } from './context'
 import { useActiveStoredTranscriptRefresh } from './hooks/use-active-stored-transcript-refresh'
 import { useBackgroundSync } from './hooks/use-background-sync'
+import { useOpenTileTranscriptSync } from './hooks/use-open-tile-transcript-sync'
 import { useDesktopIntegrations } from './hooks/use-desktop-integrations'
 import { usePetBridge } from './hooks/use-pet-bridge'
 import { useQuickEntryBridge } from './hooks/use-quick-entry-bridge'
@@ -842,6 +843,12 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     refreshSessions,
     requestGateway
   })
+
+  // UNIFIED SYNC (2026-09-20): the background half — every OPEN tile (not
+  // just the active one) keeps its transcript current on the same
+  // sessions.changed tick, so a turn that finished elsewhere shows up on
+  // return instead of sitting behind a stale open-time snapshot.
+  useOpenTileTranscriptSync({ selectedStoredSessionIdRef, updateSessionState })
 
   // Electron-main / OS / cross-window integrations: update polling, ⌘W close,
   // deep links, native-notification nav, preview-shortcut enablement,
