@@ -713,7 +713,7 @@ export function getSessionMessages(
 }
 
 export function getLatestSessionMessages(id: string, profile?: string | null): Promise<SessionMessagesResponse> {
-  return getSessionMessages(id, profile, { limit: 500, order: 'latest' })
+  return getSessionMessages(id, profile, { limit: 400, order: 'latest' })
 }
 
 export async function getAllSessionMessages(
