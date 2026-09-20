@@ -175,7 +175,7 @@ export function useActiveStoredTranscriptRefresh({
           tail.maxId
         )
 
-        tail.raw = [...tail.raw, ...grown.messages].slice(-400)
+        tail.raw = [...tail.raw, ...grown.messages].slice(-200)
         tail.maxId = maxId
         applyDerived(tail.raw)
 
