@@ -528,6 +528,9 @@ export interface SessionInfo {
   source: null | string
   /** Cross-client transient turn state, refreshed by the gateway. */
   status?: 'idle' | 'working'
+  /** Raw working lease from the sessions table (refreshed per-delta). Some
+   *  list projections leave `status` null while this carries the truth. */
+  live_status?: null | string
   /** Epoch seconds for the last durable cross-client status transition. */
   live_status_updated_at?: null | number
   started_at: number

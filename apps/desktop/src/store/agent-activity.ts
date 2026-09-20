@@ -75,13 +75,33 @@ interface PolledSession {
   id?: null | string
   status?: null | string
   title?: null | string
+  live_status?: null | string
+  live_status_updated_at?: null | number
+}
+
+/** Stale window mirroring the backend's SESSION_LIVE_STALE_SECONDS. */
+const LIVE_STATUS_STALE_SECONDS = 10 * 60
+
+/** True when the row's working lease is live (set + fresh). The backend's
+ *  `status` field never carries the lease (it serializes null — the chip's
+ *  `status === 'working'` never fired, so the running animation NEVER lit);
+ *  `live_status` + `live_status_updated_at` do. */
+function workingLeaseLive(session: PolledSession, nowMs: number): boolean {
+  if (session.live_status !== 'working') {
+    return false
+  }
+
+  const updatedAt = Number(session.live_status_updated_at || 0)
+
+  return nowMs / 1000 - updatedAt <= LIVE_STATUS_STALE_SECONDS
 }
 
 /** The session a chip should report on: its newest, or the newest whose title
  *  starts with the given prefix (Hermes's own project conversation). */
 export function pickWatchedSession(
   sessions: PolledSession[],
-  titlePrefix: string | undefined
+  titlePrefix: string | undefined,
+  nowMs: number = Date.now()
 ): null | { id: string; status: AgentRunStatus } {
   const match = titlePrefix
     ? sessions.find(session =>
@@ -95,7 +115,10 @@ export function pickWatchedSession(
     return null
   }
 
-  return { id: String(match.id), status: match.status === 'working' ? 'working' : 'idle' }
+  return {
+    id: String(match.id),
+    status: workingLeaseLive(match, nowMs) ? 'working' : 'idle'
+  }
 }
 
 /** One poll for one watch: read the agent's newest conversation (or the one
@@ -108,7 +131,7 @@ export async function pollAgentWatch(watch: AgentWatch): Promise<void> {
     const { sessions } = await listAllProfileSessions(limit, 0, 'exclude', 'recent', watch.profile)
 
     const picked = pickWatchedSession(
-      sessions.map(session => ({ id: session.id, status: session.status, title: session.title })),
+      sessions.map(session => ({ id: session.id, status: session.status, title: session.title, live_status: session.live_status, live_status_updated_at: session.live_status_updated_at })),
       watch.titlePrefix
     )
 
