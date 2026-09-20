@@ -13,7 +13,7 @@ import { triggerHaptic } from '@/lib/haptics'
 import { agentsForSession, type SessionAgent } from '@/lib/session-agents'
 import { useStoreSelector } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
-import { $agentActivity, $agentUnreadAt, agentWatchKey, type AgentWatch, markAgentRead, pollAgentWatch } from '@/store/agent-activity'
+import { $agentActivity, $agentUnreadAt, agentWatchKey, type AgentWatch, markAgentRead, registerAgentWatch } from '@/store/agent-activity'
 import { $cronJobs } from '@/store/cron'
 import { notifyError } from '@/store/notifications'
 import { ensureGatewayProfile } from '@/store/profile'
@@ -367,52 +367,25 @@ function AgentRosterImpl({
       roomSessionId: sessionId,
       titlePrefix: project ? `${project} · ${DEFAULT_AGENT_SPEAKER.name}` : undefined
     },
-    ...agents
-      .filter(agent => agent.profile)
-      .map(agent => ({
-        profile: agent.profile as string,
-        roomSessionId: sessionId,
-        // PER-PROJECT WATCH (2026-09-20): an agent with conversations in
-        // several projects (维基管家 in Tiddlywiki AND Book) used to share one
-        // bare-profile key — the newest session lit the chip in EVERY room's
-        // roster. Watch THIS room's own `<项目> · <agent>` conversation; a
-        // turn elsewhere must not animate this room's chip.
-        titlePrefix: project && agent.label ? `${project} · ${agent.label}` : undefined
-      }))
+    ...agents.filter(agent => agent.profile).map(agent => ({
+      profile: agent.profile as string,
+      roomSessionId: sessionId
+    }))
   ]
 
+  // GLOBAL POLL (2026-09-20): replaced the dead per-component effect loop —
+  // watches register into the module-scope driver (see agent-activity.ts),
+  // which polls every registered roster from one shared interval.
   useEffect(() => {
     if (!project) {
       return
     }
 
-    let live = true
-    let timer: ReturnType<typeof setTimeout> | null = null
-    const watches = watch
-
-    const tick = async () => {
-      if (document.visibilityState !== 'hidden') {
-        for (const entry of watches) {
-          if (!live) {
-            return
-          }
-
-          await pollAgentWatch(entry)
-        }
-      }
-
-      if (live) {
-        timer = setTimeout(() => void tick(), AGENT_POLL_MS)
-      }
-    }
-
-    void tick()
+    const offs = watch.map(entry => registerAgentWatch(entry))
 
     return () => {
-      live = false
-
-      if (timer) {
-        clearTimeout(timer)
+      for (const off of offs) {
+        off()
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- watchKey encodes the cast

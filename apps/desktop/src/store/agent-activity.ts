@@ -35,6 +35,54 @@ export const $agentActivity = atom<Record<string, AgentActivity>>({})
  *  while you were away" has to survive a restart to be an honest dot. */
 export const $agentUnreadAt = persistentAtom<Record<string, number>>('hermes.desktop.agentUnreadAt.v1', {})
 
+
+// ---------------------------------------------------------------------------
+// GLOBAL POLL DRIVER (2026-09-20): the per-component useEffect loop proved
+// dead in production (chips mounted, inputs verified working, zero polls).
+// Polling now lives at module scope: rosters REGISTER watches, one shared
+// interval drives them all — independent of component effect lifecycles.
+// ---------------------------------------------------------------------------
+const registeredWatches = new Map<string, AgentWatch>()
+let pollTimer: null | number = null
+let pollInFlight = false
+
+const GLOBAL_POLL_MS = 10_000
+
+async function runGlobalPoll(): Promise<void> {
+  if (pollInFlight || document.hidden || registeredWatches.size === 0) {
+    return
+  }
+
+  pollInFlight = true
+
+  try {
+    for (const watch of registeredWatches.values()) {
+      await pollAgentWatch(watch)
+    }
+  } finally {
+    pollInFlight = false
+  }
+}
+
+function ensurePollTimer(): void {
+  if (pollTimer !== null || typeof window === 'undefined') {
+    return
+  }
+
+  pollTimer = window.setInterval(() => void runGlobalPoll(), GLOBAL_POLL_MS) as unknown as number
+  void runGlobalPoll()
+}
+
+/** A roster registers the conversations its chips report on (keyed by watch
+ *  key — re-registering the same watch refreshes it in place). */
+export function registerAgentWatch(watch: AgentWatch): () => void {
+  registeredWatches.set(agentWatchKey(watch), watch)
+  ensurePollTimer()
+
+  return () => {
+    registeredWatches.delete(agentWatchKey(watch))
+  }
+}
 /** The user has looked at this agent: drop the unread mark. */
 export function markAgentRead(profile: string): void {
   const unread = $agentUnreadAt.get()
@@ -141,6 +189,10 @@ export async function pollAgentWatch(watch: AgentWatch): Promise<void> {
 
     const key = agentWatchKey(watch)
     const previous = $agentActivity.get()[key]
+
+    // TEMP DEBUG (2026-09-20): the plotter chip stays idle while every input
+    // verifies working — log the poll's verdict to find the dead hop.
+    console.warn(`[agent-poll] key=${key} status=${picked.status}`)
 
     $agentActivity.set({
       ...$agentActivity.get(),
