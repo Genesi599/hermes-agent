@@ -528,13 +528,30 @@ export function ChatSidebar({
     [scopedSessions, filtersNarrow, sessionMatchesFilters]
   )
 
+  // AGENT CONVERSATIONS STAY BEHIND THEIR CHIPS (2026-09-20 杨航): in the
+  // cross-profile view, an agent's own chat (`胸腺项目 · 绘图师`, profile=
+  // plotter) used to surface as a bare row in the flat recents — and a running
+  // one jumped the RUNNING divider as a standalone conversation, which read
+  // as "a strange new chat appeared" instead of "my agent is working". The
+  // roster chip under the project row IS the agent's surface (idle dot,
+  // running animation, click → its chat), so the flat list drops non-default
+  // profile rows entirely. A CONCRETE profile scope keeps them (that scope's
+  // list is that agent's own workspace), and search still finds everything.
+  const flatRecents = useMemo(
+    () =>
+      showAllProfiles
+        ? visibleSessions.filter(session => normalizeProfileKey(session.profile ?? 'default') === 'default')
+        : visibleSessions,
+    [visibleSessions, showAllProfiles]
+  )
+
   // Recents by activity (last_active || started_at). User send stamps
   // last_active immediately. Ordering by status doesn't sort here — it re-slots
   // rows *inside* whatever dividers are on, via sortOrderIds below — so the
   // date buckets stay chronological either way.
   const sortedSessions = useMemo(
-    () => [...visibleSessions].sort((a, b) => sessionTime(b) - sessionTime(a)),
-    [visibleSessions]
+    () => [...flatRecents].sort((a, b) => sessionTime(b) - sessionTime(a)),
+    [flatRecents]
   )
 
   const workingSessionIdSet = useMemo(() => new Set(workingSessionIds), [workingSessionIds])
@@ -668,7 +685,10 @@ export function ChatSidebar({
 
     const out = new Map<string, SessionInfo>()
 
-    for (const s of sortedSessions) {
+    // Search reads the FULL set (not `flatRecents`): an agent's chat is hidden
+    // from the flat list behind its roster chip, but typing its name must
+    // still find it.
+    for (const s of visibleSessions) {
       if (sessionMatchesSearch(s, trimmedQuery)) {
         out.set(s.id, s)
       }
@@ -684,7 +704,7 @@ export function ChatSidebar({
     }
 
     return [...out.values()]
-  }, [trimmedQuery, sortedSessions, serverMatches, sessionByAnyId])
+  }, [trimmedQuery, visibleSessions, serverMatches, sessionByAnyId])
 
   const unpinnedAgentSessions = useMemo(
     () => sortedSessions.filter(s => !isPinnedSession(s) && !runningFamilySessionIds.has(s.id)),
