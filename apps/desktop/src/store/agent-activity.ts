@@ -2,7 +2,7 @@ import { atom } from 'nanostores'
 
 import { listAllProfileSessions } from '@/hermes'
 import { persistentAtom } from '@/lib/persisted'
-import { $selectedStoredSessionId } from '@/store/session'
+import { $selectedStoredSessionId, markSessionUnread } from '@/store/session'
 
 /**
  * AGENT ACTIVITY — how each agent's own conversation is doing, for the sidebar
@@ -52,6 +52,14 @@ export interface AgentWatch {
   /** How to find the conversation to watch (newest, or by title prefix). */
   profile: string
   titlePrefix?: string
+  /**
+   * The PROJECT ROOM session this chip's roster hangs under (2026-09-20 杨航
+   * rule): when an agent finishes a turn it speaks in the group room — the
+   * unread dot belongs on the ROOM row (where the message landed), not on the
+   * agent's chip. Absent = a bare-agent context with no room: the chip keeps
+   * the legacy self-dot.
+   */
+  roomSessionId?: string
 }
 
 /** The store key for a watch. PROFILE ALONE IS NOT ENOUGH: every room's
@@ -119,8 +127,19 @@ export async function pollAgentWatch(watch: AgentWatch): Promise<void> {
     // A turn that finishes while its own conversation is the one on screen is
     // not "unread" — the user watched it land. Only a finish they were looking
     // AWAY from earns the dot.
-    if (previous?.status === 'working' && picked.status === 'idle' && picked.id !== $selectedStoredSessionId.get()) {
-      $agentUnreadAt.set({ ...$agentUnreadAt.get(), [key]: Date.now() })
+    if (previous?.status === 'working' && picked.status === 'idle') {
+      // Room roster (project group chat): the finished turn is DELIVERED to
+      // the room — the unread dot moves to the room row, not this chip. "Seen"
+      // means the ROOM was on screen when it landed.
+      const room = watch.roomSessionId?.trim()
+
+      if (room) {
+        if (room !== $selectedStoredSessionId.get()) {
+          markSessionUnread(room)
+        }
+      } else if (picked.id !== $selectedStoredSessionId.get()) {
+        $agentUnreadAt.set({ ...$agentUnreadAt.get(), [key]: Date.now() })
+      }
     }
   } catch {
     // A poll that fails changes nothing: the chip keeps its last known state.

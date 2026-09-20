@@ -362,8 +362,15 @@ function AgentRosterImpl({
   const watchKey = [project, ...agents.map(agent => agent.profile ?? '')].join('\u0000')
 
   const watch: AgentWatch[] = [
-    { profile: 'default', titlePrefix: project ? `${project} · ${DEFAULT_AGENT_SPEAKER.name}` : undefined },
-    ...agents.filter(agent => agent.profile).map(agent => ({ profile: agent.profile as string }))
+    {
+      profile: 'default',
+      roomSessionId: sessionId,
+      titlePrefix: project ? `${project} · ${DEFAULT_AGENT_SPEAKER.name}` : undefined
+    },
+    ...agents.filter(agent => agent.profile).map(agent => ({
+      profile: agent.profile as string,
+      roomSessionId: sessionId
+    }))
   ]
 
   useEffect(() => {
