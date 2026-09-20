@@ -506,6 +506,18 @@ export const ChatView = memo(function ChatView({
     return (row?.title || '').trim()
   }, [selectedSessionId, sessions])
 
+  // Agent work sessions (profile ≠ default — 绘图师/管家/流程搭档…) are private
+  // chats, never project rooms: their project context lives on the group chat's
+  // board and is fed by dispatch. Promoting them to a channel would replace the
+  // transcript (Thread) with an empty room view (2026-09-20 user rule).
+  const selectedIsAgentSession = useMemo(() => {
+    const row = selectedSessionId
+      ? sessions.find(session => sessionMatchesStoredId(session, selectedSessionId))
+      : undefined
+
+    return Boolean(row?.profile && row.profile !== 'default' && !row.is_default_profile)
+  }, [selectedSessionId, sessions])
+
   // A conversation IS its project's room: the channel bound to the session is
   // what this surface shows (posting is an insert, not a turn). The binding is
   // by session id, so renames cannot break it; the backend creates the channel
@@ -514,7 +526,7 @@ export const ChatView = memo(function ChatView({
   // (that is what earns the title), and once the turn settles this swaps the
   // surface to the room. While a turn streams we stay on the thread.
   useEffect(() => {
-    if (!selectedSessionId || !roomTitle) {
+    if (!selectedSessionId || !roomTitle || selectedIsAgentSession) {
       setRoom(null)
 
       return
@@ -541,7 +553,7 @@ export const ChatView = memo(function ChatView({
     return () => {
       live = false
     }
-  }, [selectedSessionId, roomTitle, busy, awaitingResponse])
+  }, [selectedIsAgentSession, selectedSessionId, roomTitle, busy, awaitingResponse])
 
   const showChatBar = !loadingSession && !resumeExhausted && !isWatchWindow() && !room
   const threadKey = selectedSessionId || activeSessionId || (isRoutedSessionView ? location.pathname : 'new')
