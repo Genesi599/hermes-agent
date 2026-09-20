@@ -110,13 +110,19 @@ export function ConversationBoard({ room = false, storedSessionId }: Conversatio
 
   // Scalar selector: the session list republishes on every status poll, and
   // this rail only cares which conversation is open.
-  const title = useStoreSelector($sessions, sessions => {
-    const row = storedSessionId ? sessions.find(session => sessionMatchesStoredId(session, storedSessionId)) : undefined
+  const row = useStoreSelector($sessions, sessions => {
+    const found = storedSessionId ? sessions.find(session => sessionMatchesStoredId(session, storedSessionId)) : undefined
 
-    // Not `sessionTitle()`: its "Untitled session" placeholder would be looked
-    // up as a real directory name.
-    return (row?.title || row?.preview || '').trim()
+    return found
   })
+
+  const title = (row?.title || row?.preview || '').trim()
+
+  // Agent work sessions (`<project> · <agent>` under a non-default profile) are
+  // NOT rooms of their own: the project's board lives on the group chat, and the
+  // agent's context is fed to it by dispatch. A per-agent board rail would always
+  // be empty (2026-09-20 user rule: "agent 私聊就不该有独立看板").
+  const isAgentSession = Boolean(row?.profile && row.profile !== 'default' && !row.is_default_profile)
 
   const collapsed = useStore($collapsedBoards)[title] ?? false
   const [file, setFile] = useState<BoardFile>('state')
@@ -165,7 +171,7 @@ export function ConversationBoard({ room = false, storedSessionId }: Conversatio
     }
   }, [collapsed, file, title])
 
-  if (!title || (!content.present && !room)) {
+  if (!title || isAgentSession || (!content.present && !room)) {
     return null
   }
 
