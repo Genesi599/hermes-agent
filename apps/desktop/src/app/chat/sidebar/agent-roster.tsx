@@ -367,10 +367,18 @@ function AgentRosterImpl({
       roomSessionId: sessionId,
       titlePrefix: project ? `${project} · ${DEFAULT_AGENT_SPEAKER.name}` : undefined
     },
-    ...agents.filter(agent => agent.profile).map(agent => ({
-      profile: agent.profile as string,
-      roomSessionId: sessionId
-    }))
+    ...agents
+      .filter(agent => agent.profile)
+      .map(agent => ({
+        profile: agent.profile as string,
+        roomSessionId: sessionId,
+        // PER-PROJECT WATCH (2026-09-20): an agent with conversations in
+        // several projects (维基管家 in Tiddlywiki AND Book) used to share one
+        // bare-profile key — the newest session lit the chip in EVERY room's
+        // roster. Watch THIS room's own `<项目> · <agent>` conversation; a
+        // turn elsewhere must not animate this room's chip.
+        titlePrefix: project && agent.label ? `${project} · ${agent.label}` : undefined
+      }))
   ]
 
   useEffect(() => {
