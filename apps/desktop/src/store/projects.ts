@@ -6,7 +6,7 @@ import {
   type SidebarProjectTree
 } from '@/app/chat/sidebar/projects/workspace-groups'
 import type { HermesGitBaseBranch, HermesGitBranch } from '@/global'
-import { getHermesConfig, type HermesGateway } from '@/hermes'
+import { deleteSession, getHermesConfig, type HermesGateway } from '@/hermes'
 import { translateNow } from '@/i18n'
 import { desktopDefaultCwd, isDesktopFsRemoteMode, selectDesktopPaths, writeDesktopFileText } from '@/lib/desktop-fs'
 import { desktopGit } from '@/lib/desktop-git'
@@ -17,6 +17,7 @@ import { $gateway, activeGateway, ensureActiveGatewayOpen } from '@/store/gatewa
 import { setSidebarAgentsGrouped } from '@/store/layout'
 import { notify } from '@/store/notifications'
 import { $activeGatewayProfile, $profileScope, ALL_PROFILES, requestFreshSession } from '@/store/profile'
+import { closeSessionTile } from '@/store/session-states'
 import {
   $selectedStoredSessionId,
   $sessions,
@@ -976,11 +977,27 @@ function openSessionBelongsToProject(projectId: string, projects: ProjectInfo[])
 // Optimistic: drop the project from the cached tree + list the instant it's
 // clicked (the entered-scope effect exits if you deleted the project you were
 // inside), reconciling from the server payload. A failed delete restores both.
+//
+// CASCADE (2026-09-20): deleting a project also deletes the sessions that
+// live under its folders (the project room, `项目 · Hermes`, the per-agent
+// conversations). Before this they all fell back to Recents — dead weight the
+// user explicitly does not want ("留着也看不到了，没用了"). The session rows go
+// first (while the folders still exist to attribute them), then the project
+// entry. Individual session delete failures are non-fatal — the project still
+// goes, the survivors stay in Recents, the next refresh re-syncs the list.
 export async function deleteProject(id: string): Promise<void> {
   const snap = snapshotProjects()
   // Capture membership BEFORE removal — the project's folders (which determine
   // ownership) are gone once it's dropped from the cache.
   const kickToIntro = openSessionBelongsToProject(id, snap.projects)
+
+  // Cascade payload: every session whose cwd sits under this project's
+  // folders. `snap.projects` still carries them here — collect before the
+  // optimistic drop below.
+  const doomed = $sessions
+    .get()
+    .filter(session => liveSessionProjectId(session, snap.projects) === id)
+    .map(session => ({ id: session.id, profile: session.profile }))
 
   $projects.set(snap.projects.filter(project => project.id !== id))
   $projectTree.set(snap.tree.filter(node => node.id !== id))
@@ -990,10 +1007,25 @@ export async function deleteProject(id: string): Promise<void> {
   }
 
   // The open session's project is gone — reset to the intro draft (the session
-  // itself survives; it just falls back to Recents).
+  // itself is deleted below when it belongs to the doomed set; the draft reset
+  // tears the route down either way).
   if (kickToIntro) {
     requestFreshSession()
   }
+
+  // Kill the session rows themselves (stored-id REST delete per row; a live
+  // tile must not outlive its transcript).
+  await Promise.all(
+    doomed.map(({ id: storedId, profile }) =>
+      deleteSession(storedId, profile)
+        .then(() => {
+          closeSessionTile(storedId)
+        })
+        .catch(() => {
+          // Non-fatal: leave the row to Recents + the next refresh.
+        })
+    )
+  )
 
   await persistOrRollback(snap, async () => {
     applyPayload(await gatewayRequest<ProjectsPayload>('projects.delete', { id }))

@@ -2102,7 +2102,7 @@ export const zh: Translations = {
       removeFromSidebar: '从侧边栏移除',
       createFailed: '无法创建项目',
       staleBackend: '请更新 Hermes 后端以创建项目——当前后端比桌面应用旧（设置 → 更新 → 后端）。',
-      deleteConfirm: '这会从 Hermes 中移除已保存的项目。文件、git 仓库和工作树保持不变。',
+      deleteConfirm: '这会从 Hermes 中移除该项目，并一并删除其名下会话（项目房间、各 agent 对话）及聊天记录。文件、git 仓库和工作树保持不变。',
       startWork: '新建工作树',
       newWorktreeTitle: '新建工作树',
       newWorktreeDesc: '为这个工作树命名分支。',
