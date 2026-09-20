@@ -21,7 +21,12 @@ export const FILE_BROWSER_DEFAULT_WIDTH = `${SIDEBAR_DEFAULT_WIDTH}px`
 export const FILE_BROWSER_MIN_WIDTH = '10rem'
 export const FILE_BROWSER_MAX_WIDTH = '20rem'
 
-export const SIDEBAR_SESSIONS_PAGE_SIZE = 50
+// 2026-09-20: 50 → 150. In ALL-profiles scope the merged recents list easily
+// passes 50 rows (multi-agent installs run 6+ profile stores); the per-profile
+// `truncated` flag never trips then, so rows past the cap fell into a dead
+// zone — invisible with no "load more" to reach them (the "July groups never
+// render" report: the 50th row was exactly the last one shown).
+export const SIDEBAR_SESSIONS_PAGE_SIZE = 150
 // How deep the list reaches once a filter is on. A filter that only searches
 // the loaded page answers the wrong question — "6 merged PRs" really meant "6
 // among the last 50 rows" — so narrowing the view widens the window it reads.
