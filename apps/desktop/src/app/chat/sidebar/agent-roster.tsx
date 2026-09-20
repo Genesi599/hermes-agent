@@ -367,10 +367,16 @@ function AgentRosterImpl({
       roomSessionId: sessionId,
       titlePrefix: project ? `${project} · ${DEFAULT_AGENT_SPEAKER.name}` : undefined
     },
-    ...agents.filter(agent => agent.profile).map(agent => ({
-      profile: agent.profile as string,
-      roomSessionId: sessionId
-    }))
+    ...agents
+      .filter(agent => agent.profile)
+      .map(agent => ({
+        profile: agent.profile as string,
+        roomSessionId: sessionId,
+        // PER-PROJECT WATCH: an agent with conversations in several projects
+        // (维基管家 in Tiddlywiki AND Book) must light only THIS room's chip —
+        // the bare profile key made every room's chip follow the newest one.
+        titlePrefix: project && agent.label ? `${project} · ${agent.label}` : undefined
+      }))
   ]
 
   // GLOBAL POLL (2026-09-20): replaced the dead per-component effect loop —
@@ -461,6 +467,10 @@ function AgentRosterImpl({
           profile={agent.profile ?? agent.label}
           resolveTarget={() => resolveAgentTarget(agent)}
           title={`跟「${agent.label}」对话`}
+          watchKey={agentWatchKey({
+            profile: agent.profile ?? agent.label,
+            titlePrefix: project && agent.label ? `${project} · ${agent.label}` : undefined
+          })}
         />
       ))}
     </div>
