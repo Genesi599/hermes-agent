@@ -110,19 +110,20 @@ interface ChatHeaderProps {
   selectedSessionId: null | string
 }
 
-/** 顶部复盘行左侧的归属标签：当前会话属于哪个 agent（2026-09-21 杨航要求）。
+/** 顶部复盘行左侧的归属标签：当前会话的**项目 + agent**（2026-09-21 杨航要求）。
  *
- *  会话标题形如「项目 · agent 名」（如 `星阶 · 流程搭档`、`Book · 维基管家`），
- *  取分隔符后的 agent 段；草稿/未命名/无分隔符时返回 null（宁可不显示，也不猜）。
+ *  直接显示会话标题全文——形如「项目 · agent 名」（`星阶 · 流程搭档`、
+ *  `Book · 维基管家`），项目与 agent 一起给出，避免在复盘/共享上下文里分不清
+ *  归属。草稿/未命名等不含分隔符的标题不显示（宁可不显示，也不显示无意义的默认标题）。
  */
 function SessionOwnerLabel({ selectedSessionId }: { selectedSessionId: string | null }) {
   const sessions = useStore($sessions)
   const session =
     (selectedSessionId && sessions.find(row => sessionMatchesStoredId(row, selectedSessionId))) || null
-  const title = session ? sessionTitle(session) : ''
-  const agent = title.includes(' · ') ? title.split(' · ').slice(1).join(' · ').trim() : ''
+  const title = (session ? sessionTitle(session) : '').trim()
 
-  if (!agent) {
+  // 只认「项目 · agent」形态的标题；默认标题（新建对话之类）不显示。
+  if (!title.includes(' · ')) {
     return null
   }
 
@@ -130,9 +131,8 @@ function SessionOwnerLabel({ selectedSessionId }: { selectedSessionId: string | 
     <span
       className="truncate text-[0.6875rem] text-(--ui-text-tertiary)"
       data-testid="session-owner-label"
-      title={title}
     >
-      {agent}
+      {title}
     </span>
   )
 }
