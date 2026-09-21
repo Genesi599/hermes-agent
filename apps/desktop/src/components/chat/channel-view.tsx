@@ -2,6 +2,7 @@ import { type ClipboardEvent, memo, useCallback, useEffect, useMemo, useRef, use
 
 import { SpeakerChip } from '@/components/assistant-ui/thread/speaker-chip'
 import { CompactMarkdown } from '@/components/chat/compact-markdown'
+import { RoomModelSelect } from '@/components/chat/room-model-select'
 import { ZoomableImage } from '@/components/chat/zoomable-image'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
@@ -356,6 +357,7 @@ function ChannelViewImpl({ channel, className }: { channel: Channel; className?:
         <span className="text-[0.625rem] text-(--ui-text-quaternary)">
           {t.assistant.thread.channelSubtitle(channel.message_count)}
         </span>
+        <RoomModelSelect channelId={channel.id} project={channel.project} />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" data-selectable-text="true" ref={scrollRef}>
