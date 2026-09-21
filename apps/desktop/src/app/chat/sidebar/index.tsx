@@ -624,40 +624,13 @@ export function ChatSidebar({
   )
 
 
-  // Full-text search across *all* sessions (not just the loaded page) so 699
-  // sessions stay findable. Debounced; loaded sessions are matched instantly
-  // client-side and merged ahead of the server hits.
+  // 全文搜索（后端 /api/sessions/search 的消息正文命中）已按杨航 2026-09-21 要求
+  // 停用：正文命中会把 JSON、工具输出片段当成结果显示（搜 book 会翻出一堆含
+  // hermes_board/Book/ 路径的工具输出）。现在只按标题/项目名做本地匹配，
+  // serverMatches 恒为空。需要恢复时把 searchSessions 调用放回即可。
   useEffect(() => {
-    if (!trimmedQuery) {
-      setServerMatches([])
-      setSearchPending(false)
-
-      return
-    }
-
-    let cancelled = false
-
-    setSearchPending(true)
-
-    const id = window.setTimeout(() => {
-      void searchSessions(trimmedQuery)
-        .then(res => {
-          if (!cancelled) {
-            setServerMatches(res.results)
-          }
-        })
-        .catch(() => undefined)
-        .finally(() => {
-          if (!cancelled) {
-            setSearchPending(false)
-          }
-        })
-    }, 200)
-
-    return () => {
-      cancelled = true
-      window.clearTimeout(id)
-    }
+    setServerMatches([])
+    setSearchPending(false)
   }, [trimmedQuery])
 
   const searchResults = useMemo(() => {

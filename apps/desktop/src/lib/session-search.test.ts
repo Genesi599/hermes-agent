@@ -44,26 +44,23 @@ describe('sessionMatchesSearch', () => {
     expect(sessionMatchesSearch(session, '20260602')).toBe(true)
   })
 
-  it('preserves title, preview, and workspace matching', () => {
+  it('matches by title (preview / workspace no longer participate)', () => {
     const session = makeSession()
 
+    // 标题命中。
     expect(sessionMatchesSearch(session, 'desktop search')).toBe(true)
-    expect(sessionMatchesSearch(session, 'session search')).toBe(true)
-    expect(sessionMatchesSearch(session, 'hermes-agent')).toBe(true)
+    // 预览与工作目录不再参与（2026-09-21：只搜标题——否则消息正文、工具输出
+    // 片段会把搜索结果弄脏，搜 book 会带出一堆含 Book 路径的 JSON）。
+    expect(sessionMatchesSearch(session, 'session search')).toBe(false)
+    expect(sessionMatchesSearch(session, 'hermes-agent')).toBe(false)
   })
 
-  it('matches sessions by git branch', () => {
-    expect(sessionMatchesSearch(makeSession({ git_branch: 'feat/cool-thing' }), 'feat/cool-thing')).toBe(true)
-    expect(sessionMatchesSearch(makeSession({ git_branch: 'feat/cool-thing' }), 'cool')).toBe(true)
-    expect(sessionMatchesSearch(makeSession({ git_branch: 'main' }), 'main')).toBe(true)
-  })
-
-  it('matches sessions by source platform and aliases', () => {
-    expect(sessionMatchesSearch(makeSession({ source: 'telegram' }), 'Telegram')).toBe(true)
-    expect(sessionMatchesSearch(makeSession({ source: 'whatsapp' }), 'WhatsApp')).toBe(true)
-    expect(sessionMatchesSearch(makeSession({ source: 'whatsapp' }), 'wa')).toBe(true)
-    expect(sessionMatchesSearch(makeSession({ source: 'slack' }), 'slack')).toBe(true)
-    expect(sessionMatchesSearch(makeSession({ source: 'bluebubbles' }), 'imessage')).toBe(true)
+  it('ignores git branch, source platform and aliases', () => {
+    expect(sessionMatchesSearch(makeSession({ git_branch: 'feat/cool-thing' }), 'feat/cool-thing')).toBe(false)
+    expect(sessionMatchesSearch(makeSession({ git_branch: 'main' }), 'main')).toBe(false)
+    expect(sessionMatchesSearch(makeSession({ source: 'telegram' }), 'Telegram')).toBe(false)
+    expect(sessionMatchesSearch(makeSession({ source: 'whatsapp' }), 'wa')).toBe(false)
+    expect(sessionMatchesSearch(makeSession({ source: 'bluebubbles' }), 'imessage')).toBe(false)
   })
 
   it('does not match unrelated queries', () => {
