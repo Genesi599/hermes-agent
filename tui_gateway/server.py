@@ -146,6 +146,7 @@ _pending: dict[str, tuple[str, threading.Event]] = {}
 _pending_prompt_payloads: dict[str, tuple[str, dict]] = {}
 _answers: dict[str, str] = {}
 _db = None
+_dbs_by_home: dict = {}  # 共享池·阶段5：HERMES_HOME → SessionDB（按作用域键控）
 _db_error: str | None = None
 _stdout_lock = threading.Lock()
 _cfg_lock = threading.Lock()
@@ -1355,13 +1356,28 @@ _start_idle_reaper()
 
 
 def _get_db():
-    global _db, _db_error
-    if _db is None:
+    """本进程**当前 HERMES_HOME 作用域**的 SessionDB（按 home 键控缓存）。
+
+    共享后端进程池·阶段5（2026-09-21）：原先是单例 `_db`——进程启动时锁定
+    launch profile 的库，于是 `set_hermes_home_override` 的作用域对它无效
+    （共享进程里服务 profile X 的请求仍去 default 的库里找会话 → 404
+    session not found，实测复现）。改为**按解析后的 home 键控**：作用域内
+    `SessionDB()` 用 `get_hermes_home()` 打开对应 profile 的库。单 profile 进程
+    行为不变（只有一个键）。
+    """
+    global _db_error
+    from hermes_constants import get_hermes_home
+
+    home = str(get_hermes_home())
+    db = _dbs_by_home.get(home)
+
+    if db is None:
         from hermes_state import SessionDB
 
         try:
-            _db = SessionDB()
-            _db.recover_interrupted_branch_runs(_current_profile_name())
+            db = SessionDB()
+            db.recover_interrupted_branch_runs(_current_profile_name())
+            _dbs_by_home[home] = db
             _db_error = None
         except Exception as exc:
             _db_error = str(exc)
@@ -1370,7 +1386,7 @@ def _get_db():
                 exc,
             )
             return None
-    return _db
+    return db
 
 
 def _db_for_profile(profile: str | None = None):
