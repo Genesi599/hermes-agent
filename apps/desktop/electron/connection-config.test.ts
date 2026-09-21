@@ -37,6 +37,7 @@ import {
   profileSshOverride,
   resolveAuthMode,
   resolveProfileBackendRoute,
+  sharedLocalBackendEnabled,
   resolveTestWsUrl,
   RT_COOKIE_VARIANTS,
   savedProfileSsh,
@@ -275,6 +276,61 @@ test('resolveProfileBackendRoute only tags a descriptor when the backend is shar
 
     assert.equal(Boolean(resolved.descriptorProfile), resolved.scopePath)
     assert.ok(!resolved.descriptorProfile || resolved.backend === 'primary')
+  }
+})
+
+// --- 共享进程池（阶段4b）开关 ---
+
+test('sharedLocalBackendEnabled: 只有显式真值开启', () => {
+  assert.equal(sharedLocalBackendEnabled({} as NodeJS.ProcessEnv), false)
+  assert.equal(sharedLocalBackendEnabled({ HERMES_DESKTOP_SHARED_BACKEND: '0' } as NodeJS.ProcessEnv), false)
+  assert.equal(sharedLocalBackendEnabled({ HERMES_DESKTOP_SHARED_BACKEND: '1' } as NodeJS.ProcessEnv), true)
+  assert.equal(sharedLocalBackendEnabled({ HERMES_DESKTOP_SHARED_BACKEND: 'TRUE' } as NodeJS.ProcessEnv), true)
+})
+
+test('共享开启时本地 profile 走 primary + 作用域（原 pool 路由）', () => {
+  const prev = process.env.HERMES_DESKTOP_SHARED_BACKEND
+  process.env.HERMES_DESKTOP_SHARED_BACKEND = '1'
+  try {
+    const resolved = resolveProfileBackendRoute('coder')
+    assert.deepEqual(resolved, { backend: 'primary', descriptorProfile: 'coder', scopePath: true })
+  } finally {
+    if (prev === undefined) {
+      delete process.env.HERMES_DESKTOP_SHARED_BACKEND
+    } else {
+      process.env.HERMES_DESKTOP_SHARED_BACKEND = prev
+    }
+  }
+  // 关掉后回到 pool（零回归）
+  assert.deepEqual(resolveProfileBackendRoute('coder'), {
+    backend: 'pool',
+    descriptorProfile: null,
+    scopePath: false
+  })
+})
+
+test('共享开启不影响 primary 自家与 remote 覆盖两条既有路由', () => {
+  const prev = process.env.HERMES_DESKTOP_SHARED_BACKEND
+  process.env.HERMES_DESKTOP_SHARED_BACKEND = '1'
+  try {
+    // primary 自家：仍 primary / 无 scope
+    assert.deepEqual(resolveProfileBackendRoute('default', { primaryProfile: 'default' }), {
+      backend: 'primary',
+      descriptorProfile: null,
+      scopePath: false
+    })
+    // 显式 remote 覆盖：仍走 pool（其 host 已自带作用域）
+    assert.deepEqual(resolveProfileBackendRoute('coder', { profileRemoteOverride: true }), {
+      backend: 'pool',
+      descriptorProfile: null,
+      scopePath: false
+    })
+  } finally {
+    if (prev === undefined) {
+      delete process.env.HERMES_DESKTOP_SHARED_BACKEND
+    } else {
+      process.env.HERMES_DESKTOP_SHARED_BACKEND = prev
+    }
   }
 })
 
