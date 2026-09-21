@@ -16,57 +16,76 @@
 
 ## 2. 现状障碍（2026-09-21 勘察）
 
-执行链（`POST /api/sessions/{id}/prompt` → `tui_gateway.server`）**以进程为 profile 边界**：
+### 2.1 已在代码里的资产（为 remote 多 profile 模式而建——正好适用）
+
+**关键结论：地基已铺好，改造是"补齐+推广"，不是从零造。**
+
+| 资产 | 位置 | 说明 |
+|---|---|---|
+| `set_hermes_home_override(path) -> Token` | `hermes_constants.py:30` | **context-local** 的 HERMES_HOME 覆盖，注释原文 "for in-process, per-task scoping"——**为共享进程设计** |
+| `get_hermes_home()` | `hermes_constants.py:114` | 解析顺序 override → env → 默认；**全仓库唯一真源**（约几百处调用自动跟随） |
+| `get_process_hermes_home()` | `hermes_constants.py:142` | 忽略 override 的进程级取值（需要"进程自身"语义时用） |
+| `get_hermes_home_override()` | `hermes_constants.py:45` | 读当前 override |
+| `_db_for_profile(profile)` | `tui_gateway/server.py` | **按 profile 取 SessionDB 句柄**（launch profile → 共享句柄；其他 → 独立句柄由调用方 close） |
+| `_profile_home(profile)` | `tui_gateway/server.py` | profile → home 解析 |
+| `_load_cfg_raw()` | `tui_gateway/server.py:3199` | 配置读取**已按解析路径键控缓存**（注释：profiles don't clobber each other） |
+| 用法范例 | `methods_session.py:716/771/801/846`、`compute_host.py:549/580` | `session.resume` 处理远程 profile 时：set override → 跑 → reset |
+
+### 2.2 仍然进程级、需要按 profile 键控的部分
 
 | 全局单例（`tui_gateway/server.py`） | 作用 | 迁移难度 |
 |---|---|---|
-| `_hermes_home` | **一切 profile 隔离的锚点** | 高：数百处隐式引用 |
-| `_db` / `_db_error` | 单个 SessionDB 句柄 | 中：`_get_db()` 已收敛为单一入口 |
-| `_sessions: dict[str, dict]` | 活跃会话注册表 | 高 |
-| `_pending` / `_pending_prompt_payloads` / `_answers` | prompt 等待与回执表 | 高 |
-| `_cfg_cache` / `_cfg_mtime` / `_cfg_path` | 配置单例缓存 | 中 |
-| `_sessions_lock` / `_prompt_lock` / `_cfg_lock` / `_session_resume_lock` … | 各锁 | 中：需降为 per-profile |
-| `_branch_merge_apply_locks*` | 分支合并锁 | 低 |
+| `_sessions: dict[str, dict]` | 活跃会话注册表（按 session_key） | 高：需 (profile, session) 复合键 |
+| `_pending` / `_pending_prompt_payloads` / `_answers` | prompt 等待与回执表 | 高：同上 |
+| `_db` | **launch profile 的**共享库句柄（单例） | 低：`_db_for_profile` 已解决"取对库"，只需执行链改用它 |
+| `_sessions_lock` / `_prompt_lock` / … | 各锁 | 低：全局锁只损失并发，不影响正确性；可按 profile 降粒度（可选） |
 
-补充事实：
-- **`/api/profiles/*` 系列端点已支持 `?profile=`**（跨库读，桌面芯片轮询即靠它）；
-- **执行类端点不支持**（`submit_session_prompt` 无 profile 参数）——这是"每 profile 一进程"的直接原因；
-- 桌面侧路由已有 `shared` 概念（`resolveProfileBackendRoute` 的 `scopePath`，remote 模式已实现"一后端多 profile + `?profile=`"）——**桌面侧不是瓶颈，gateway 才是**。
+### 2.3 缺口（本改造的核心工作面）
 
-## 3. 设计
+- **本地模式下执行链只有"launch profile"一条路**：`POST /api/sessions/{id}/prompt` 无 profile 参数
+  → `_submit_session_prompt_sync` → `gw._get_db()` / `_find_live_session_by_key` 全部默认进程自身；
+- **无"请求进入即设定 override 并贯穿整个轮次"的本地流程**（remote 模式在若干点手工 set/reset，未覆盖执行链全程）。
 
-引入 **ProfileRuntime 注册表**：把"进程级全局"逐个变成"按 profile 分区的注册表"。
-默认 `profile = 进程自身 profile` 时行为与今天完全一致（零破坏渐进）。
+**因此阶段 1 的实际工作 = 把 2.1 的资产在本地执行链上串起来 + 把 2.2 的表按 profile 键控；不需要新造注册表抽象。**
+
+
+## 3. 设计（修正版：复用既有 override 机制，不新造注册表）
+
+2026-09-21 勘察发现上游**已为 remote 多 profile 建好地基**（见 2.1）。因此设计从
+"新造 ProfileRuntime 注册表"**修正**为两步：
+
+**A. 请求级 profile scope（复用 `set_hermes_home_override`）**
 
 ```python
-class ProfileRuntime:
-    """All state that used to be process-global, scoped to one profile."""
-    def __init__(self, profile: str):
-        self.profile = profile
-        self.hermes_home = resolve_hermes_home(profile)   # profiles/<p> 或根(default)
-        self.db = None                                     # lazy
-        self.sessions: dict[str, dict] = {}
-        self.pending: dict[str, tuple[str, threading.Event]] = {}
-        self.answers: dict[str, str] = {}
-        self.cfg_cache = None
-        self.locks = ...                                   # per-profile locks
+from hermes_constants import set_hermes_home_override, reset_hermes_home_override
 
-_runtimes: dict[str, ProfileRuntime] = {}
-_runtimes_lock = threading.Lock()
-
-def runtime_for(profile: str | None = None) -> ProfileRuntime:
-    key = profile or _current_profile_name()   # 进程自身 = 今天的默认路径
-    with _runtimes_lock:
-        rt = _runtimes.get(key)
-        if rt is None:
-            rt = _runtimes[key] = ProfileRuntime(key)
-        return rt
+def with_profile_scope(profile: str | None, fn):
+    """在指定 profile 的 HERMES_HOME 作用域内执行 fn；None → 进程自身（零变化）。"""
+    if not profile:
+        return fn()
+    token = set_hermes_home_override(str(profile_home_for(profile)))
+    try:
+        return fn()
+    finally:
+        reset_hermes_home_override(token)
 ```
 
-规则：
-- **所有**原全局引用改经 `runtime_for()` 获取；
-- 端点从请求解析 profile（`?profile=` 或 body 字段），未提供则用进程自身 profile（**兼容旧行为**）；
-- 跨 profile 的"全局"概念（如 RPC 方法表 `_methods`、常量）保持全局（只读）。
+作用：`get_hermes_home()` 及其全部下游（配置、SOUL、记忆库、skills 路径、SessionDB
+默认库位置……）**在该上下文内自动指向目标 profile**——这正是 remote 模式已在做、
+本地模式缺的那一环。
+
+**B. 进程级表按 profile 键控**（2.2 清单）
+
+- `_sessions` / `_pending` / `_pending_prompt_payloads` / `_answers` → 复合键
+  `f"{profile}\x00{session_key}"`（或嵌套 dict），读写都经统一访问器；
+- `_db` → 执行链改用既有的 `_db_for_profile(profile)`（launch profile 返回共享句柄，
+  其他返回独立句柄由调用方 close）；
+- 锁保持全局（正确性无损，仅并发略降；后续可选降粒度）。
+
+**关键约束**：`profile=None`/launch profile 时，**行为与今天逐字节一致**
+（override 不设、共享 `_db` 句柄照用、表键退化为单 profile）——保证日常单 profile
+使用零回归。
+
 
 ## 4. 迁移阶段（每阶段可独立测试与回退）
 
