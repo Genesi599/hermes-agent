@@ -3329,6 +3329,8 @@ def _cwd_for_session_key(session_key: str) -> str:
         return ""
     with _sessions_lock:
         for sess in list(_sessions.values()):
+            if not _session_in_active_scope(sess):
+                continue
             if sess.get("session_key") == session_key:
                 return str(sess.get("cwd") or "")
     return ""
@@ -3361,6 +3363,8 @@ def _set_session_context(
         session_id = session_key
         with _sessions_lock:
             for sess in list(_sessions.values()):
+                if not _session_in_active_scope(sess):
+                    continue
                 if sess.get("session_key") == session_key:
                     source = _session_source(sess)
                     session_id = (
@@ -9471,9 +9475,39 @@ def _session_lookup_key(session: dict, *, fallback: str = "") -> str:
     )
 
 
+def _session_in_active_scope(session: dict) -> bool:
+    """会话是否属于**当前 HERMES_HOME 作用域**（共享后端进程池·阶段5，2026-09-21）。
+
+    持久会话 id 只在一个 profile 内唯一（实测 default 与 advisor 各有
+    `20260916_174616_978c99`）。共享进程里 `_sessions` 跨 profile 混装，任何
+    "按 session_key 匹配 live 会话"的循环都必须先过这道判定，否则会把目标
+    profile 的轮次/查询落到 launch profile 的同名会话上。
+
+    无 ``profile_home`` 的会话归属 launch profile（历史会话与单 profile 进程的
+    常态）——据此比较，保证单 profile 行为逐字节不变。
+    """
+    try:
+        from hermes_constants import get_hermes_home, get_process_hermes_home
+
+        want = str(get_hermes_home()).strip()
+        have = str(session.get("profile_home") or "").strip() or str(get_process_hermes_home()).strip()
+        return have == want
+    except Exception:
+        return True  # 无法判定时不收紧（保持旧行为）
+
+
 def _find_live_session_by_key(session_key: str) -> tuple[str, dict] | None:
+    """按持久会话 id 找**当前作用域**的 live 会话。
+
+    （共享后端进程池·阶段5）过滤经 :func:`_session_in_active_scope`：不带 profile
+    过滤地匹配 session_key，会把目标 profile 的轮次提交到 launch profile 的同名
+    live 会话（实测：POST 返回 200 但目标会话毫无动静）。单 profile 进程里该判定
+    恒真，行为不变。
+    """
     for sid, session in list(_sessions.items()):
         if session.get("_finalized"):
+            continue
+        if not _session_in_active_scope(session):
             continue
         if _session_lookup_key(session, fallback=sid) == session_key:
             return sid, session
@@ -12574,6 +12608,8 @@ def _wire_agent_terminal_output() -> None:
             return ""
         with _sessions_lock:
             for sid, tui_session in _sessions.items():
+                if not _session_in_active_scope(tui_session):
+                    continue
                 if str(tui_session.get("session_key") or "") == session_key:
                     return sid
         return ""

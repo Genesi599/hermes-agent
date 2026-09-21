@@ -6662,10 +6662,12 @@ def _submit_session_prompt_sync(session_id: str, body: SessionPromptSubmit, prof
     from tui_gateway.profile_scope import profile_scope
 
     with profile_scope(profile):
-        return _submit_session_prompt_scoped(session_id, body)
+        return _submit_session_prompt_scoped(session_id, body, profile)
 
 
-def _submit_session_prompt_scoped(session_id: str, body: SessionPromptSubmit) -> dict:
+def _submit_session_prompt_scoped(
+    session_id: str, body: SessionPromptSubmit, profile: str | None = None
+) -> dict:
     import time as _time
 
     from tui_gateway import server as gw
@@ -6694,7 +6696,7 @@ def _submit_session_prompt_scoped(session_id: str, body: SessionPromptSubmit) ->
                 "jsonrpc": "2.0",
                 "id": f"rest-prompt-{_time.time_ns()}",
                 "method": "session.resume",
-                "params": {"session_id": target, "omit_messages": True},
+                "params": {"session_id": target, "omit_messages": True, "profile": profile or ""},
             }
         )
         if resp.get("error"):

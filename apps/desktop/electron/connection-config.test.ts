@@ -293,11 +293,11 @@ test('resolveProfileBackendRoute only tags a descriptor when the backend is shar
 
 // --- 共享进程池（阶段4b）开关 ---
 
-test('sharedLocalBackendEnabled: 默认关闭(回滚), 显式真值开启', () => {
-  assert.equal(sharedLocalBackendEnabled({} as NodeJS.ProcessEnv), false)
+test('sharedLocalBackendEnabled: 默认开启, 显式假值关闭(回滚)', () => {
+  assert.equal(sharedLocalBackendEnabled({} as NodeJS.ProcessEnv), true)
   assert.equal(sharedLocalBackendEnabled({ HERMES_DESKTOP_SHARED_BACKEND: '0' } as NodeJS.ProcessEnv), false)
-  assert.equal(sharedLocalBackendEnabled({ HERMES_DESKTOP_SHARED_BACKEND: '1' } as NodeJS.ProcessEnv), true)
-  assert.equal(sharedLocalBackendEnabled({ HERMES_DESKTOP_SHARED_BACKEND: 'TRUE' } as NodeJS.ProcessEnv), true)
+  assert.equal(sharedLocalBackendEnabled({ HERMES_DESKTOP_SHARED_BACKEND: 'FALSE' } as NodeJS.ProcessEnv), false)
+  assert.equal(sharedLocalBackendEnabled({ HERMES_DESKTOP_SHARED_BACKEND: 'off' } as NodeJS.ProcessEnv), false)
 })
 
 test('共享开启时本地 profile 走 primary + 作用域（原 pool 路由）', () => {
@@ -426,7 +426,7 @@ test('pathWithGlobalRemoteProfile skips local and per-profile remote override pa
   )
 })
 
-test('pathWithGlobalRemoteProfile 共享显式开启时给本地 profile 路径加作用域', () => {
+test('pathWithGlobalRemoteProfile 默认(共享开启)给本地 profile 路径加作用域', () => {
   const prev = process.env.HERMES_DESKTOP_SHARED_BACKEND
   process.env.HERMES_DESKTOP_SHARED_BACKEND = '1'
   try {

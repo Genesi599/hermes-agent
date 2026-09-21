@@ -968,6 +968,8 @@ def _(rid, params: dict) -> dict:
     live_sid = ""
     with _sessions_lock:
         for sid, sess in list(_sessions.items()):
+            if not _session_in_active_scope(sess):
+                continue
             if sess.get("session_key") == target:
                 live, live_sid = sess, sid
                 break
