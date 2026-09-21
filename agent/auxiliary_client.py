@@ -1220,7 +1220,20 @@ _OPENROUTER_MODEL = "google/gemini-3.6-flash"
 _NOUS_MODEL = "google/gemini-3.6-flash"
 _NOUS_DEFAULT_BASE_URL = "https://inference-api.nousresearch.com/v1"
 _ANTHROPIC_DEFAULT_BASE_URL = "https://api.anthropic.com"
-_AUTH_JSON_PATH = get_hermes_home() / "auth.json"
+_AUTH_JSON_NAME = "auth.json"
+
+
+def _auth_json_path() -> Path:
+    """本进程**当前作用域**的 auth.json 路径。
+
+    2026-09-21（shared-backend-pool 阶段2）：原先是模块级常量
+    ``_AUTH_JSON_PATH = get_hermes_home() / "auth.json"``——import 时求值一次，
+    于是共享进程里每个 profile 都会读到 **launch profile** 的认证文件（跨 profile
+    凭据串用）。改为调用时求值：``get_hermes_home()`` 会遵循
+    ``set_hermes_home_override`` 的任务级作用域（hermes_constants），单 profile
+    进程行为不变（无 override 时即进程自身 home）。
+    """
+    return get_hermes_home() / _AUTH_JSON_NAME
 
 # Codex OAuth endpoint used when a caller explicitly requests
 # provider="openai-codex".  There is deliberately no hardcoded default
@@ -2370,9 +2383,10 @@ def _read_nous_auth() -> Optional[dict]:
         }
 
     try:
-        if not _AUTH_JSON_PATH.is_file():
+        auth_path = _auth_json_path()
+        if not auth_path.is_file():
             return None
-        data = json.loads(_AUTH_JSON_PATH.read_text(encoding="utf-8-sig"))
+        data = json.loads(auth_path.read_text(encoding="utf-8-sig"))
         if data.get("active_provider") != "nous":
             return None
         provider = data.get("providers", {}).get("nous", {})
