@@ -110,6 +110,33 @@ interface ChatHeaderProps {
   selectedSessionId: null | string
 }
 
+/** 顶部复盘行左侧的归属标签：当前会话属于哪个 agent（2026-09-21 杨航要求）。
+ *
+ *  会话标题形如「项目 · agent 名」（如 `星阶 · 流程搭档`、`Book · 维基管家`），
+ *  取分隔符后的 agent 段；草稿/未命名/无分隔符时返回 null（宁可不显示，也不猜）。
+ */
+function SessionOwnerLabel({ selectedSessionId }: { selectedSessionId: string | null }) {
+  const sessions = useStore($sessions)
+  const session =
+    (selectedSessionId && sessions.find(row => sessionMatchesStoredId(row, selectedSessionId))) || null
+  const title = session ? sessionTitle(session) : ''
+  const agent = title.includes(' · ') ? title.split(' · ').slice(1).join(' · ').trim() : ''
+
+  if (!agent) {
+    return null
+  }
+
+  return (
+    <span
+      className="truncate text-[0.6875rem] text-(--ui-text-tertiary)"
+      data-testid="session-owner-label"
+      title={title}
+    >
+      {agent}
+    </span>
+  )
+}
+
 function ChatHeader({
   activeSessionId,
   isRoutedSessionView,
@@ -655,9 +682,13 @@ export const ChatView = memo(function ChatView({
         />
       )}
       <div
-        className="flex h-8 shrink-0 items-center justify-end border-b border-(--ui-stroke-tertiary) bg-(--ui-chat-surface-background) px-3"
+        className="flex h-8 shrink-0 items-center justify-between gap-3 border-b border-(--ui-stroke-tertiary) bg-(--ui-chat-surface-background) px-3"
         data-testid="experience-review-bar"
       >
+        {/* 当前会话所属 agent（2026-09-21 杨航要求）：顶部复盘行左侧直接标出归属，
+            省得在复盘/共享上下文里分不清这条是哪个 agent 的。标题形如
+            「项目 · agent 名」——取分隔符后的 agent 段；没有标题就不显示（不猜）。 */}
+        <SessionOwnerLabel selectedSessionId={selectedSessionId} />
         <ExperienceReviewStatus />
       </div>
 
