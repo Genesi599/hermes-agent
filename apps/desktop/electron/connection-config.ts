@@ -393,25 +393,26 @@ export interface ProfileBackendRoute {
 }
 
 /**
- * 共享后端进程池（阶段 4b/5，2026-09-21 杨航批准固化）：本地 profile 也共享
- * primary 后端。
+ * 共享后端进程池（阶段 4b/5）：本地 profile 也共享 primary 后端。
  *
- * **默认开启**（实测：后端进程 18→4、内存 768MB、路由轮正常）。回滚 =
- * `HERMES_DESKTOP_SHARED_BACKEND=0` 重启桌面——不写用户配置、不改用户数据。
- * 开启后本地非 primary profile 走 globalRemote 同款形态（primary 后端 +
- * 每请求 `?profile=` 作用域），gateway 侧由 `tui_gateway.profile_scope` 按请求
- * 切换 HERMES_HOME（配置/SOUL/记忆/凭据）。
+ * **默认关闭（回滚，2026-09-21）**：实测发现共享模式下**非 default 的派活
+ * （agent 轮次提交）仍不可用**——POST ?profile=X 之后轮次未启动（thymus 会话
+ * lease 停在数小时前）。桌面浏览/查询侧已可用（18→4 进程、768MB），但为了让
+ * 派活这条核心链路保持稳定，默认回退到"每 profile 一后端"。
+ *
+ * 需要时显式 `HERMES_DESKTOP_SHARED_BACKEND=1` 开启（继续排障用）；修好派活路径
+ * 后再改回默认开启。开启语义见 docs/design/shared-backend-pool.md。
  */
 function sharedLocalBackendEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const raw = String(env.HERMES_DESKTOP_SHARED_BACKEND ?? '')
     .trim()
     .toLowerCase()
 
-  if (raw === '0' || raw === 'false' || raw === 'no' || raw === 'off') {
-    return false
+  if (raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on') {
+    return true
   }
 
-  return true
+  return false
 }
 
 /**
