@@ -1,24 +1,34 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { postChannelMessage } from '@/lib/channels'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
 import { ChevronDown } from '@/lib/icons'
 import { readDesktopFileText } from '@/lib/desktop-fs'
 import { cn } from '@/lib/utils'
 
 /**
  * ROOM MODEL PILL — the room composer's model switcher, styled after the
- * private-chat composer's ModelPill (same pill chrome + dropdown + chevron;
- * 2026-09-20 杨航: 「复用私聊聊天框右边的那种形式」). Semantics are the ROOM's,
- * not a session's: picking a model switches EVERY participant (Hermes + this
- * room's agents) at once — next turn onwards.
+ * private-chat composer's ModelPill (same pill chrome + dropdown + chevron).
+ * Semantics are the ROOM's, not a session's: picking a model switches EVERY
+ * participant (Hermes + this room's agents) at once — next turn onwards.
  *
- * Zero new bridge surface: the pick POSTS `/model <id>` into the room as a
- * human line; the channel router handles that command inline (agent_model.py
- * rewrites every participant's config.yaml) and the receipt lands in the room.
- * Options come from the DEFAULT profile's config.yaml (providers ∪ models),
- * line-parsed the same way the python side does it.
+ * PROVIDER-QUALIFIED (2026-09-20 杨航): the same model id can exist under
+ * several providers (glm-5.3 under glm-coding AND zai-payg — different keys
+ * and price tiers), so every option carries its provider: the menu is grouped
+ * by provider and the pick posts `/model <provider>/<model>` — the python side
+ * rewrites both `model.default` and `model.provider` explicitly, no guessing.
+ *
+ * Zero new bridge surface: the pick POSTS `/model …` into the room as a human
+ * line; the channel router handles that command inline (agent_model.py) and
+ * the receipt lands in the room. Options come from the DEFAULT profile's
+ * config.yaml, line-parsed the same way the python side does it.
  */
 
 const PILL = cn(
@@ -27,17 +37,21 @@ const PILL = cn(
 )
 
 interface ModelConfig {
-  current: null | string
-  available: string[]
+  current: null | string // "provider/model"
+  groups: { provider: string; models: string[] }[]
 }
+
+const EMPTY: ModelConfig = { current: null, groups: [] }
 
 function parseConfigYamlModels(text: string): ModelConfig {
   const lines = text.split(/\r?\n/)
-  let current: null | string = null
-  const available = new Set<string>()
+  let currentProvider: null | string = null
+  let currentModel: null | string = null
+  const byProvider = new Map<string, Set<string>>()
   let inModelBlock = false
   let inProviders = false
   let inModelsList = false
+  let provider = ''
 
   for (const line of lines) {
     if (/^model:\s*$/.test(line)) {
@@ -47,7 +61,11 @@ function parseConfigYamlModels(text: string): ModelConfig {
     if (inModelBlock) {
       const def = line.match(/^  default:\s*(\S+)/)
       if (def) {
-        current = def[1]
+        currentModel = def[1]
+      }
+      const prov = line.match(/^  provider:\s*(\S+)/)
+      if (prov) {
+        currentProvider = prov[1]
       }
       if (line && !line.startsWith(' ')) {
         inModelBlock = false
@@ -68,22 +86,31 @@ function parseConfigYamlModels(text: string): ModelConfig {
         continue
       }
       const modelLine = line.match(/^      ([^:\s]+):\s*\{?\}?\s*$/)
-      if (modelLine && inModelsList) {
-        available.add(modelLine[1])
+      if (modelLine && inModelsList && provider) {
+        byProvider.get(provider)?.add(modelLine[1])
+        continue
+      }
+      const provHead = line.match(/^  ([A-Za-z0-9_-]+):\s*$/)
+      if (provHead && !line.startsWith('    ')) {
+        provider = provHead[1]
+        byProvider.set(provider, new Set())
+        inModelsList = false
         continue
       }
       if (line.startsWith('    ') && !line.startsWith('      ') && !/^    models:/.test(line)) {
-        // A provider-level key other than `models:` ends the model list context.
         inModelsList = false
       }
     }
   }
 
-  return { current, available: [...available].sort() }
+  return {
+    current: currentProvider && currentModel ? `${currentProvider}/${currentModel}` : null,
+    groups: [...byProvider.entries()].map(([p, models]) => ({ provider: p, models: [...models].sort() }))
+  }
 }
 
 export function RoomModelSelect({ channelId, project }: { channelId: string; project: string }) {
-  const [config, setConfig] = useState<ModelConfig>({ current: null, available: [] })
+  const [config, setConfig] = useState<ModelConfig>(EMPTY)
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(async () => {
@@ -103,17 +130,18 @@ export function RoomModelSelect({ channelId, project }: { channelId: string; pro
     void load()
   }, [load])
 
+  const currentLabel = useMemo(() => config.current?.split('/')[1] ?? config.current ?? '模型', [config.current])
+
   const change = useCallback(
-    async (modelId: string) => {
-      if (!modelId || busy) {
+    async (spec: string) => {
+      if (!spec || busy) {
         return
       }
       setBusy(true)
       try {
         // Post as a human line: the router's /model handler switches every
         // participant and posts the receipt right above this composer.
-        await postChannelMessage(channelId, `/model ${modelId}`)
-        // The default config flips immediately — refresh the pill's label.
+        await postChannelMessage(channelId, `/model ${spec}`)
         await load()
       } finally {
         setBusy(false)
@@ -122,29 +150,38 @@ export function RoomModelSelect({ channelId, project }: { channelId: string; pro
     [busy, channelId, load]
   )
 
-  if (config.available.length === 0) {
+  if (config.groups.length === 0) {
     return null
   }
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button className={PILL} disabled={busy} size="sm" variant="ghost">
-          <span className="max-w-28 truncate">{config.current ?? '模型'}</span>
+        <Button className={PILL} disabled={busy} size="sm" variant="ghost" title={config.current ?? undefined}>
+          <span className="max-w-28 truncate">{currentLabel}</span>
           <ChevronDown className="size-3.5 shrink-0 opacity-70" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
-        {config.available.map(id => (
-          <DropdownMenuItem
-            key={id}
-            onSelect={() => {
-              void change(id)
-            }}
-          >
-            <span className={cn(id === config.current && 'font-semibold')}>{id}</span>
-            {id === config.current ? <span className="ml-auto text-[0.625rem] text-(--ui-text-quaternary)">当前</span> : null}
-          </DropdownMenuItem>
+      <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
+        {config.groups.map(group => (
+          <div key={group.provider}>
+            <DropdownMenuLabel className="text-[0.625rem] text-(--ui-text-quaternary)">{group.provider}</DropdownMenuLabel>
+            {group.models.map(id => {
+              const spec = `${group.provider}/${id}`
+              const isCurrent = spec === config.current
+              return (
+                <DropdownMenuItem
+                  key={spec}
+                  onSelect={() => {
+                    void change(spec)
+                  }}
+                >
+                  <span className={cn(isCurrent && 'font-semibold')}>{id}</span>
+                  {isCurrent ? <span className="ml-auto text-[0.625rem] text-(--ui-text-quaternary)">当前</span> : null}
+                </DropdownMenuItem>
+              )
+            })}
+          </div>
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
