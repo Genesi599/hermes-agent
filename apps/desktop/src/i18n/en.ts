@@ -1857,7 +1857,7 @@ export const en: Translations = {
     clearSearch: 'Clear search',
     noMatch: query => `No sessions match “${query}”.`,
     results: 'Results',
-    running: 'Running',
+    running: 'Active & unread',
     pinned: 'Pinned',
     sessions: 'Sessions',
     cronJobs: 'Cron jobs',
