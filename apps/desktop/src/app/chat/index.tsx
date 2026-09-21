@@ -31,7 +31,7 @@ import { migrateQueuedPrompts, parkQueuedPrompts } from '@/store/composer-queue'
 import { $pinnedSessionIds } from '@/store/layout'
 import { $petActive } from '@/store/pet'
 import { $petOverlayActive } from '@/store/pet-overlay'
-import { $activeGatewayProfile, $gatewaySwapTarget, $profiles } from '@/store/profile'
+import { $activeGatewayProfile, $gatewaySwapTarget, $profiles, normalizeProfileKey } from '@/store/profile'
 import {
   $contextSuggestions,
   $freshDraftReady,
@@ -135,6 +135,26 @@ function SessionOwnerLabel({ selectedSessionId }: { selectedSessionId: string | 
       {title}
     </span>
   )
+}
+
+/** 复盘状态：仅 agent 私聊显示（2026-09-21 杨航反馈）。
+ *
+ *  群聊/项目主会话（归属 hermes / default profile）不做经验复盘，不该显示
+ *  "复盘 n/20" 的轮次计数；各 agent 私聊（advisor/builder/plotter/… 各自 profile）
+ *  才显示。判据用会话归属的 profile——比标题格式稳（后端 sessions.profile_name：
+ *  群聊为 hermes，私聊为 agent 名）。
+ */
+function SessionReviewStatus({ selectedSessionId }: { selectedSessionId: string | null }) {
+  const sessions = useStore($sessions)
+  const session =
+    (selectedSessionId && sessions.find(row => sessionMatchesStoredId(row, selectedSessionId))) || null
+  const key = normalizeProfileKey(session?.profile)
+
+  if (key === 'hermes' || key === 'default') {
+    return null
+  }
+
+  return <ExperienceReviewStatus />
 }
 
 function ChatHeader({
@@ -689,7 +709,7 @@ export const ChatView = memo(function ChatView({
             省得在复盘/共享上下文里分不清这条是哪个 agent 的。标题形如
             「项目 · agent 名」——取分隔符后的 agent 段；没有标题就不显示（不猜）。 */}
         <SessionOwnerLabel selectedSessionId={selectedSessionId} />
-        <ExperienceReviewStatus />
+        <SessionReviewStatus selectedSessionId={selectedSessionId} />
       </div>
 
       {/* Mounted for the primary AND every tile, each scoped to its own session
