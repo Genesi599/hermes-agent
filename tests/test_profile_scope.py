@@ -108,3 +108,18 @@ def test_default_profile_home_is_the_root():
     root = profile_home_for("default")
     with profile_scope("default"):
         assert get_hermes_home() == root
+
+
+def test_soul_loads_from_target_profile_inside_scope():
+    """阶段 3 验收：作用域内 SOUL 加载指向目标 profile（而不是 launch profile）。"""
+    plotter_home = profile_home_for("plotter")
+    soul_file = plotter_home / "SOUL.md"
+    if not soul_file.exists():
+        pytest.skip("plotter profile 无 SOUL.md（本机未安装该 agent）")
+
+    from agent.prompt_builder import load_soul_md
+
+    with profile_scope("plotter"):
+        text = load_soul_md()
+        assert text, "scope 内应能读到目标 profile 的 SOUL.md"
+        assert plotter_home == get_hermes_home()
