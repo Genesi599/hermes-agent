@@ -8240,6 +8240,40 @@ function stopPoolBackend(profile) {
 
   backendPool.delete(profile)
   stopBackendChild(entry.process)
+  killProfileBackendProcesses(profile)
+}
+
+// Windows: a pool backend spawns a venv launcher that hands off to a
+// uv-managed python. Tree-killing from the launcher's pid misses the real
+// worker once the launcher has exited — observed 2026-09-21: reaped pool
+// entries left orphaned backends alive (8 profiles = 16 python processes, and
+// the idle reaper kept "reaping" entries that never died). Match by command
+// line instead: every process serving this profile carries `--profile <name>`.
+function killProfileBackendProcesses(profile) {
+  if (!IS_WINDOWS) {
+    return
+  }
+
+  const name = String(profile ?? '').trim()
+
+  if (!/^[A-Za-z0-9_-]+$/.test(name)) {
+    return
+  }
+
+  try {
+    execFileSync(
+      'powershell',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -match '--profile +${name}(\\s|$)' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`
+      ],
+      hiddenWindowsChildOptions({ stdio: 'ignore' })
+    )
+  } catch {
+    // Best effort — the tree-kill above may already have done it.
+  }
 }
 
 async function teardownPoolBackendAndWait(profile) {
@@ -8252,6 +8286,7 @@ async function teardownPoolBackendAndWait(profile) {
   backendPool.delete(profile)
 
   stopBackendChild(entry.process)
+  killProfileBackendProcesses(profile)
 
   await waitForBackendExit(entry.process)
 }
