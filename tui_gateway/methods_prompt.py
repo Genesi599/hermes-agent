@@ -401,7 +401,17 @@ def _(rid, params: dict) -> dict:
                 return
         _run_prompt_submit(rid, sid, session, text)
 
-    run_thread = threading.Thread(target=run_after_agent_ready, daemon=True)
+    # PROFILE SCOPE (shared-backend-pool 阶段1): 轮次跑在**新建线程**里, contextvar
+    # 不跨线程继承——作用域必须在这里进入。空/launch home 时不设 override(零回归);
+    # 跨 profile 时该线程内 get_hermes_home() 及其下游(配置/SOUL/记忆/skills)全部
+    # 指向会话所属 profile。
+    from tui_gateway.profile_scope import profile_home_scope
+
+    def _scoped_run() -> None:
+        with profile_home_scope(session.get("profile_home")):
+            run_after_agent_ready()
+
+    run_thread = threading.Thread(target=_scoped_run, daemon=True)
     # Keep a handle so session.interrupt can tell a live turn from a stuck
     # `running` flag (a turn that died without clearing it) and recover the latter.
     session["_run_thread"] = run_thread
@@ -835,7 +845,14 @@ def _(rid, params: dict) -> dict:
         finally:
             _clear_session_context(session_tokens)
 
-    threading.Thread(target=run, daemon=True).start()
+    # PROFILE SCOPE：后台任务线程同样在自己的 profile 作用域里跑（见 phase-1 说明）。
+    from tui_gateway.profile_scope import profile_home_scope as _profile_home_scope
+
+    def _scoped_background_run() -> None:
+        with _profile_home_scope(session.get("profile_home")):
+            run()
+
+    threading.Thread(target=_scoped_background_run, daemon=True).start()
     return _ok(rid, {"task_id": task_id})
 
 
@@ -948,7 +965,14 @@ def _(rid, params: dict) -> dict:
                 pass
             _clear_session_context(session_tokens)
 
-    threading.Thread(target=run, daemon=True).start()
+    # PROFILE SCOPE：同上——预览/后台任务线程的 HERMES_HOME 作用域。
+    from tui_gateway.profile_scope import profile_home_scope as _profile_home_scope2
+
+    def _scoped_preview_run() -> None:
+        with _profile_home_scope2(session.get("profile_home")):
+            run()
+
+    threading.Thread(target=_scoped_preview_run, daemon=True).start()
     return _ok(rid, {"task_id": task_id})
 
 

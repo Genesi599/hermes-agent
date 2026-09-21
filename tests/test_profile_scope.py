@@ -12,14 +12,39 @@ from pathlib import Path
 
 import pytest
 
-from hermes_constants import get_hermes_home
+from hermes_constants import get_hermes_home, get_process_hermes_home
 from tui_gateway.profile_scope import (
     bare_session_id,
     profile_home_for,
+    profile_home_scope,
     profile_of_session_key,
     profile_scope,
     session_key_for,
 )
+
+
+def test_home_scope_same_home_is_noop():
+    """与进程自身 home 相同 → 不设 override（零回归，逐字节不变）。"""
+    own = str(get_process_hermes_home())
+    before = get_hermes_home()
+    with profile_home_scope(own):
+        assert get_hermes_home() == before
+    with profile_home_scope(""):
+        assert get_hermes_home() == before
+    with profile_home_scope(None):
+        assert get_hermes_home() == before
+
+
+def test_home_scope_other_home_sets_and_restores():
+    """其他 home → 作用域内指向它，退出恢复。"""
+    own = str(get_process_hermes_home())
+    other = str(profile_home_for("plotter"))
+    if other == own:
+        return  # 进程自身就是该 profile 时无意义（等价 no-op 分支）
+    before = get_hermes_home()
+    with profile_home_scope(other):
+        assert get_hermes_home() == profile_home_for("plotter")
+    assert get_hermes_home() == before
 
 
 def test_session_key_launch_profile_stays_bare():

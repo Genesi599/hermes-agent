@@ -106,3 +106,40 @@ def profile_scope(profile: Optional[str]) -> Iterator[None]:
         yield
     finally:
         reset_hermes_home_override(token)
+
+
+@contextmanager
+def profile_home_scope(home: Optional[str]) -> Iterator[None]:
+    """以**已有的 profile_home 路径**设作用域（会话记录直接携带它，无需 profile 名）。
+
+    与 ``profile_scope`` 的区别：这里已经拿到 home（会话的 ``profile_home`` 字段），
+    省去按名字解析。**与进程自身 home 相同时不设 override**——日常单 profile 路径
+    （``profile_home`` 为空或就是 launch home）行为逐字节不变（零回归）。
+
+    线程纪律：contextvar 不跨线程继承，本作用域必须在**执行轮次的那个线程内部**
+    进入（``methods_prompt`` 的轮次线程），而不是调用方线程。
+    """
+    text = str(home or "").strip()
+
+    if not text:
+        yield
+        return
+
+    from hermes_constants import (
+        get_process_hermes_home,
+        reset_hermes_home_override,
+        set_hermes_home_override,
+    )
+
+    try:
+        if Path(text) == Path(get_process_hermes_home()):
+            yield
+            return
+    except Exception:
+        pass  # 无法比较时按"不同"处理（安全侧：显式设 override）
+
+    token = set_hermes_home_override(text)
+    try:
+        yield
+    finally:
+        reset_hermes_home_override(token)
