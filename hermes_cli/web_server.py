@@ -6652,8 +6652,20 @@ class SessionPromptSubmit(BaseModel):
     queued: bool = True
 
 
-def _submit_session_prompt_sync(session_id: str, body: SessionPromptSubmit) -> dict:
-    """Synchronous body of POST /api/sessions/{id}/prompt (runs off the loop)."""
+def _submit_session_prompt_sync(session_id: str, body: SessionPromptSubmit, profile: str | None = None) -> dict:
+    """Synchronous body of POST /api/sessions/{id}/prompt (runs off the loop).
+
+    ``profile``（阶段4）：非空且不同于进程自身时，整段提交在**该 profile 的
+    HERMES_HOME 作用域**内执行（配置/SOUL/记忆/凭据随作用域切换）。空值 = 进程
+    自身，行为与今天一致（零回归）。
+    """
+    from tui_gateway.profile_scope import profile_scope
+
+    with profile_scope(profile):
+        return _submit_session_prompt_scoped(session_id, body)
+
+
+def _submit_session_prompt_scoped(session_id: str, body: SessionPromptSubmit) -> dict:
     import time as _time
 
     from tui_gateway import server as gw
@@ -6777,12 +6789,20 @@ def _submit_session_prompt_sync(session_id: str, body: SessionPromptSubmit) -> d
 
 @app.post("/api/sessions/{session_id}/prompt")
 async def submit_session_prompt(
-    session_id: str, body: SessionPromptSubmit, request: Request
+    session_id: str,
+    body: SessionPromptSubmit,
+    request: Request,
+    profile: Optional[str] = None,
 ):
+    """共享后端进程池·阶段4：``?profile=`` 让同一进程按请求服务不同 profile。
+
+    不传 profile（或等于进程自身）时行为与今天逐字节一致（零回归）——作用域为空
+    时不设任何 override（见 tui_gateway.profile_scope）。
+    """
     if not _has_valid_session_token(request):
         raise HTTPException(status_code=401, detail="invalid session token")
     try:
-        return await asyncio.to_thread(_submit_session_prompt_sync, session_id, body)
+        return await asyncio.to_thread(_submit_session_prompt_sync, session_id, body, profile)
     except HTTPException:
         raise
     except Exception:
