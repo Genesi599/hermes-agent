@@ -86,6 +86,30 @@ def with_profile_scope(profile: str | None, fn):
 （override 不设、共享 `_db` 句柄照用、表键退化为单 profile）——保证日常单 profile
 使用零回归。
 
+### 3B. 会话键控施工图（`_sessions` 及等待表）
+
+**事实**：`_sessions` 以会话 id 为键（118 处读写点）；会话 id **只在一个 profile 内唯一**
+（实测 plotter 与 default 各有 `20260920_085919_01c1a1`）→ 共享进程里必须区分。
+
+**工具（已实现于 `tui_gateway/profile_scope.py`）**：
+- `session_key_for(profile, session_id)` —— launch/空 profile **保持裸 id**（零回归），
+  否则 `f"{profile}\x00{session_id}"`；
+- `bare_session_id(key)` / `profile_of_session_key(key)` —— 还原。
+
+**边界纪律（三处，**内部 118 处不用改**）**：
+1. **入口**：`session.resume` / `session.create` / `session.prompt` 等 handler 在拿到
+   外部 id 后，立即用 `session_key_for(profile, id)` 构造进程内键写入 `_sessions`；
+   此后内部一律用 `session["session_key"]` 自洽读写；
+2. **出站**：事件载荷 / `_session_info` / snapshot 需要裸 id 时经 `bare_session_id()`；
+3. **DB 调用**：一切 `SessionDB` 查找/写入传 `bare_session_id()`（库文件本身已是
+   per-profile，不需要复合键）。
+
+**收敛点清单**（改动集中在这几处，而非 118 处）：
+- `_find_live_session_by_key`（5 个调用点）——加 profile 感知；
+- `_session_lookup_key` / `_emit(...)` 的 sid 参数传递链；
+- 各 RPC handler 的入口（`methods_session.py` / `methods_prompt.py`）。
+
+
 
 ## 4. 迁移阶段（每阶段可独立测试与回退）
 

@@ -13,7 +13,35 @@ from pathlib import Path
 import pytest
 
 from hermes_constants import get_hermes_home
-from tui_gateway.profile_scope import profile_home_for, profile_scope
+from tui_gateway.profile_scope import (
+    bare_session_id,
+    profile_home_for,
+    profile_of_session_key,
+    profile_scope,
+    session_key_for,
+)
+
+
+def test_session_key_launch_profile_stays_bare():
+    """零回归：无 profile 时键就是裸会话 id（今天的单 profile 行为）。"""
+    assert session_key_for(None, "20260920_085919_01c1a1") == "20260920_085919_01c1a1"
+    assert session_key_for("", "abc") == "abc"
+
+
+def test_session_key_distinguishes_profiles_with_same_id():
+    """实测 plotter 与 default 存在同 id 会话——复合键必须区分。"""
+    a = session_key_for("plotter", "same_id")
+    b = session_key_for("scrna", "same_id")
+    assert a != b
+
+
+def test_session_key_roundtrip():
+    for profile in (None, "", "default", "plotter"):
+        sid = "20260920_085919_01c1a1"
+        key = session_key_for(profile, sid)
+        assert bare_session_id(key) == sid
+        expected = (profile or None) if profile else None
+        assert profile_of_session_key(key) == expected
 
 
 def test_no_scope_keeps_process_home():
