@@ -157,7 +157,15 @@ function mergeMessages(current: ChannelMessage[], next: ChannelMessage[]): Chann
 /** The room's composer. The DRAFT LIVES HERE, not in ChannelView: while it was
  *  one level up, every keystroke re-rendered the whole room (200 lines of
  *  markdown + a full MEDIA re-parse) — the typing lag this fixes. */
-function ChannelComposer({ channelId, onPosted }: { channelId: string; onPosted: () => void }) {
+function ChannelComposer({
+  channelId,
+  onPosted,
+  project
+}: {
+  channelId: string
+  onPosted: () => void
+  project: string
+}) {
   const { t } = useI18n()
   const d = t.desktop
   const [draft, setDraft] = useState('')
@@ -296,6 +304,7 @@ function ChannelComposer({ channelId, onPosted }: { channelId: string; onPosted:
         <Button disabled={sending || !draft.trim()} onClick={() => void send()} size="sm" variant="outline">
           {t.assistant.thread.channelPost}
         </Button>
+        <RoomModelSelect channelId={channelId} project={project} />
       </div>
     </>
   )
@@ -357,7 +366,6 @@ function ChannelViewImpl({ channel, className }: { channel: Channel; className?:
         <span className="text-[0.625rem] text-(--ui-text-quaternary)">
           {t.assistant.thread.channelSubtitle(channel.message_count)}
         </span>
-        <RoomModelSelect channelId={channel.id} project={channel.project} />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" data-selectable-text="true" ref={scrollRef}>
@@ -368,7 +376,7 @@ function ChannelViewImpl({ channel, className }: { channel: Channel; className?:
 
       <div className="shrink-0 border-t border-(--ui-stroke-tertiary) p-3">
         {error ? <p className="mb-2 text-[0.6875rem] text-red-500">{error}</p> : null}
-        <ChannelComposer channelId={channel.id} onPosted={reload} />
+        <ChannelComposer channelId={channel.id} onPosted={reload} project={channel.project} />
       </div>
     </div>
   )

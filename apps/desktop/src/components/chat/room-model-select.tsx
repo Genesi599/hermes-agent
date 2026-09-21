@@ -1,21 +1,30 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { postChannelMessage } from '@/lib/channels'
+import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { ChevronDown } from '@/lib/icons'
 import { readDesktopFileText } from '@/lib/desktop-fs'
 import { cn } from '@/lib/utils'
 
 /**
- * ROOM MODEL SELECT — one dropdown to switch EVERY participant's model
- * (Hermes + all the room's agents) at once (2026-09-20 杨航).
+ * ROOM MODEL PILL — the room composer's model switcher, styled after the
+ * private-chat composer's ModelPill (same pill chrome + dropdown + chevron;
+ * 2026-09-20 杨航: 「复用私聊聊天框右边的那种形式」). Semantics are the ROOM's,
+ * not a session's: picking a model switches EVERY participant (Hermes + this
+ * room's agents) at once — next turn onwards.
  *
- * Zero new bridge surface: choosing an option simply POSTS `/model <id>` into
- * the room as a normal human line — the channel router already handles that
- * command inline (agent_model.py rewrites every participant's config.yaml;
- * the reply receipt lands in the room for everyone to see). The option list
- * is parsed from the DEFAULT profile's config.yaml (providers ∪ models) with
- * the same line-level regexes the python side uses; a model some agent lacks
- * is skipped per-profile and called out in the receipt, never a silent miss.
+ * Zero new bridge surface: the pick POSTS `/model <id>` into the room as a
+ * human line; the channel router handles that command inline (agent_model.py
+ * rewrites every participant's config.yaml) and the receipt lands in the room.
+ * Options come from the DEFAULT profile's config.yaml (providers ∪ models),
+ * line-parsed the same way the python side does it.
  */
+
+const PILL = cn(
+  'h-(--composer-control-size) max-w-40 shrink-0 gap-1 rounded-md px-2 text-xs font-normal',
+  'text-(--ui-text-tertiary) hover:bg-(--chrome-action-hover) hover:text-foreground'
+)
 
 interface ModelConfig {
   current: null | string
@@ -28,7 +37,7 @@ function parseConfigYamlModels(text: string): ModelConfig {
   const available = new Set<string>()
   let inModelBlock = false
   let inProviders = false
-  let inModelsList: string | null = null
+  let inModelsList = false
 
   for (const line of lines) {
     if (/^model:\s*$/.test(line)) {
@@ -43,9 +52,6 @@ function parseConfigYamlModels(text: string): ModelConfig {
       if (line && !line.startsWith(' ')) {
         inModelBlock = false
       }
-      if (!inModelBlock) {
-        continue
-      }
     }
     if (/^providers:\s*$/.test(line)) {
       inProviders = true
@@ -54,7 +60,11 @@ function parseConfigYamlModels(text: string): ModelConfig {
     if (inProviders) {
       if (line && !line.startsWith(' ')) {
         inProviders = false
-        inModelsList = null
+        inModelsList = false
+        continue
+      }
+      if (/^    models:\s*$/.test(line)) {
+        inModelsList = true
         continue
       }
       const modelLine = line.match(/^      ([^:\s]+):\s*\{?\}?\s*$/)
@@ -62,13 +72,9 @@ function parseConfigYamlModels(text: string): ModelConfig {
         available.add(modelLine[1])
         continue
       }
-      if (/^    models:\s*$/.test(line)) {
-        inModelsList = 'open'
-        continue
-      }
       if (line.startsWith('    ') && !line.startsWith('      ') && !/^    models:/.test(line)) {
-        // A new provider entry resets the models list context.
-        inModelsList = /^    models:/.test(line) ? inModelsList : null
+        // A provider-level key other than `models:` ends the model list context.
+        inModelsList = false
       }
     }
   }
@@ -89,7 +95,7 @@ export function RoomModelSelect({ channelId, project }: { channelId: string; pro
         setConfig(parseConfigYamlModels(text))
       }
     } catch {
-      // No config readable → the select stays empty; /model typed by hand still works.
+      // No config readable → the pill stays hidden; /model typed by hand still works.
     }
   }, [])
 
@@ -104,14 +110,16 @@ export function RoomModelSelect({ channelId, project }: { channelId: string; pro
       }
       setBusy(true)
       try {
-        // Post as a human line: the router's /model handler does the switch
-        // and posts the receipt into the room right next to this control.
+        // Post as a human line: the router's /model handler switches every
+        // participant and posts the receipt right above this composer.
         await postChannelMessage(channelId, `/model ${modelId}`)
+        // The default config flips immediately — refresh the pill's label.
+        await load()
       } finally {
         setBusy(false)
       }
     },
-    [busy, channelId]
+    [busy, channelId, load]
   )
 
   if (config.available.length === 0) {
@@ -119,32 +127,26 @@ export function RoomModelSelect({ channelId, project }: { channelId: string; pro
   }
 
   return (
-    <select
-      className={cn(
-        'ml-auto h-6 max-w-40 truncate rounded-md border border-(--ui-stroke-tertiary)',
-        'bg-transparent px-1.5 text-[0.625rem] text-(--ui-text-secondary) outline-none',
-        busy && 'opacity-50'
-      )}
-      disabled={busy}
-      onChange={event => {
-        void change(event.target.value)
-        event.currentTarget.value = config.current ?? ''
-      }}
-      title={`统一切换「${project}」全部参与者的模型（含 Hermes；下一轮生效）`}
-      value={config.current ?? ''}
-    >
-      {config.current ? (
-        <option value={config.current}>{config.current}</option>
-      ) : (
-        <option value="">模型</option>
-      )}
-      {config.available
-        .filter(id => id !== config.current)
-        .map(id => (
-          <option key={id} value={id}>
-            {id}
-          </option>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button className={PILL} disabled={busy} size="sm" variant="ghost">
+          <span className="max-w-28 truncate">{config.current ?? '模型'}</span>
+          <ChevronDown className="size-3.5 shrink-0 opacity-70" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
+        {config.available.map(id => (
+          <DropdownMenuItem
+            key={id}
+            onSelect={() => {
+              void change(id)
+            }}
+          >
+            <span className={cn(id === config.current && 'font-semibold')}>{id}</span>
+            {id === config.current ? <span className="ml-auto text-[0.625rem] text-(--ui-text-quaternary)">当前</span> : null}
+          </DropdownMenuItem>
         ))}
-    </select>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
