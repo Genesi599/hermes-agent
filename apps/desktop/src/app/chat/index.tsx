@@ -31,7 +31,7 @@ import { migrateQueuedPrompts, parkQueuedPrompts } from '@/store/composer-queue'
 import { $pinnedSessionIds } from '@/store/layout'
 import { $petActive } from '@/store/pet'
 import { $petOverlayActive } from '@/store/pet-overlay'
-import { $activeGatewayProfile, $gatewaySwapTarget, $profiles, normalizeProfileKey } from '@/store/profile'
+import { $activeGatewayProfile, $gatewaySwapTarget, $profiles } from '@/store/profile'
 import {
   $contextSuggestions,
   $freshDraftReady,
@@ -110,51 +110,39 @@ interface ChatHeaderProps {
   selectedSessionId: null | string
 }
 
-/** 顶部复盘行左侧的归属标签：当前会话的**项目 + agent**（2026-09-21 杨航要求）。
+/** 顶部复盘行（2026-09-21 杨航要求 + 反馈修正）。
  *
- *  直接显示会话标题全文——形如「项目 · agent 名」（`星阶 · 流程搭档`、
- *  `Book · 维基管家`），项目与 agent 一起给出，避免在复盘/共享上下文里分不清
- *  归属。草稿/未命名等不含分隔符的标题不显示（宁可不显示，也不显示无意义的默认标题）。
+ *  **群聊/项目主会话**的标题只有项目名（`星阶`、`Book`）——群聊不做复盘，整行都不
+ *  渲染（连左侧归属一起），避免留下一条约 8px 的空白行。
+ *
+ *  **agent 会话**的标题是「项目 · agent」（`星阶 · 流程搭档`、`Book · 维基管家`、
+ *  也包括 **`星阶 · Hermes`**——Hermes 本身也是一个会干活的 agent）。这类会话：
+ *  左侧显示项目名 + agent 名，右侧显示复盘状态。
  */
-function SessionOwnerLabel({ selectedSessionId }: { selectedSessionId: string | null }) {
+function ExperienceReviewBar({ selectedSessionId }: { selectedSessionId: string | null }) {
   const sessions = useStore($sessions)
   const session =
     (selectedSessionId && sessions.find(row => sessionMatchesStoredId(row, selectedSessionId))) || null
   const title = (session ? sessionTitle(session) : '').trim()
 
-  // 只认「项目 · agent」形态的标题；默认标题（新建对话之类）不显示。
   if (!title.includes(' · ')) {
     return null
   }
 
   return (
-    <span
-      className="truncate text-[0.6875rem] text-(--ui-text-tertiary)"
-      data-testid="session-owner-label"
+    <div
+      className="flex h-8 shrink-0 items-center justify-between gap-3 border-b border-(--ui-stroke-tertiary) bg-(--ui-chat-surface-background) px-3"
+      data-testid="experience-review-bar"
     >
-      {title}
-    </span>
+      <span
+        className="truncate text-[0.6875rem] text-(--ui-text-tertiary)"
+        data-testid="session-owner-label"
+      >
+        {title}
+      </span>
+      <ExperienceReviewStatus />
+    </div>
   )
-}
-
-/** 复盘状态：仅 agent 私聊显示（2026-09-21 杨航反馈）。
- *
- *  群聊/项目主会话（归属 hermes / default profile）不做经验复盘，不该显示
- *  "复盘 n/20" 的轮次计数；各 agent 私聊（advisor/builder/plotter/… 各自 profile）
- *  才显示。判据用会话归属的 profile——比标题格式稳（后端 sessions.profile_name：
- *  群聊为 hermes，私聊为 agent 名）。
- */
-function SessionReviewStatus({ selectedSessionId }: { selectedSessionId: string | null }) {
-  const sessions = useStore($sessions)
-  const session =
-    (selectedSessionId && sessions.find(row => sessionMatchesStoredId(row, selectedSessionId))) || null
-  const key = normalizeProfileKey(session?.profile)
-
-  if (key === 'hermes' || key === 'default') {
-    return null
-  }
-
-  return <ExperienceReviewStatus />
 }
 
 function ChatHeader({
@@ -701,16 +689,8 @@ export const ChatView = memo(function ChatView({
           selectedSessionId={selectedSessionId}
         />
       )}
-      <div
-        className="flex h-8 shrink-0 items-center justify-between gap-3 border-b border-(--ui-stroke-tertiary) bg-(--ui-chat-surface-background) px-3"
-        data-testid="experience-review-bar"
-      >
-        {/* 当前会话所属 agent（2026-09-21 杨航要求）：顶部复盘行左侧直接标出归属，
-            省得在复盘/共享上下文里分不清这条是哪个 agent 的。标题形如
-            「项目 · agent 名」——取分隔符后的 agent 段；没有标题就不显示（不猜）。 */}
-        <SessionOwnerLabel selectedSessionId={selectedSessionId} />
-        <SessionReviewStatus selectedSessionId={selectedSessionId} />
-      </div>
+      {/* agent 会话（含 Hermes）：顶部显示「项目 · agent」+ 复盘状态；群聊整行不渲染。 */}
+      <ExperienceReviewBar selectedSessionId={selectedSessionId} />
 
       {/* Mounted for the primary AND every tile, each scoped to its own session
           so a tiled/background session's blocking prompt surfaces instead of
