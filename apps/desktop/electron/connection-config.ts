@@ -393,20 +393,25 @@ export interface ProfileBackendRoute {
 }
 
 /**
- * 共享后端进程池 · 阶段 4b（2026-09-21）：本地 profile 也共享 primary 后端。
+ * 共享后端进程池（阶段 4b/5，2026-09-21 杨航批准固化）：本地 profile 也共享
+ * primary 后端。
  *
- * 由环境变量 `HERMES_DESKTOP_SHARED_BACKEND=1` 开启（**回滚：去掉它重启**——唯一
- * 开关，不写配置、不改用户数据）。开启后本地非 primary profile 走 case 3 同款形态
- * （primary 后端 + 每请求 `?profile=` 作用域），gateway 侧由
- * `tui_gateway.profile_scope` 按请求切换 HERMES_HOME（配置/SOUL/记忆/凭据）。
- * 未开启时行为与今天逐字节一致。
+ * **默认开启**（实测：后端进程 18→4、内存 768MB、路由轮正常）。回滚 =
+ * `HERMES_DESKTOP_SHARED_BACKEND=0` 重启桌面——不写用户配置、不改用户数据。
+ * 开启后本地非 primary profile 走 globalRemote 同款形态（primary 后端 +
+ * 每请求 `?profile=` 作用域），gateway 侧由 `tui_gateway.profile_scope` 按请求
+ * 切换 HERMES_HOME（配置/SOUL/记忆/凭据）。
  */
 function sharedLocalBackendEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const raw = String(env.HERMES_DESKTOP_SHARED_BACKEND ?? '')
     .trim()
     .toLowerCase()
 
-  return raw === '1' || raw === 'true' || raw === 'yes'
+  if (raw === '0' || raw === 'false' || raw === 'no' || raw === 'off') {
+    return false
+  }
+
+  return true
 }
 
 /**

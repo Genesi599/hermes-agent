@@ -263,7 +263,19 @@ const ROUTES = [
 
 for (const route of ROUTES) {
   test(`resolveProfileBackendRoute: ${route.name}`, () => {
-    assert.deepEqual(resolveProfileBackendRoute(route.profile, route.opts), route.expected)
+    // 该表描述的是**回滚模式**（共享池显式关闭）下的既有路由行为；
+    // 默认（共享开启）的路由由下面专门的共享用例覆盖。
+    const prev = process.env.HERMES_DESKTOP_SHARED_BACKEND
+    process.env.HERMES_DESKTOP_SHARED_BACKEND = '0'
+    try {
+      assert.deepEqual(resolveProfileBackendRoute(route.profile, route.opts), route.expected)
+    } finally {
+      if (prev === undefined) {
+        delete process.env.HERMES_DESKTOP_SHARED_BACKEND
+      } else {
+        process.env.HERMES_DESKTOP_SHARED_BACKEND = prev
+      }
+    }
   })
 }
 
@@ -281,11 +293,12 @@ test('resolveProfileBackendRoute only tags a descriptor when the backend is shar
 
 // --- 共享进程池（阶段4b）开关 ---
 
-test('sharedLocalBackendEnabled: 只有显式真值开启', () => {
-  assert.equal(sharedLocalBackendEnabled({} as NodeJS.ProcessEnv), false)
-  assert.equal(sharedLocalBackendEnabled({ HERMES_DESKTOP_SHARED_BACKEND: '0' } as NodeJS.ProcessEnv), false)
+test('sharedLocalBackendEnabled: 默认开启, 显式假值关闭', () => {
+  assert.equal(sharedLocalBackendEnabled({} as NodeJS.ProcessEnv), true)
   assert.equal(sharedLocalBackendEnabled({ HERMES_DESKTOP_SHARED_BACKEND: '1' } as NodeJS.ProcessEnv), true)
-  assert.equal(sharedLocalBackendEnabled({ HERMES_DESKTOP_SHARED_BACKEND: 'TRUE' } as NodeJS.ProcessEnv), true)
+  assert.equal(sharedLocalBackendEnabled({ HERMES_DESKTOP_SHARED_BACKEND: '0' } as NodeJS.ProcessEnv), false)
+  assert.equal(sharedLocalBackendEnabled({ HERMES_DESKTOP_SHARED_BACKEND: 'FALSE' } as NodeJS.ProcessEnv), false)
+  assert.equal(sharedLocalBackendEnabled({ HERMES_DESKTOP_SHARED_BACKEND: 'off' } as NodeJS.ProcessEnv), false)
 })
 
 test('共享开启时本地 profile 走 primary + 作用域（原 pool 路由）', () => {
@@ -301,12 +314,21 @@ test('共享开启时本地 profile 走 primary + 作用域（原 pool 路由）
       process.env.HERMES_DESKTOP_SHARED_BACKEND = prev
     }
   }
-  // 关掉后回到 pool（零回归）
-  assert.deepEqual(resolveProfileBackendRoute('coder'), {
-    backend: 'pool',
-    descriptorProfile: null,
-    scopePath: false
-  })
+  // 显式关闭（=0）回落 pool —— 默认开启下的回滚路径
+  process.env.HERMES_DESKTOP_SHARED_BACKEND = '0'
+  try {
+    assert.deepEqual(resolveProfileBackendRoute('coder'), {
+      backend: 'pool',
+      descriptorProfile: null,
+      scopePath: false
+    })
+  } finally {
+    if (prev === undefined) {
+      delete process.env.HERMES_DESKTOP_SHARED_BACKEND
+    } else {
+      process.env.HERMES_DESKTOP_SHARED_BACKEND = prev
+    }
+  }
 })
 
 test('共享开启不影响 primary 自家与 remote 覆盖两条既有路由', () => {
@@ -378,19 +400,40 @@ test('pathWithGlobalRemoteProfile does not replace an explicit profile query', (
 })
 
 test('pathWithGlobalRemoteProfile skips local and per-profile remote override paths', () => {
-  assert.equal(
-    pathWithGlobalRemoteProfile('/api/model/info', 'iris', {
-      globalRemote: false,
-      profileRemoteOverride: false
-    }),
-    '/api/model/info'
-  )
+  // 回滚模式（共享池显式关闭）下本地路径不加 profile 参数——该用例锁定这一行为。
+  const prev = process.env.HERMES_DESKTOP_SHARED_BACKEND
+  process.env.HERMES_DESKTOP_SHARED_BACKEND = '0'
+  try {
+    assert.equal(
+      pathWithGlobalRemoteProfile('/api/model/info', 'iris', {
+        globalRemote: false,
+        profileRemoteOverride: false
+      }),
+      '/api/model/info'
+    )
+  } finally {
+    if (prev === undefined) {
+      delete process.env.HERMES_DESKTOP_SHARED_BACKEND
+    } else {
+      process.env.HERMES_DESKTOP_SHARED_BACKEND = prev
+    }
+  }
   assert.equal(
     pathWithGlobalRemoteProfile('/api/model/info', 'iris', {
       globalRemote: true,
       profileRemoteOverride: true
     }),
     '/api/model/info'
+  )
+})
+
+test('pathWithGlobalRemoteProfile 默认（共享开启）给本地 profile 路径加作用域', () => {
+  assert.equal(
+    pathWithGlobalRemoteProfile('/api/model/info', 'iris', {
+      globalRemote: false,
+      profileRemoteOverride: false
+    }),
+    '/api/model/info?profile=iris'
   )
 })
 
