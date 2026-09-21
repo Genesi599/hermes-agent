@@ -233,6 +233,55 @@ async def _lifespan(app: "FastAPI"):
     # Desktop's 10-second WebSocket ready-probe to time out (GH-73083).
     _warm_gateway_module()
 
+    # 清理上一进程遗留的孤儿 live 状态（2026-09-21）：进程被杀（桌面重启/崩溃）不会
+    # 收敛 live_status，库里留下 working + 已死的 owner pid（形如 tui:13936:...）→
+    # 界面在新鲜窗口内一直显示"运行中"，还可能被判 busy 拒新任务。实测一次桌面重启
+    # 残留 50 条（最老可追至前一天）。内联实现（不 import gateway），best-effort。
+    try:
+        import sqlite3 as _sqlite3
+        from pathlib import Path as _Path
+
+        import psutil as _psutil
+
+        from hermes_constants import get_hermes_home as _get_hermes_home
+
+        _alive_pids = set(_psutil.pids())
+        _hermes_root = _Path(_get_hermes_home())
+        _lease_cleaned = 0
+        for _db_path in [_hermes_root / "state.db", *sorted((_hermes_root / "profiles").glob("*/state.db"))]:
+            if not _db_path.exists():
+                continue
+            try:
+                _con = _sqlite3.connect(str(_db_path), timeout=10)
+                _stale_ids = []
+                for _sid, _owner in _con.execute(
+                    "select id, live_status_owner from sessions"
+                    " where live_status is not null and live_status != ''"
+                ).fetchall():
+                    _owner_pid = None
+                    if str(_owner or "").startswith("tui:"):
+                        try:
+                            _owner_pid = int(str(_owner).split(":")[1])
+                        except Exception:
+                            _owner_pid = None
+                    if _owner_pid and _owner_pid not in _alive_pids:
+                        _stale_ids.append(_sid)
+                if _stale_ids:
+                    _con.executemany(
+                        "update sessions set live_status=NULL, live_status_updated_at=NULL,"
+                        " live_status_owner=NULL where id=?",
+                        [(_sid,) for _sid in _stale_ids],
+                    )
+                    _con.commit()
+                    _lease_cleaned += len(_stale_ids)
+                _con.close()
+            except Exception:
+                continue
+        if _lease_cleaned:
+            _log.info("cleared %d orphan session lease(s) on startup", _lease_cleaned)
+    except Exception:
+        _log.debug("orphan lease cleanup skipped", exc_info=True)
+
     # Desktop-spawned backends (HERMES_DESKTOP=1) fire cron jobs themselves,
     # since the app has no gateway running the scheduler. Server `hermes
     # dashboard` is unaffected — it relies on its own gateway.

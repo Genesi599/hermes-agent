@@ -446,11 +446,18 @@ def main():
     # Live-apply skins Hermes activates mid-conversation.
     server._ensure_skin_watcher()
 
-    # Quietly continue sessions whose last turn was killed by the previous
-    # process exit (frequent custom-rebuild restarts). Backgrounded + best-
-    # effort; reuses the session.resume cold path, so the interrupted turn
-    # runs server-side with no UI opening.
-    server._auto_resume_interrupted_on_start()
+    # 清理上一进程遗留的孤儿 live 状态：进程被杀（桌面重启/崩溃）不会收敛
+    # live_status，库里留下 working + 已死的 owner pid → 界面一直显示"运行中"、
+    # 还可能被判 busy 拒新任务（实测一次重启残留 50 条）。best-effort，失败不影响启动。
+    try:
+        _n_orphans = server._clear_orphan_leases()
+        if _n_orphans:
+            logger.info("cleared %d orphan session lease(s) on startup", _n_orphans)
+    except Exception:
+        logger.debug("orphan lease cleanup failed", exc_info=True)
+
+    # 注：原 `server._auto_resume_interrupted_on_start()` 调用已移除——server 模块
+    # 没有该属性（恒抛 AttributeError 被吞），是历史重构后遗留的死调用。
 
     # Warm the /model picker's provider-models cache off-thread during this
     # idle window (gateway.ready sent, user about to type). Mirrors the classic

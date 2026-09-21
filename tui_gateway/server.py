@@ -9475,6 +9475,66 @@ def _session_lookup_key(session: dict, *, fallback: str = "") -> str:
     )
 
 
+def _clear_orphan_leases() -> int:
+    """清理 owner 进程已死的会话 live 状态（启动时 best-effort，2026-09-21）。
+
+    进程被杀（桌面重启/崩溃）不会收敛 ``live_status``：库里留下
+    ``status='working'`` + 已死的 owner pid（形如 ``tui:13936:178997339093:...``）
+    → 界面在新鲜窗口内一直显示"运行中"，还可能被判 "session busy" 拒新任务。
+    实测一次桌面重启残留 50 条（最老可追至前一天）。返回清理条数。
+    """
+    try:
+        import sqlite3
+        from pathlib import Path
+
+        import psutil
+
+        alive = set(psutil.pids())
+    except Exception:
+        return 0
+
+    try:
+        from hermes_constants import get_hermes_home
+
+        root = Path(get_hermes_home())
+        dbs = [root / "state.db"] + sorted((root / "profiles").glob("*/state.db"))
+    except Exception:
+        return 0
+
+    cleaned = 0
+    for db_path in dbs:
+        if not db_path.exists():
+            continue
+        try:
+            con = sqlite3.connect(str(db_path), timeout=10)
+            rows = con.execute(
+                "select id, live_status_owner from sessions "
+                "where live_status is not null and live_status != ''"
+            ).fetchall()
+            stale = []
+            for sid, owner in rows:
+                pid = None
+                if str(owner or "").startswith("tui:"):
+                    try:
+                        pid = int(str(owner).split(":")[1])
+                    except Exception:
+                        pid = None
+                if pid and pid not in alive:
+                    stale.append(sid)
+            if stale:
+                con.executemany(
+                    "update sessions set live_status=NULL, live_status_updated_at=NULL,"
+                    " live_status_owner=NULL where id=?",
+                    [(sid,) for sid in stale],
+                )
+                con.commit()
+                cleaned += len(stale)
+            con.close()
+        except Exception:
+            continue
+    return cleaned
+
+
 def _session_in_active_scope(session: dict) -> bool:
     """会话是否属于**当前 HERMES_HOME 作用域**（共享后端进程池·阶段5，2026-09-21）。
 
