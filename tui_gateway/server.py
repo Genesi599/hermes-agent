@@ -195,7 +195,8 @@ except (ValueError, TypeError):
 _WS_ORPHAN_REAP_GRACE_S = max(0.0, _ws_orphan_reap_grace)
 _DETAIL_SECTION_NAMES = ("thinking", "tools", "subagents", "activity")
 _DETAIL_MODES = frozenset({"hidden", "collapsed", "expanded"})
-_EXPERIENCE_REVIEW_USER_TURNS = 20
+# 每积累多少个用户轮次做一次经验复盘（杨航 2026-09-21 由 20 调整为 30）。
+_EXPERIENCE_REVIEW_USER_TURNS = 30
 _INTERNAL_TURN_PREFIX = "[HERMES_INTERNAL_"
 _EXPERIENCE_REVIEW_PREFIX = f"{_INTERNAL_TURN_PREFIX}EXPERIENCE_REVIEW]"
 
