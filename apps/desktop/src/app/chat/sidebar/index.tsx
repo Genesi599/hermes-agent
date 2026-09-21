@@ -193,28 +193,10 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
     icon: props => <Codicon name="robot" {...props} />,
     action: 'new-session',
     keybindActionId: 'session.new'
-  },
-  {
-    id: 'skills',
-    label: '',
-    icon: props => <Codicon name="symbol-misc" {...props} />,
-    route: SKILLS_ROUTE,
-    keybindActionId: 'nav.skills'
-  },
-  {
-    id: 'messaging',
-    label: '',
-    icon: props => <Codicon name="comment" {...props} />,
-    route: MESSAGING_ROUTE,
-    keybindActionId: 'nav.messaging'
-  },
-  {
-    id: 'artifacts',
-    label: '',
-    icon: props => <Codicon name="files" {...props} />,
-    route: ARTIFACTS_ROUTE,
-    keybindActionId: 'nav.artifacts'
   }
+  // Skills（Capabilities）/ Messaging / Artifacts 三个入口按杨航 2026-09-21 要求
+  // 从侧栏顶部导航隐藏。路由与命令面板入口仍在（SKILLS_ROUTE 等常量保留），
+  // 需要时把这三项加回来即可。
 ]
 
 // Two modes via the `compact` height variant (styles.css):
