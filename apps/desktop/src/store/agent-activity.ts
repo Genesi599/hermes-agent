@@ -3,6 +3,7 @@ import { atom } from 'nanostores'
 import { listAllProfileSessions } from '@/hermes'
 import { persistentAtom } from '@/lib/persisted'
 import { $selectedStoredSessionId, markSessionUnread } from '@/store/session'
+import { $focusedStoredSessionId } from '@/store/session-states'
 
 /**
  * AGENT ACTIVITY — how each agent's own conversation is doing, for the sidebar
@@ -190,10 +191,6 @@ export async function pollAgentWatch(watch: AgentWatch): Promise<void> {
     const key = agentWatchKey(watch)
     const previous = $agentActivity.get()[key]
 
-    // TEMP DEBUG (2026-09-20): the plotter chip stays idle while every input
-    // verifies working — log the poll's verdict to find the dead hop.
-    console.warn(`[agent-poll] key=${key} status=${picked.status}`)
-
     $agentActivity.set({
       ...$agentActivity.get(),
       [key]: { sessionId: picked.id, status: picked.status }
@@ -203,16 +200,25 @@ export async function pollAgentWatch(watch: AgentWatch): Promise<void> {
     // not "unread" — the user watched it land. Only a finish they were looking
     // AWAY from earns the dot.
     if (previous?.status === 'working' && picked.status === 'idle') {
+      // FOCUSED, not "selected": the user reads a room through a session TILE
+      // layered over the main view — `$selectedStoredSessionId` (the sidebar's
+      // selection) lags behind what is actually on screen, so a finish while
+      // the room tile was focused still marked it unread (2026-09-20: user in
+      // the Book room, room row still got the green dot).
+      // `$focusedStoredSessionId` is the same "what the window is showing"
+      // signal the taskbar unread badge already trusts.
+      const onScreen = $focusedStoredSessionId.get()
+
       // Room roster (project group chat): the finished turn is DELIVERED to
       // the room — the unread dot moves to the room row, not this chip. "Seen"
       // means the ROOM was on screen when it landed.
       const room = watch.roomSessionId?.trim()
 
       if (room) {
-        if (room !== $selectedStoredSessionId.get()) {
+        if (room !== onScreen) {
           markSessionUnread(room)
         }
-      } else if (picked.id !== $selectedStoredSessionId.get()) {
+      } else if (picked.id !== onScreen) {
         $agentUnreadAt.set({ ...$agentUnreadAt.get(), [key]: Date.now() })
       }
     }
