@@ -155,13 +155,14 @@ export function openSession(
   if (!focused && spendBlankDraftMainForTile()) {
     openSessionTile(storedSessionId, 'center')
 
-    // ONE-CLICK JUMP (2026-09-22 杨航报"要点两下才跳转"): stacking the tile
-    // without routing left the click feeling like "it only opened a tab" —
-    // the second click (tile now on screen → focusOpenSession → route) was
-    // what actually jumped. An in-place open means "take me there NOW", so
-    // route explicitly right after stacking. Idempotent (a fronted/routed
-    // target is a same-path no-op) and flicker-free: the tile's runtime is
-    // keep-alive, routing to it fronts the pane without re-resuming.
+    // ONE-CLICK JUMP + FOCUS (2026-09-22 杨航报"点两下才跳转"+侧栏不高亮):
+    // stacking the tile without moving focus left the view on the new chat
+    // while the readouts AND the sidebar highlight stayed on the PREVIOUS
+    // session — route homing skips tiles (focusOpenSession owns the move).
+    // Front the fresh tile so pane focus follows the user in ($focusedStored
+    // SessionId → sidebar highlight), then route. Both idempotent; the
+    // tile's runtime is keep-alive, so no re-resume / flicker.
+    focusOpenSession(storedSessionId)
     navigate(sessionRoute(storedSessionId))
 
     return

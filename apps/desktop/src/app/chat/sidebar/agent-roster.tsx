@@ -18,6 +18,7 @@ import { $cronJobs } from '@/store/cron'
 import { notifyError } from '@/store/notifications'
 import { ensureGatewayProfile } from '@/store/profile'
 import { $projectScope, ALL_PROJECTS, projectIdForCwd } from '@/store/projects'
+import { $focusedStoredSessionId } from '@/store/session-states'
 import { canOpenSessionWindow } from '@/store/windows'
 
 import { sessionDotClassName } from '../session-status-dot'
@@ -191,6 +192,14 @@ function AgentChip({
   const [lookedUpId, setLookedUpId] = useState<null | string>(null)
   const targetId = lookedUpId ?? polledId
 
+  // SELECTED (2026-09-22 杨航: 当前看的对话在侧栏要有高亮): agent
+  // conversations are filtered OUT of the session list — this chip is the
+  // only sidebar surface carrying them — so light the chip while the
+  // focused conversation (main or fronted tile, $focusedStoredSessionId)
+  // IS this agent's conversation, exactly like a session row's isSelected.
+  const focusedStoredId = useStoreSelector($focusedStoredSessionId, id => id)
+  const selected = targetId != null && focusedStoredId === targetId
+
   const lookUpTarget = () => {
     void resolveTarget().then(id => {
       if (id) {
@@ -266,8 +275,12 @@ function AgentChip({
   return (
     <ActionsContextMenu ariaLabel={r.agentActions} contentClassName="w-40" items={items}>
       <button
-        className="relative flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-[0.625rem] leading-4 text-(--ui-text-tertiary) transition-colors hover:bg-(--ui-control-active-background) hover:text-foreground"
+        className={cn(
+          'relative flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-[0.625rem] leading-4 text-(--ui-text-tertiary) transition-colors hover:bg-(--ui-control-active-background) hover:text-foreground',
+          selected && 'bg-(--ui-control-active-background) text-foreground'
+        )}
         data-agent={label}
+        data-agent-selected={selected ? 'true' : undefined}
         data-agent-state={running ? 'working' : unread ? 'unread' : 'idle'}
         onClick={event => {
           // The row underneath opens the PARENT session; this opens the AGENT.
