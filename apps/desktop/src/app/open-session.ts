@@ -155,6 +155,15 @@ export function openSession(
   if (!focused && spendBlankDraftMainForTile()) {
     openSessionTile(storedSessionId, 'center')
 
+    // ONE-CLICK JUMP (2026-09-22 杨航报"要点两下才跳转"): stacking the tile
+    // without routing left the click feeling like "it only opened a tab" —
+    // the second click (tile now on screen → focusOpenSession → route) was
+    // what actually jumped. An in-place open means "take me there NOW", so
+    // route explicitly right after stacking. Idempotent (a fronted/routed
+    // target is a same-path no-op) and flicker-free: the tile's runtime is
+    // keep-alive, routing to it fronts the pane without re-resuming.
+    navigate(sessionRoute(storedSessionId))
+
     return
   }
 

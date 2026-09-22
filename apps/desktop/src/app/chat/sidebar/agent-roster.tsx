@@ -1,10 +1,8 @@
 import { useStore } from '@nanostores/react'
 import type * as React from 'react'
 import { memo, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router'
 
 import { openSession } from '@/app/open-session'
-import { sessionRoute } from '@/app/routes'
 import { ActionsContextMenu, type MenuKit, renderActionItem } from '@/components/ui/actions-menu'
 import { CopyButton } from '@/components/ui/copy-button'
 import { listAllProfileSessions } from '@/hermes'
@@ -323,7 +321,6 @@ function AgentRosterImpl({
    *  conversation (`星阶` → `星阶 · Hermes`). */
   sessionTitle?: string
 }) {
-  const navigate = useNavigate()
   const jobs = useStore($cronJobs)
   const project = (sessionTitle ?? '').trim()
 
@@ -446,19 +443,9 @@ function AgentRosterImpl({
       // unscoped probe still hit the default store), so the resume lost its
       // profile, 404'd, and the UI fell back to the most recent session —
       // the user saw "点Hermes工程师跳到维基管家".
+      // One-click jump lives in openSession's in-place path now (it routes
+      // right after stacking the tile) — no per-caller navigate needed.
       onOpenSession(target)
-
-      // ONE-CLICK JUMP (2026-09-22 杨航报"要点两下才跳转"): openSession's
-      // in-place path is a TAB-BACKED switch — when main already holds a
-      // live conversation it only STACKS a tile (openSessionTile) and
-      // returns without navigating, so the first click felt like "just
-      // opened a tab" and only the second click (tile now on screen →
-      // focusOpenSession → route) jumped. A chip means "take me to this
-      // conversation NOW", so route explicitly after the open. Idempotent:
-      // when openSession already fronted/routed the target this is a
-      // same-path no-op; the tile's runtime is keep-alive, so this fronts
-      // it without re-resuming (no switch flicker).
-      navigate(sessionRoute(target))
 
       return
     }
