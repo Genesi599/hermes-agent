@@ -1083,6 +1083,40 @@ def _get_hermes_home() -> Path:
     return _hermes_home or get_hermes_home()
 
 
+def _default_store_session_exists(session_id: str) -> bool:
+    """True when ``session_id`` lives in the DEFAULT home's session store.
+
+    Delivery jobs declare ``agent_profile`` (so they execute inside that
+    agent's home, with ``_session_db`` pointing at the AGENT's store) while
+    their ``target_session_id`` points at a project group chat that lives in
+    the DEFAULT home. The scoped lookup alone therefore reports those targets
+    as "no longer exists", silently killing every agent delivery tick (296
+    false failures on 2026-09-22). Read-only direct probe — no SessionDB
+    (its no-arg constructor resolves the CURRENT home), no home override
+    (concurrent jobs share the ContextVar), no write lock on the store.
+    """
+    try:
+        from hermes_constants import _get_platform_default_hermes_home
+
+        default_db = _get_platform_default_hermes_home() / "state.db"
+
+        if not default_db.exists():
+            return False
+
+        import sqlite3
+
+        con = sqlite3.connect(f"file:{default_db}?mode=ro", uri=True, timeout=5.0)
+        try:
+            row = con.execute(
+                "select 1 from sessions where id = ? limit 1", (session_id,)
+            ).fetchone()
+            return row is not None
+        finally:
+            con.close()
+    except Exception:
+        return False
+
+
 _job_profile_stack: contextvars.ContextVar = contextvars.ContextVar(
     "cron_job_profile_scope_stack", default=None
 )
@@ -4094,9 +4128,20 @@ def run_job(
                 _session_db.resolve_resume_session_id(requested_target) or requested_target
             )
             if not _session_db.get_session(_target_session_id):
-                raise RuntimeError(
-                    f"Cron job '{job_name}' target Session '{requested_target}' no longer exists."
-                )
+                # CROSS-STORE TARGET (2026-09-22): a job that declares
+                # ``agent_profile`` (every delivery job) runs INSIDE that
+                # agent's home, so ``_session_db`` above is the AGENT's store —
+                # but the attached target (a project group chat) lives in the
+                # DEFAULT home's store. Declaring it "no longer exists" here
+                # silently killed every agent delivery tick (296 false
+                # failures on 2026-09-22). Look in the default store before
+                # failing; keep the scoped id when the scoped store owns it.
+                if _default_store_session_exists(requested_target):
+                    _target_session_id = requested_target
+                else:
+                    raise RuntimeError(
+                        f"Cron job '{job_name}' target Session '{requested_target}' no longer exists."
+                    )
 
             # Dialog-channel execution: submit the turn through the Desktop
             # backend's REST endpoint so it runs as a NORMAL conversation turn
