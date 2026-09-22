@@ -19,7 +19,11 @@ const TAG_CLASSES = {
   hr: 'my-2 border-(--ui-stroke-tertiary)',
   li: 'marker:text-muted-foreground/60',
   ol: 'mb-2 list-decimal pl-5 last:mb-0',
-  p: 'mb-1.5 leading-relaxed last:mb-0',
+  // `whitespace-pre-wrap` keeps single newlines and leading indentation that
+  // markdown would otherwise collapse into a space (soft breaks). Without it a
+  // plain-text tree / indented list pasted into a room line renders as one long
+  // line — the room reported exactly that on 2026-09-21 (steward's ASCII tree).
+  p: 'mb-1.5 leading-relaxed whitespace-pre-wrap last:mb-0',
   pre: 'mb-2 overflow-x-auto rounded-md border border-(--ui-stroke-tertiary) bg-background/70 p-2 font-mono text-[0.7rem] leading-[1.55] last:mb-0',
   td: 'px-2 py-1 align-top leading-snug',
   th: 'px-2 py-1 text-left text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground/80',
@@ -105,10 +109,18 @@ export const CompactMarkdown = memo(function CompactMarkdown({
   className?: string
   text: string
 }) {
+  // Leading indentation of a plain-text tree (or any hand-indented block) is
+  // eaten even with `whitespace-pre-wrap`: markdown trims line-leading spaces
+  // before the CSS ever sees them, so `└─` under `   └─` loses its level and the
+  // room reads "没有层级感" (2026-09-21). Converting runs of leading spaces to
+  // non-breaking spaces keeps the level visible without switching to <pre>
+  // (which would kill inline markdown and wrap differently).
+  const withKeptIndent = text.replace(/^( +)/gm, indent => '\u00a0'.repeat(indent.length))
+
   return (
     <div className={cn('max-w-full text-xs leading-relaxed text-muted-foreground/90 wrap-anywhere', className)}>
       <Streamdown components={COMPONENTS} controls={false} mode="static" parseIncompleteMarkdown={false}>
-        {text}
+        {withKeptIndent}
       </Streamdown>
     </div>
   )

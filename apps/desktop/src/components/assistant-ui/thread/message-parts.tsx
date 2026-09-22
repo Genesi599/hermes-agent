@@ -262,10 +262,17 @@ const ReasoningAccordionGroup: FC<{ children?: ReactNode; endIndex: number; star
     // of a key the same origin, so a turn that thinks three separate times used
     // to measure the second and third blocks from the first one's start and
     // report the running total as each block's duration.
+    // timerKey 不依赖 startIndex（2026-09-22 杨航报"思考框反复折叠展开"）：
+    // reasoning.available / moa.reference / moa.progress 等 replace=true 路径
+    // 会让 reasoning part 数组的 index 偏移，老 timerKey 被 unmount、新 timerKey
+    // mount，userOpen 被 reset 成 null、stickyOpen（基于 openAt 时间戳）也失效，
+    // `open = (null ?? pending) || stickyOpen` 在 pending=false 时折叠。
+    // 用 messageId 单独作 key 即可——同一 message 的所有 reasoning parts 共享
+    // 一个 disclosure 状态；不同 message 用不同 id 自然隔离。
     <ThinkingDisclosure
       messageRunning={messageRunning}
       pending={pending}
-      timerKey={`reasoning:${messageId}:${startIndex}`}
+      timerKey={`reasoning:${messageId}`}
     >
       {children}
     </ThinkingDisclosure>

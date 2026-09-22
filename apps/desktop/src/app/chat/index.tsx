@@ -308,13 +308,27 @@ function ChatRuntimeBoundary({
 
   const runtimeMessageRepository = useRuntimeMessageRepository(windowedMessages)
 
+  // 2026-09-22 杨航报"思考中 shimmer 不显示"：见 runtime-repository 注释。
+  // Hermes `$busy` 没驱动，assistant-ui 整个 thread 永远是 complete。
+  // 这里根据 messages 自己推断还有没有在跑（最后一条 assistant 是
+  // pending/interim/streaming → true），与 runtime-repository 里的判断一致。
+  const threadStillRunning = useMemo(() => {
+    for (let i = windowedMessages.length - 1; i >= 0; i--) {
+      const m = windowedMessages[i]
+      if (m.role !== 'assistant') continue
+      if (m.pending === true || m.interim === true) return true
+      return false
+    }
+    return false
+  }, [windowedMessages])
+
   const expandWindow = useCallback(() => setWindowPages(pages => pages + 1), [])
 
   const transcriptWindow = useMemo(() => ({ olderAvailable: windowed, expandWindow }), [expandWindow, windowed])
 
   const runtime = useIncrementalExternalStoreRuntime<ThreadMessage>({
     messageRepository: runtimeMessageRepository,
-    isRunning: busy,
+    isRunning: busy || threadStillRunning,
     setMessages: onThreadMessagesChange,
     onNew: async () => {
       // Submission is handled explicitly by ChatBar.
