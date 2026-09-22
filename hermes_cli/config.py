@@ -3378,20 +3378,77 @@ def _load_config_impl(*, want_deepcopy: bool) -> Dict[str, Any]:
         else:
             cache_sig = None
 
+        # PROFILE-FROM-DEFAULT: fold the default-home config signature into
+        # cache_sig BEFORE the cache-hit test. The write side below stores
+        # (*cache_sig, value, env_snapshot); for non-default profiles that is
+        # an 8-tuple (6-slot signature). Testing the unextended 4-signature
+        # against cached[:4] still hit, and then read cached[5] — the default
+        # config's SIZE, an int — as the env snapshot, crashing the second
+        # in-process load_config() with "'int' object has no attribute
+        # 'items'" for EVERY agent profile (2026-09-22 wikikeeper outage).
+        default_sig = (0, 0)
+        is_default_home = True
+        if cache_sig is not None:
+            hermes_home = get_hermes_home()
+            from hermes_constants import _get_platform_default_hermes_home as _default_home_resolver
+            default_home = _default_home_resolver()
+            try:
+                is_default_home = (hermes_home.resolve() == default_home.resolve())
+            except OSError:
+                is_default_home = (hermes_home == default_home)
+            if not is_default_home:
+                try:
+                    dst = (default_home / "config.yaml").stat()
+                    default_sig = (dst.st_mtime_ns, dst.st_size)
+                except OSError:
+                    default_sig = (0, 0)
+                if default_sig != (0, 0):
+                    cache_sig = (*cache_sig, default_sig[0], default_sig[1])
+
         cached = _LOAD_CONFIG_CACHE.get(path_key)
-        if cached is not None and cache_sig is not None and cached[:4] == cache_sig:
+        if (
+            cached is not None
+            and cache_sig is not None
+            and len(cached) == len(cache_sig) + 2
+            and cached[:len(cache_sig)] == cache_sig
+        ):
             # File signatures match, but the cached expansion is only valid if
             # every ${VAR} it was expanded against still has the same value.
             # Without this, a load_config() that ran before load_hermes_dotenv()
             # pins unexpanded literals (e.g. auxiliary.<task>.api_key) for the
             # life of the process (#58514).
-            env_snapshot = cached[5] if len(cached) > 5 else {}
+            env_snapshot = cached[-1]
             if all(os.environ.get(k) == v for k, v in env_snapshot.items()):
-                return copy.deepcopy(cached[4]) if want_deepcopy else cached[4]
+                return copy.deepcopy(cached[-2]) if want_deepcopy else cached[-2]
 
         config = copy.deepcopy(DEFAULT_CONFIG)
 
         if user_sig is not None:
+            # PROFILE-FROM-DEFAULT INHERITANCE (2026-09-21 杨航):
+            # profile 的 config.yaml 现在仅作为差异化覆盖；缺省字段自动从
+            # HERMES_HOME 根（=default profile）的 config.yaml 继承。
+            # 这样加新 provider / 改 default 配置不需要再 11 份都同步。
+            # - profile 的同名字段覆盖 default；
+            # - default 没声明、profile 自己声明的（feishu/weixin/webhook/
+            #   model.default 等）原样保留；
+            # - profile 自己没声明 model 块时，自动使用 default 的 model。
+            #
+            # 缓存签名也加入 default 的 (mtime, size)，让 default 改动能立刻
+            # 失效（否则 cache 会“看不到” default 的更新）。
+            # (default_sig / is_default_home / default_home are computed above
+            #  the cache-hit test — signature folding already happened there.)
+            if not is_default_home:
+                default_cfg_path = default_home / "config.yaml"
+                if default_sig != (0, 0):
+                    try:
+                        with open(default_cfg_path, encoding="utf-8") as f:
+                            default_user = fast_safe_load(f) or {}
+                        if isinstance(default_user, dict):
+                            config = _deep_merge(config, default_user)
+                    except Exception as e:
+                        # default 解析失败时**不能让 profile 跟着崩**——
+                        # 仅记录警告，继续按 profile 自己的配置加载。
+                        _warn_config_parse_failure(default_cfg_path, e, fallback="defaults")
             try:
                 with open(config_path, encoding="utf-8") as f:
                     user_config = fast_safe_load(f) or {}
@@ -3439,9 +3496,9 @@ def _load_config_impl(*, want_deepcopy: bool) -> Dict[str, Any]:
                         # signature and triggers a normal reload.
                         _empty_env: Dict[str, Optional[str]] = {}
                         _LOAD_CONFIG_CACHE[path_key] = (
-                            cache_sig[0], cache_sig[1],
-                            cache_sig[2], cache_sig[3],
-                            lkg_copy, _empty_env,
+                            *cache_sig,
+                            lkg_copy,
+                            _empty_env,
                         )
                     return copy.deepcopy(lkg_copy) if want_deepcopy else lkg_copy
 
