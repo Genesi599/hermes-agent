@@ -2,7 +2,7 @@ import { type MutableRefObject, useEffect, useRef } from 'react'
 
 import { isNewChatRoute } from '@/app/routes'
 import { setResumeExhaustedSessionId } from '@/store/session'
-import { markSelectionRestore } from '@/store/session-states'
+import { $sessionTiles, markSelectionRestore } from '@/store/session-states'
 
 interface RouteResumeOptions {
   activeSessionId: string | null
@@ -142,7 +142,23 @@ export function useRouteResume({
       // pathname flips to / (same null+/:sid signature). freshDraftReady is the
       // discriminator: it's true while heading into a blank new chat, false when
       // genuinely stranded on a routed session.
-      const stuckOnRoutedSession = routedSessionId !== selectedStoredSessionIdRef.current && !freshDraftReady
+      //
+      // TILE-ROUTED IS NOT STRANDED (2026-09-22 route-tug-of-war fix): since
+      // openSession routes to an ALREADY-OPEN tile (one-click jump), the hash
+      // can legitimately name a session whose content lives in a TILE while
+      // main's selection stays on its own chat. That state kept re-firing this
+      // self-heal, which resumed the tile's session INTO MAIN on every dep
+      // change — while the tile's own runtime (often a live auto-continue
+      // turn) pushed state back. The resulting navigate/resume tug-of-war
+      // yanked the user off whatever they had just opened ("agent 点不开/
+      // 被拽走", reproducible only while a tile session was actively working).
+      // A routed session that is an open tile is loaded BY THE TILE; main
+      // must not "rescue" it.
+      const routedIsOpenTile = $sessionTiles
+        .get()
+        .some(tile => tile.storedSessionId === routedSessionId)
+      const stuckOnRoutedSession =
+        routedSessionId !== selectedStoredSessionIdRef.current && !freshDraftReady && !routedIsOpenTile
 
       // Resume when the route meaningfully changed, the gateway just opened, or
       // we're stranded on a routed session that never loaded. The first two
