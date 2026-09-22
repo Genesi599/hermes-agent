@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils'
 import { $agentActivity, $agentUnreadAt, agentWatchKey, type AgentWatch, markAgentRead, registerAgentWatch } from '@/store/agent-activity'
 import { $cronJobs } from '@/store/cron'
 import { notifyError } from '@/store/notifications'
-import { ensureGatewayProfile } from '@/store/profile'
+import { ensureGatewayProfile, normalizeProfileKey, $activeGatewayProfile } from '@/store/profile'
 import { $projectScope, ALL_PROJECTS, projectIdForCwd } from '@/store/projects'
 import { canOpenSessionWindow } from '@/store/windows'
 
@@ -434,6 +434,20 @@ function AgentRosterImpl({
     const target = await resolveAgentTarget(agent)
 
     if (target && onOpenSession) {
+      // CROSS-PROFILE OPEN (2026-09-22): an agent's conversation lives in ITS
+      // profile's store. Opening its id while the active gateway serves
+      // another profile fails silently and the UI falls back to the most
+      // recent session — the user saw "点A股分析师跳到了胸腺项目". Swap the
+      // gateway to the agent's profile BEFORE opening, so the id resolves
+      // against the store that actually holds it. Default-profile chips skip
+      // the swap (their store is the active one), and ensureGatewayProfile
+      // itself no-ops when the target is already active.
+      const key = normalizeProfileKey(profile)
+
+      if (key !== 'default' && normalizeProfileKey($activeGatewayProfile.get()) !== key) {
+        await ensureGatewayProfile(profile).catch(() => undefined)
+      }
+
       onOpenSession(target)
 
       return
