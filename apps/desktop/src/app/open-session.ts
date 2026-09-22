@@ -168,7 +168,15 @@ export function openSession(
     return
   }
 
-  if (focusedSessionNeedsRoute(focused, $workspaceIsPage.get())) {
+  if (focusedSessionNeedsRoute(focused, $workspaceIsPage.get()) || focused === 'tile') {
+    // TILE-FOCUSED ROUTE SYNC (2026-09-22 杨航报"第一下跳到胸腺项目"): a
+    // chip/row click on a session that is ALREADY an open tile made
+    // focusOpenSession front the pane, but needsRoute treats a fronted tile
+    // as "no route change" — the hash (and everything reading it) stayed on
+    // the previous main chat, so the first click felt like "jumped to the
+    // wrong project" and only the second click aligned. Route to the
+    // focused tile's session too: verified stable (no bounce-back, no tile
+    // yank — selectionHomesToWorkspace keeps stacked tiles stacked).
     navigate(sessionRoute(storedSessionId))
   }
 }
