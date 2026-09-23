@@ -5,7 +5,7 @@ import { memo, useEffect, useState } from 'react'
 import { openSession } from '@/app/open-session'
 import { ActionsContextMenu, type MenuKit, renderActionItem } from '@/components/ui/actions-menu'
 import { CopyButton } from '@/components/ui/copy-button'
-import { listAllProfileSessions } from '@/hermes'
+import { getSession, listAllProfileSessions } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { channelParticipants, roomBySession, type Channel } from '@/lib/channels'
 import { DEFAULT_AGENT_SPEAKER } from '@/lib/chat-identity'
@@ -19,6 +19,7 @@ import { notifyError } from '@/store/notifications'
 import { ensureGatewayProfile } from '@/store/profile'
 import { $projectScope, ALL_PROJECTS, projectIdForCwd } from '@/store/projects'
 import { $focusedStoredSessionId } from '@/store/session-states'
+import { $sessions } from '@/store/session'
 import { canOpenSessionWindow } from '@/store/windows'
 
 import { sessionDotClassName } from '../session-status-dot'
@@ -456,8 +457,34 @@ function AgentRosterImpl({
       // unscoped probe still hit the default store), so the resume lost its
       // profile, 404'd, and the UI fell back to the most recent session —
       // the user saw "点Hermes工程师跳到维基管家".
-      // One-click jump lives in openSession's in-place path now (it routes
-      // right after stacking the tile) — no per-caller navigate needed.
+      //
+      // PRE-SEED THE CACHE (2026-09-23): an agent's conversation is often a
+      // 0-message session that the sidebar list filters out (min_messages=1),
+      // so resolveStoredSession's FIRST step (the $sessions cache lookup)
+      // misses and it falls through to the slow cross-profile probe ladder —
+      // a serial HTTP GET per non-active profile (~13 profiles). That took
+      // tens of seconds and the user watched "打开了但一直加载". We already
+      // KNOW the profile here, so fetch the row once and inject it into
+      // $sessions: the probe's first step then hits, resumeSession gets its
+      // profile immediately, and the resume starts without any probing.
+      if (agent.profile && agent.profile !== 'default') {
+        try {
+          const row = await getSession(target, agent.profile)
+
+          if (row) {
+            row.profile = agent.profile
+            const current = $sessions.get()
+
+            if (!current.some(session => session.id === target)) {
+              $sessions.set([row, ...current])
+            }
+          }
+        } catch {
+          // Best-effort pre-seed: on failure resumeSession's own probe
+          // ladder still works (just slower).
+        }
+      }
+
       onOpenSession(target)
 
       return
