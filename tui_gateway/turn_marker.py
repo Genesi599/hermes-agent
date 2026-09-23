@@ -137,6 +137,30 @@ def clear_turn_marker(home: Path | str, session_key: str) -> None:
         logger.debug("failed to clear turn marker for %s", session_key, exc_info=True)
 
 
+def bump_turn_marker_attempts(home: Path | str, session_key: str, add: int = 1) -> None:
+    """Add `add` to a marker's attempt count in place.
+
+    The auto-continue crash-loop breaker reads `attempts` on the next resume;
+    a scheduled continuation that FAILED before dispatching (agent build
+    error / wait timeout) must still count as a spent attempt, or the same
+    interrupted turn is retried as attempt 1 forever (2026-09-23 loop).
+    """
+    if not session_key or int(add) <= 0:
+        return
+    try:
+        with _lock:
+            path = _marker_path(home)
+            entries = _load(path)
+            entry = entries.get(session_key)
+            if not isinstance(entry, dict):
+                return
+            entry["attempts"] = max(0, int(entry.get("attempts") or 0)) + int(add)
+            entries[session_key] = entry
+            _store(path, entries)
+    except Exception:
+        logger.debug("failed to bump turn marker attempts for %s", session_key, exc_info=True)
+
+
 def read_turn_marker(home: Path | str, session_key: str) -> dict[str, Any] | None:
     """The marker left by a turn that never concluded, or None."""
     if not session_key:

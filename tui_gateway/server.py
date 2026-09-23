@@ -39,6 +39,7 @@ from agent.skill_commands import describe_skill_invocation
 from agent.conversation_loop import INTERRUPT_WAITING_FOR_MODEL_PREFIX
 from tui_gateway import git_probe
 from tui_gateway.turn_marker import (
+    bump_turn_marker_attempts,
     clear_turn_marker,
     read_turn_marker,
     record_turn_start,
@@ -8342,7 +8343,15 @@ def _maybe_schedule_auto_continue(sid: str, session: dict, session_key: str) -> 
             logger.warning("auto-continue agent build failed for %s", sid, exc_info=True)
             err = {"error": {"message": "agent build failed"}}
         if err:
-            # Leave the marker: the next resume retries (bounded by attempts).
+            # Leave the marker so the next resume CAN retry — but BUMP the
+            # attempt count first. The old comment claimed "bounded by
+            # attempts" while this path never incremented it, so a session
+            # whose agent build kept failing (or whose wait timed out) was
+            # retried as attempt 1 forever — each retry restarted the turn's
+            # reasoning from scratch, which the user watched as "thinking
+            # disappears, then it thinks again" (2026-09-23, session
+            # 20260922_112026_278e05 looped three schedules in 11s).
+            bump_turn_marker_attempts(home, session_key, session.get("_auto_continue_attempt") or 1)
             session["_auto_continue_scheduled"] = False
             return
         with session["history_lock"]:
