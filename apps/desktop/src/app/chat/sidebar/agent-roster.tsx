@@ -436,6 +436,17 @@ function AgentRosterImpl({
       ? sessionToOpenForAgent(agent.profile, project && agent.label ? `${project} · ${agent.label}` : '')
       : Promise.resolve<null | string>(null)
 
+  // TIMEOUT GUARD (2026-09-23): after the desktop has been running a while,
+  // a stale secondary gateway can leave `listAllProfileSessions`' IPC promise
+  // pending forever — the `await` in openAgent then hangs, the click does
+  // nothing, and the user reports "点不动" (sixth recurrence today). Race
+  // every async step against a deadline so the chain always completes.
+  const withTimeout = <T,>(promise: Promise<T>, ms: number, fallback: T): Promise<T> =>
+    Promise.race([
+      promise,
+      new Promise<T>(resolve => setTimeout(() => resolve(fallback), ms))
+    ])
+
   const openAgent = async (agent: SessionAgent) => {
     const profile = agent.profile
 
@@ -445,7 +456,7 @@ function AgentRosterImpl({
 
     markAgentRead(profile)
 
-    const target = await resolveAgentTarget(agent)
+    const target = await withTimeout(resolveAgentTarget(agent), 8000, null)
 
     if (target && onOpenSession) {
       // CROSS-PROFILE OPEN: do NOT swap the gateway here. resumeSession owns
@@ -469,7 +480,7 @@ function AgentRosterImpl({
       // profile immediately, and the resume starts without any probing.
       if (agent.profile && agent.profile !== 'default') {
         try {
-          const row = await getSession(target, agent.profile)
+          const row = await withTimeout(getSession(target, agent.profile), 5000, null)
 
           if (row) {
             row.profile = agent.profile
