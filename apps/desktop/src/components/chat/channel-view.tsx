@@ -1,17 +1,21 @@
 import { type ClipboardEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useStore } from '@nanostores/react'
 
 import { SpeakerChip } from '@/components/assistant-ui/thread/speaker-chip'
 import { CompactMarkdown } from '@/components/chat/compact-markdown'
 import { RoomModelSelect } from '@/components/chat/room-model-select'
 import { ZoomableImage } from '@/components/chat/zoomable-image'
 import { Button } from '@/components/ui/button'
+import { Codicon } from '@/components/ui/codicon'
 import { useI18n } from '@/i18n'
 import { type Channel, type ChannelMessage, fetchChannelMessages, postChannelMessage } from '@/lib/channels'
 import { DEFAULT_AGENT_SPEAKER, USER_SPEAKER } from '@/lib/chat-identity'
 import { splitMediaRefs } from '@/lib/chat-messages'
 import { blobExtension, mediaKind, mediaName, resolveMediaDisplaySrc } from '@/lib/media'
+import { triggerHaptic } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 import { notifyError } from '@/store/notifications'
+import { onScrollToBottomRequest, requestScrollToBottom, resetThreadScroll, setThreadAtBottom, $threadJumpButtonVisible } from '@/store/thread-scroll'
 
 /**
  * CHANNEL VIEW — the room itself.
@@ -315,6 +319,26 @@ function ChannelViewImpl({ channel, className }: { channel: Channel; className?:
   const [messages, setMessages] = useState<ChannelMessage[]>([])
   const [error, setError] = useState<null | string>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  // Sticky-bottom for the room: the user is "at the bottom" until they scroll
+  // meaningfully up. Mirrors what the private thread's use-stick-to-bottom
+  // does for its own list — this component feeds the same store so the
+  // floating jump control (below) lights up with identical semantics.
+  const atBottomRef = useRef(true)
+
+  const handleScroll = useCallback(() => {
+    const node = scrollRef.current
+
+    if (!node) {
+      return
+    }
+
+    const isAtBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 80
+
+    atBottomRef.current = isAtBottom
+    setThreadAtBottom(isAtBottom)
+  }, [])
+
+  const jumpVisible = useStore($threadJumpButtonVisible)
 
   const load = useCallback(async () => {
     try {
@@ -347,10 +371,36 @@ function ChannelViewImpl({ channel, className }: { channel: Channel; className?:
   useEffect(() => {
     const node = scrollRef.current
 
-    if (node) {
+    // STICKY BOTTOM (2026-09-23): follow new lines ONLY while the user is
+    // already at the bottom. The old unconditional jump yanked the viewport
+    // down every time anyone posted — reading room history was impossible
+    // while agents were delivering. When the user has scrolled up, leave the
+    // viewport alone; the floating jump button is the way back down.
+    if (node && atBottomRef.current) {
       node.scrollTop = node.scrollHeight
     }
   }, [messages.length])
+
+  // Bridge to the shared jump control: the room and the private thread are
+  // rendered exclusively (`room ? <ChannelView/> : <Thread/>`), so reusing
+  // the thread-scroll store/handlers is safe — only one scroller registers
+  // at a time.
+  useEffect(() => {
+    const off = onScrollToBottomRequest(() => {
+      const node = scrollRef.current
+
+      if (node) {
+        atBottomRef.current = true
+        node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' })
+        setThreadAtBottom(true)
+      }
+    })
+
+    return () => {
+      off()
+      resetThreadScroll()
+    }
+  }, [])
 
   const reload = useCallback(() => {
     void load()
@@ -368,10 +418,29 @@ function ChannelViewImpl({ channel, className }: { channel: Channel; className?:
         </span>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" data-selectable-text="true" ref={scrollRef}>
-        {messages.map(line => (
-          <ChannelLine key={line.id} line={line} />
-        ))}
+      {/* Relative wrapper so the floating jump control positions against the
+          viewport, not the scrolling content (an absolute child INSIDE the
+          scroller would ride along with the messages). */}
+      <div className="relative min-h-0 flex-1">
+        <div className="h-full overflow-y-auto px-4 py-3" data-selectable-text="true" onScroll={handleScroll} ref={scrollRef}>
+          {messages.map(line => (
+            <ChannelLine key={line.id} line={line} />
+          ))}
+        </div>
+        {jumpVisible ? (
+          <button
+            aria-label={t.assistant.thread.scrollToBottom}
+            className="thread-jump-button absolute left-1/2 bottom-4 z-20 grid size-8 place-items-center rounded-full border border-border/65 bg-(--composer-fill) text-muted-foreground backdrop-blur-[0.75rem] [-webkit-backdrop-filter:blur(0.75rem)] hover:text-foreground"
+            data-state="in"
+            onClick={() => {
+              triggerHaptic('selection')
+              requestScrollToBottom()
+            }}
+            type="button"
+          >
+            <Codicon name="arrow-down" size="1rem" />
+          </button>
+        ) : null}
       </div>
 
       <div className="shrink-0 border-t border-(--ui-stroke-tertiary) p-3">
