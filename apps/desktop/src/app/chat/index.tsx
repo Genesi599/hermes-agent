@@ -422,6 +422,14 @@ export const ChatView = memo(function ChatView({
   // place where everyone speaks, not a conversation with one assistant, so this
   // surface shows the channel's lines (and posting is an insert, not a turn).
   const [room, setRoom] = useState<Channel | null>(null)
+  // Which session the room currently on screen belongs to.
+  // SWITCH-RESIDUE GUARD (2026-09-24, 杨航报"标题换了、内容还是胸腺项目群聊"): the
+  // effect below returns early while a turn streams, so a session switch during
+  // `busy` used to keep the PREVIOUS session's room painted — the title/route had
+  // already moved, so the pane showed another project's group chat until the turn
+  // settled (it self-healed, which is why it "又好了"). Remember the owner so the
+  // busy branch can drop a stale room instead of waiting for the turn to end.
+  const roomOwnerRef = useRef<null | string>(null)
   const resumeExhaustedSessionId = useStore($resumeExhaustedSessionId)
 
   // Durable composer/queue scope (lineage root) so auto-compression tip rotation
@@ -577,11 +585,22 @@ export const ChatView = memo(function ChatView({
   useEffect(() => {
     if (!selectedSessionId || !roomTitle || selectedIsAgentSession) {
       setRoom(null)
+      roomOwnerRef.current = null
 
       return
     }
 
     if (busy || awaitingResponse) {
+      // A session switch during a live turn must not leave the PREVIOUS
+      // session's room on screen: title/route already moved, so the pane would
+      // show another project's group chat until the turn settles (it used to
+      // self-heal, which is why it looked intermittent). Drop the stale room
+      // now; the next pass (turn finished) rebinds for the new session.
+      if (roomOwnerRef.current && roomOwnerRef.current !== selectedSessionId) {
+        setRoom(null)
+        roomOwnerRef.current = null
+      }
+
       return
     }
 
@@ -591,11 +610,13 @@ export const ChatView = memo(function ChatView({
       .then(channel => {
         if (live) {
           setRoom(channel)
+          roomOwnerRef.current = channel ? selectedSessionId : null
         }
       })
       .catch(() => {
         if (live) {
           setRoom(null)
+          roomOwnerRef.current = null
         }
       })
 
