@@ -210,3 +210,27 @@ export const $sessionColorById = computed(
 export function sessionColorFor(session: null | SessionInfo | undefined): string | undefined {
   return session ? $sessionColorById.get()[session.id] : undefined
 }
+
+/**
+ * A session's color computed from the row ALONE, for the first paint.
+ *
+ * `$sessionColorById` is derived from the whole (paged) session list, so a row
+ * that renders before the list settles has no resolved entry and paints in the
+ * default text color — the user then watches it flip to its family color a beat
+ * later ("一开始是白色，点它就变绿色"). This provisional color uses the SAME
+ * hash + palette as `automaticColorsByFamily`'s first attempt, so it agrees
+ * with the final assignment whenever that family's first candidate is free
+ * (the common case; the settled map still wins the moment it resolves).
+ * Branches need the list to find their root — for those the provisional value
+ * is the row's own pin id, which the map replaces once the parent arrives.
+ */
+export function provisionalSessionColor(session: null | SessionInfo | undefined): string | undefined {
+  if (!session) {
+    return undefined
+  }
+
+  const familyId = session.parent_session_id?.trim() ? session.id : sessionPinId(session)
+  const hash = stableColorHash(familyId)
+
+  return SESSION_COLOR_PALETTE[hash % SESSION_COLOR_PALETTE.length]
+}

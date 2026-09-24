@@ -30,7 +30,7 @@ import { $sessionDotStateById, hasLiveTurn, showsRunningArc } from '@/store/sess
 import { sessionCostUsd } from '@/store/sidebar-archive'
 import { $reviewActivityBySessionId, $sessions, $unreadFinishedSessionIds, setSessions } from '@/store/session'
 import { notify, notifyError } from '@/store/notifications'
-import { $sessionColorById } from '@/store/session-color'
+import { $sessionColorById, provisionalSessionColor } from '@/store/session-color'
 import { $attentionSessionIds } from '@/store/session-states'
 
 import { SessionStatusDot } from '../session-status-dot'
@@ -208,7 +208,7 @@ function SidebarSessionRowImpl({
   // True when a clarify prompt in this session is waiting on the user.
   const needsInput = useStore($attentionSessionIds).includes(session.id)
   const isUnread = useStore($unreadFinishedSessionIds).includes(session.id)
-  const sessionColor = useStore($sessionColorById)[session.id]
+  const sessionColor = useStore($sessionColorById)[session.id] ?? provisionalSessionColor(session)
   const isMergeWaiting = session.branch_merge_status === 'waiting_for_parent'
   const branchTaskStatus = session.branch_task_status
 
