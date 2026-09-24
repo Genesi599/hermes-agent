@@ -996,7 +996,16 @@ export function useSessionActions({
           // transcript immediately instead of blocking the switch on _make_agent
           // (MCP discovery / prompt build), and the agent pre-warms in the
           // background while the prefetch above paints the transcript.
-          ...(watchWindow ? { lazy: true } : { omit_messages: true }),
+          //
+          // FALLBACK MESSAGES (2026-09-23): do NOT pass omit_messages — the
+          // resume payload is the ONLY message source when the REST prefetch
+          // misses (IPC hiccup / cross-profile route / transient 4xx). With it
+          // omitted, that miss degraded to a permanently BLANK transcript (no
+          // spinner, no error) — the same trap the tile path hit ("打开了但
+          // 一直加载" on 绘图师 / Hermes 工程师). The prefetch still wins when
+          // it lands (prefetchApplied branch above), so the extra payload only
+          // exists for the miss it rescues.
+          ...(watchWindow ? { lazy: true } : {}),
           ...(sessionProfile ? { profile: sessionProfile } : {})
         })
 
@@ -1060,10 +1069,19 @@ export function useSessionActions({
                 // only contributes the live tail, so graft rather than rebuild.
                 // (Without a usable prefetch there is nothing better to stand
                 // on, so the projection alone remains the degraded fallback.)
+                //
+                // LAST-RESORT KEEP (2026-09-23): when BOTH sources come back
+                // empty, keep what the view already holds instead of
+                // reconciling against an empty array (which painted a blank
+                // transcript with no error — the "打开了但一直加载" report).
+                const resumedHasMessages = Array.isArray(resumed.messages) && resumed.messages.length > 0
+
                 const resumedMessages =
-                  resumed.messages_omitted && prefetchApplied && prefetchMatchesResumedSession
+                  !resumedHasMessages && prefetchApplied && prefetchMatchesResumedSession
                     ? appendLiveSessionProjection(localSnapshot, resumed)
-                    : reconcileAuthoritativeMessages(resumed.messages, previousMessages, resumed)
+                    : resumedHasMessages
+                      ? reconcileAuthoritativeMessages(resumed.messages, previousMessages, resumed)
+                      : previousMessages
 
                 return chatMessageArraysEquivalent(currentMessages, resumedMessages) ? currentMessages : resumedMessages
               })()
