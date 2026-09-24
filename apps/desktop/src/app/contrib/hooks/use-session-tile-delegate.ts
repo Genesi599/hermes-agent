@@ -119,7 +119,16 @@ export function useSessionTileDelegate({
           requestGateway<SessionResumeResponse>('session.resume', {
             session_id: storedSessionId,
             cols: 96,
-            omit_messages: true,
+            // NO omit_messages (2026-09-23): the RPC is the FALLBACK message
+            // source. With `omit_messages: true` the resume returned
+            // `messages: []` and the whole transcript came from the REST
+            // prefetch — so any prefetch miss (IPC hiccup, big session,
+            // cross-profile route) left the tile permanently BLANK with no
+            // spinner and no error ("打开了但一直加载", reported on 绘图师 /
+            // Hermes 工程师). The main path made the same bet. Let the RPC
+            // carry the messages too; a prefetch that succeeds still wins
+            // below (state.messages.length > 0 branch), so the payload cost
+            // only shows up on the miss it is there to rescue.
             ...(profile ? { profile } : {})
           })
         ])
