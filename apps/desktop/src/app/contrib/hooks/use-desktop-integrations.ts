@@ -172,7 +172,9 @@ export function useDesktopIntegrations({
   useEffect(() => {
     const unsubscribe = window.hermesDesktop?.onFocusSession?.(sessionId => {
       if (sessionId) {
-        openSession(storedSessionIdForNotification(sessionId, runtimeIdByStoredSessionId.current), navigate, 'stack')
+        // 2026-09-28 杨航定: 通知点击直接切到目标会话(替换主区当前视图)，
+        // 不再 stack 开旁边 tile——"开在旁边不打断"对他是"开了个新窗口"的困惑。
+        openSession(storedSessionIdForNotification(sessionId, runtimeIdByStoredSessionId.current), navigate, 'in-place')
       }
     })
 
