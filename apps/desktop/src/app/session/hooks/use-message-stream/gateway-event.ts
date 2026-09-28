@@ -737,7 +737,16 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
         }
       } else if (event.type === 'reasoning.delta') {
         if (sessionId) {
-          appendReasoningDelta(sessionId, coerceThinkingText(payload?.text))
+          const thinkingText = coerceThinkingText(payload?.text)
+          appendReasoningDelta(sessionId, thinkingText)
+
+          // The ≈tokens/t-s readout counts reasoning too — for models whose
+          // thinking streams here (deepseek et al.) this is MOST of the turn's
+          // visible output; without it the readout stays empty while the user
+          // stares at "Thinking …".
+          if (isActiveEvent && thinkingText) {
+            noteTurnStreamText(thinkingText)
+          }
         }
 
         if (isActiveEvent) {
@@ -745,7 +754,12 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
         }
       } else if (event.type === 'reasoning.available') {
         if (sessionId) {
-          appendReasoningDelta(sessionId, coerceThinkingText(payload?.text), true)
+          const thinkingText = coerceThinkingText(payload?.text)
+          appendReasoningDelta(sessionId, thinkingText, true)
+
+          if (isActiveEvent && thinkingText) {
+            noteTurnStreamText(thinkingText)
+          }
         }
 
         if (isActiveEvent) {
