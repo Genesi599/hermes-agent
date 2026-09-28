@@ -67,9 +67,11 @@ import {
   setTurnStartedAt,
   setWorkspaceCwdOwner,
   setYoloActive,
+  idsShareLineage,
 } from '@/store/session'
 import { broadcastSessionsChanged } from '@/store/session-sync'
-import { $sessionStates, dropSessionState } from '@/store/session-states'
+import { $focusedStoredSessionId, $sessionStates, dropSessionState } from '@/store/session-states'
+import { $roomByRoutingSessionId } from '@/store/room-routing'
 import { noteTurnStreamText, resetTurnStreamStats } from '@/store/turn-stream-stats'
 import { pruneDelegateFallbackSubagents, pruneFinishedSessionSubagents, upsertSubagent } from '@/store/subagents'
 import { clearActiveSessionTodos } from '@/store/todos'
@@ -327,6 +329,36 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
 
       const sessionId = route.sessionId
       const isActiveEvent = !!sessionId && sessionId === activeSessionIdRef.current
+
+      // TURN-STREAM STATS gate: `isActiveEvent` compares the event's runtime
+      // id with the window's active runtime — for agent-PROFILE sessions these
+      // differ (the transcript still renders because appendAssistantDelta is
+      // ungated), which left the Reasonix-style readout empty in agent private
+      // chats (2026-09-28). Count instead when the event's session resolves to
+      // the FOCUSED stored session's lineage, or to a routing conversation
+      // delivering into the focused room (the room-routing map).
+      const streamStatsRelevant = (sid: string | null | undefined): boolean => {
+        if (!sid) {
+          return false
+        }
+
+        const focused = $focusedStoredSessionId.get()
+
+        if (!focused) {
+          return false
+        }
+
+        const stored = $sessionStates.get()[sid]?.storedSessionId ?? sid
+        const sessions = $sessions.get()
+
+        if (idsShareLineage(stored, focused, sessions)) {
+          return true
+        }
+
+        const room = $roomByRoutingSessionId.get()[stored]
+
+        return Boolean(room) && idsShareLineage(room, focused, sessions)
+      }
 
       // Mid-turn compaction does not emit another message.start. The first
       // model output or tool event proves summarization has finished and the
@@ -661,8 +693,11 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
 
         if (isActiveEvent) {
           triggerHaptic('streamStart')
-          // New visible turn → zero the ≈tokens/t-s readout (active session
-          // only: a background room's turn must not clobber it).
+        }
+
+        // New turn for the focused session (or its room's routing line) →
+        // zero the ≈tokens/t-s readout. Background sessions keep theirs.
+        if (streamStatsRelevant(sessionId)) {
           resetTurnStreamStats()
         }
 
@@ -706,8 +741,9 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
           markSessionStreamAlive(streamKey)
           const deltaText = coerceGatewayText(payload?.text)
           appendAssistantDelta(sessionId, deltaText)
-          // Live ≈tokens/t-s readout (active session's stream only).
-          if (isActiveEvent && deltaText) {
+          // Live ≈tokens/t-s readout — lineage-gated (streamStatsRelevant),
+          // not isActiveEvent: agent-profile sessions stream here too.
+          if (deltaText && streamStatsRelevant(sessionId)) {
             noteTurnStreamText(deltaText)
           }
         }
@@ -744,7 +780,7 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
           // thinking streams here (deepseek et al.) this is MOST of the turn's
           // visible output; without it the readout stays empty while the user
           // stares at "Thinking …".
-          if (isActiveEvent && thinkingText) {
+          if (thinkingText && streamStatsRelevant(sessionId)) {
             noteTurnStreamText(thinkingText)
           }
         }
@@ -757,7 +793,7 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
           const thinkingText = coerceThinkingText(payload?.text)
           appendReasoningDelta(sessionId, thinkingText, true)
 
-          if (isActiveEvent && thinkingText) {
+          if (thinkingText && streamStatsRelevant(sessionId)) {
             noteTurnStreamText(thinkingText)
           }
         }

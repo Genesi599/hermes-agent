@@ -12,7 +12,7 @@ import { MarkdownText, MarkdownTextContent } from '@/components/assistant-ui/mar
 import { DelegateTool } from '@/components/assistant-ui/tool/delegate'
 import { ToolFallback, ToolGroupSlot } from '@/components/assistant-ui/tool/fallback'
 import { formatElapsed, useElapsedSeconds, useMeasuredDuration } from '@/components/chat/activity-timer'
-import { ActivityTimerText } from '@/components/chat/activity-timer-text'
+import { ActivityTimerText, TurnStreamStatsText } from '@/components/chat/activity-timer-text'
 import { GeneratedImage } from '@/components/chat/generated-image-result'
 import { SCAFFOLD_LABEL_CLASS, SCAFFOLD_META_CLASS, ScaffoldRow } from '@/components/chat/scaffold-row'
 import { useI18n } from '@/i18n'
@@ -201,6 +201,7 @@ const ThinkingDisclosure: FC<{
       <ScaffoldRow onToggle={() => setUserOpen(!open)} open={open}>
         <span className={cn(SCAFFOLD_LABEL_CLASS, pending && 'shimmer')}>{thoughtLabel}</span>
         {pending && <ActivityTimerText className={SCAFFOLD_META_CLASS} seconds={elapsed} />}
+        {pending && <TurnStreamStatsText className={SCAFFOLD_META_CLASS} />}
       </ScaffoldRow>
       {open && (
         <div
