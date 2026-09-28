@@ -38,3 +38,15 @@ if (typeof (globalThis as any).localStorage === 'undefined') {
 // CPU contention in CI. Success still resolves the instant the node appears;
 // the wider deadline only absorbs a starved runner, killing timing flakes.
 configure({ asyncUtilTimeout: 5000 })
+
+// jsdom has no ResizeObserver. use-stick-to-bottom (thread + room sticky
+// bottom) instantiates one during module evaluation, so the stub must exist
+// before ANY component module loads — hence here, not per test file.
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  ;(globalThis as { ResizeObserver?: unknown }).ResizeObserver = ResizeObserverStub
+}

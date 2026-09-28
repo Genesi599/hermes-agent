@@ -1,5 +1,6 @@
-import { type ClipboardEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ClipboardEvent, memo, type RefCallback, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '@nanostores/react'
+import { useStickToBottom } from 'use-stick-to-bottom'
 
 import { SpeakerChip } from '@/components/assistant-ui/thread/speaker-chip'
 import { CompactMarkdown } from '@/components/chat/compact-markdown'
@@ -318,25 +319,25 @@ function ChannelViewImpl({ channel, className }: { channel: Channel; className?:
   const { t } = useI18n()
   const [messages, setMessages] = useState<ChannelMessage[]>([])
   const [error, setError] = useState<null | string>(null)
-  const scrollRef = useRef<HTMLDivElement>(null)
-  // Sticky-bottom for the room: the user is "at the bottom" until they scroll
-  // meaningfully up. Mirrors what the private thread's use-stick-to-bottom
-  // does for its own list — this component feeds the same store so the
-  // floating jump control (below) lights up with identical semantics.
-  const atBottomRef = useRef(true)
+  // Sticky-bottom for the room via the SAME engine the private thread uses
+  // (2026-09-28): the hand-rolled one-shot `scrollTop = scrollHeight` on
+  // messages.length raced progressive layout — markdown/images/roster kept
+  // growing the list AFTER the snap, the viewport landed mid-list, and being
+  // >80px from the bottom read as "user scrolled up" so the sticky never
+  // corrected. use-stick-to-bottom keeps re-locking to the bottom on content
+  // growth (resize: 'instant') while still unlocking the moment the user
+  // scrolls up — the 09-23 "don't yank while reading history" behavior is
+  // preserved by the library's own escape semantics.
+  const { scrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom({
+    initial: 'instant',
+    resize: 'instant'
+  })
 
-  const handleScroll = useCallback(() => {
-    const node = scrollRef.current
-
-    if (!node) {
-      return
-    }
-
-    const isAtBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 80
-
-    atBottomRef.current = isAtBottom
+  // Bridge the hook's bottom state into the shared thread-scroll store so the
+  // floating jump control lights up with identical semantics.
+  useEffect(() => {
     setThreadAtBottom(isAtBottom)
-  }, [])
+  }, [isAtBottom])
 
   const jumpVisible = useStore($threadJumpButtonVisible)
 
@@ -368,18 +369,10 @@ function ChannelViewImpl({ channel, className }: { channel: Channel; className?:
     return () => clearInterval(timer)
   }, [load])
 
-  useEffect(() => {
-    const node = scrollRef.current
-
-    // STICKY BOTTOM (2026-09-23): follow new lines ONLY while the user is
-    // already at the bottom. The old unconditional jump yanked the viewport
-    // down every time anyone posted — reading room history was impossible
-    // while agents were delivering. When the user has scrolled up, leave the
-    // viewport alone; the floating jump button is the way back down.
-    if (node && atBottomRef.current) {
-      node.scrollTop = node.scrollHeight
-    }
-  }, [messages.length])
+  // NOTE (2026-09-28): new-line following is owned by use-stick-to-bottom
+  // above — it re-locks while at the bottom and leaves the viewport alone
+  // when the user has scrolled up (the 09-23 "don't yank while reading
+  // history" rule), so there is no messages.length effect here anymore.
 
   // Bridge to the shared jump control: the room and the private thread are
   // rendered exclusively (`room ? <ChannelView/> : <Thread/>`), so reusing
@@ -387,20 +380,14 @@ function ChannelViewImpl({ channel, className }: { channel: Channel; className?:
   // at a time.
   useEffect(() => {
     const off = onScrollToBottomRequest(() => {
-      const node = scrollRef.current
-
-      if (node) {
-        atBottomRef.current = true
-        node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' })
-        setThreadAtBottom(true)
-      }
+      scrollToBottom('smooth')
     })
 
     return () => {
       off()
       resetThreadScroll()
     }
-  }, [])
+  }, [scrollToBottom])
 
   const reload = useCallback(() => {
     void load()
@@ -422,10 +409,12 @@ function ChannelViewImpl({ channel, className }: { channel: Channel; className?:
           viewport, not the scrolling content (an absolute child INSIDE the
           scroller would ride along with the messages). */}
       <div className="relative min-h-0 flex-1">
-        <div className="h-full overflow-y-auto px-4 py-3" data-selectable-text="true" onScroll={handleScroll} ref={scrollRef}>
-          {messages.map(line => (
-            <ChannelLine key={line.id} line={line} />
-          ))}
+        <div className="h-full overflow-y-auto px-4 py-3" data-selectable-text="true" ref={scrollRef as RefCallback<HTMLDivElement>}>
+          <div className="flex min-h-full flex-col" data-slot="channel-scroll-content" ref={contentRef as RefCallback<HTMLDivElement>}>
+            {messages.map(line => (
+              <ChannelLine key={line.id} line={line} />
+            ))}
+          </div>
         </div>
         {jumpVisible ? (
           <button
