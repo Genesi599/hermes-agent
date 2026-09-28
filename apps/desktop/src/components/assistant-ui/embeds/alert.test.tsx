@@ -10,7 +10,8 @@ describe('extractAlert', () => {
       ['[!TIP]', 'tip'],
       ['[!IMPORTANT]', 'important'],
       ['[!WARNING]', 'warning'],
-      ['[!CAUTION]', 'caution']
+      ['[!CAUTION]', 'caution'],
+      ['[!BOOK]', 'book']
     ] as const) {
       const node = createElement('p', null, `${marker}\nBody text`)
       const result = extractAlert(node)

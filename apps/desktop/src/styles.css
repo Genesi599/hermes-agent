@@ -3015,3 +3015,11 @@ html:has([data-hud-shell]) [data-slot='popover-content'] {
 [data-hud-shell] [data-slot='composer-bounds'] *::-webkit-scrollbar {
   display: none;
 }
+
+
+/* 书摘原文（> [!BOOK] 带读贴原文用，杨航 2026-09-28 要求：稍大 Times New Roman） */
+.book-quote {
+  font-family: 'Times New Roman', 'Liberation Serif', Georgia, serif;
+  font-size: 0.95rem;
+  line-height: 1.7;
+}

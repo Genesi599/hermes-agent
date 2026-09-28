@@ -1,18 +1,27 @@
 import { cloneElement, isValidElement, type ReactNode } from 'react'
 
-import { AlertCircle, AlertTriangle, type IconComponent, Info, Zap } from '@/lib/icons'
+import { AlertCircle, AlertTriangle, Book, type IconComponent, Info, Zap } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
-export type AlertType = 'caution' | 'important' | 'note' | 'tip' | 'warning'
+export type AlertType = 'book' | 'caution' | 'important' | 'note' | 'tip' | 'warning'
 
 interface AlertStyle {
   accent: string
   icon: IconComponent
   label: string
+  /** Optional class for the body wrapper — `book` uses it for the serif quote face. */
+  body?: string
 }
 
-// GitHub's five alert kinds, mapped to our icon set + a tinted accent.
+// GitHub's five alert kinds + our `book` kind (原文书摘), mapped to our icon
+// set + a tinted accent.
 const ALERT_STYLES: Record<AlertType, AlertStyle> = {
+  book: {
+    accent: 'text-stone-600 dark:text-stone-300',
+    icon: Book,
+    label: '原文',
+    body: 'book-quote'
+  },
   caution: { accent: 'text-rose-600 dark:text-rose-400', icon: AlertTriangle, label: 'Caution' },
   important: { accent: 'text-violet-600 dark:text-violet-400', icon: AlertCircle, label: 'Important' },
   note: { accent: 'text-blue-600 dark:text-blue-400', icon: Info, label: 'Note' },
@@ -20,7 +29,7 @@ const ALERT_STYLES: Record<AlertType, AlertStyle> = {
   warning: { accent: 'text-amber-600 dark:text-amber-400', icon: AlertTriangle, label: 'Warning' }
 }
 
-const MARKER_RE = /^\s*\[!(note|tip|important|warning|caution)\]\s*\n?/i
+const MARKER_RE = /^\s*\[!(note|tip|important|warning|caution|book)\]\s*\n?/i
 
 function firstText(node: ReactNode): string {
   if (typeof node === 'string') {
@@ -119,7 +128,7 @@ export function MarkdownAlert({ children, type }: { children: ReactNode; type: A
         <Icon className="size-4 shrink-0" />
         {style.label}
       </div>
-      {children}
+      {style.body ? <div className={style.body}>{children}</div> : children}
     </div>
   )
 }
