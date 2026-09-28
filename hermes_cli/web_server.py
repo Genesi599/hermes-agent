@@ -6783,6 +6783,31 @@ def _submit_session_prompt_scoped(
                 "result": (resp or {}).get("result", {}),
             }
 
+    # ── 同文幂等去重（2026-09-28 星阶"一句问话三 turn"事故根治）──
+    # dispatch/cron 客户端对"看起来失败"的 POST 会每 5s 原样重发，而端点实际
+    # 已接受——turn 在 deferred/压缩预检里尚未对客户端可见（transcript 与
+    # live_status 都滞后）。"已接受"只有服务端知道，去重必须放这里：同一
+    # session 的同文 prompt 距上次接受 < 180s（覆盖 dispatch 120s 重试环）时
+    # 直接回 duplicate，不再起 turn、不排队第二份。正常流量不撞窗：路由
+    # prompt 自带 [route#N] 唯一后缀，节拍间隔 ≥1h。
+    import hashlib as _hashlib
+
+    rid = f"rest-prompt-{_time.time_ns()}"
+    _fp = _hashlib.sha256(text.encode("utf-8")).hexdigest()
+    with session["history_lock"]:
+        _last = session.get("prompt_dedup")
+        if (
+            isinstance(_last, dict)
+            and _last.get("fp") == _fp
+            and (_time.time() - float(_last.get("at") or 0.0)) < 180.0
+        ):
+            return {
+                "status": "duplicate",
+                "session_id": sid,
+                "rid": str(_last.get("rid") or ""),
+            }
+        session["prompt_dedup"] = {"fp": _fp, "at": _time.time(), "rid": rid}
+
     if busy:
         if not body.queued:
             raise HTTPException(status_code=409, detail="session is busy")
@@ -6808,8 +6833,6 @@ def _submit_session_prompt_scoped(
                 session_id,
                 exc,
             )
-
-    rid = f"rest-prompt-{_time.time_ns()}"
 
     # A cold-resumed session is still building its agent (skills/MCP/model
     # metadata can take a minute). Never call _run_prompt_submit against a
