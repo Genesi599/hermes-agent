@@ -33,6 +33,7 @@ import { readJson, writeJson } from '@/lib/storage'
 import type { SessionInfo } from '@/types/hermes'
 
 import { $activeGatewayProfile, normalizeProfileKey } from './profile'
+import { $roomByRoutingSessionId } from './room-routing'
 import {
   $activeSessionId,
   $selectedStoredSessionId,
@@ -156,6 +157,29 @@ export function shouldMarkSessionUnread(
   return true
 }
 
+/** A routing conversation's reply lands in its PROJECT ROOM (post_room), not
+ *  in its own transcript view. When that room is the conversation on screen,
+ *  the user watched the reply arrive — the finish earns no unread dot.
+ *  (2026-09-28: the Book room kept getting a green dot on `Book · Hermes`
+ *  every dispatched turn; the 09-20 room-aware fix only covered the roster
+ *  path in agent-activity.ts, not this runtime-publish path.) */
+export function deliveredToFocusedRoom(
+  storedId: string,
+  focusedStoredSessionId: null | string
+): boolean {
+  if (!focusedStoredSessionId) {
+    return false
+  }
+
+  const room = $roomByRoutingSessionId.get()[storedId]
+
+  if (!room) {
+    return false
+  }
+
+  return idsShareLineage(room, focusedStoredSessionId, $sessions.get())
+}
+
 /** Stored ids whose turn ended within the grace window. Prunes expired. */
 export function getRecentlySettledSessionIds(now: number = Date.now()): string[] {
   const live: string[] = []
@@ -224,7 +248,10 @@ function handleTransition(previous: ClientSessionState | null, next: ClientSessi
     // actually looking at another session tab. Judge unread state against that
     // real focus (and its compression lineage), otherwise the background
     // primary misses its green dot while the visible tab increments the badge.
-    if (shouldMarkSessionUnread(storedId, $focusedStoredSessionId.get(), rendererIsBackgrounded())) {
+    if (
+      shouldMarkSessionUnread(storedId, $focusedStoredSessionId.get(), rendererIsBackgrounded()) &&
+      !deliveredToFocusedRoom(storedId, $focusedStoredSessionId.get())
+    ) {
       markSessionUnread(storedId)
     }
   }

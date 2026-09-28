@@ -2,6 +2,7 @@ import { atom } from 'nanostores'
 
 import { listAllProfileSessions } from '@/hermes'
 import { persistentAtom } from '@/lib/persisted'
+import { rememberRoomRouting } from '@/store/room-routing'
 import { $selectedStoredSessionId, markSessionUnread } from '@/store/session'
 import { $focusedStoredSessionId } from '@/store/session-states'
 
@@ -196,6 +197,15 @@ export async function pollAgentWatch(watch: AgentWatch): Promise<void> {
       [key]: { sessionId: picked.id, status: picked.status }
     })
 
+    // Publish the routing→room binding on EVERY poll (not just transitions)
+    // so session-states' completed-unread marking can consult it the moment a
+    // dispatched turn ends — even before this poller notices the transition.
+    const room = watch.roomSessionId?.trim()
+
+    if (room) {
+      rememberRoomRouting(picked.id, room)
+    }
+
     // A turn that finishes while its own conversation is the one on screen is
     // not "unread" — the user watched it land. Only a finish they were looking
     // AWAY from earns the dot.
@@ -212,8 +222,6 @@ export async function pollAgentWatch(watch: AgentWatch): Promise<void> {
       // Room roster (project group chat): the finished turn is DELIVERED to
       // the room — the unread dot moves to the room row, not this chip. "Seen"
       // means the ROOM was on screen when it landed.
-      const room = watch.roomSessionId?.trim()
-
       if (room) {
         if (room !== onScreen) {
           markSessionUnread(room)
