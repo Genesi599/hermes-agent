@@ -4716,6 +4716,64 @@ def _persist_model_switch(result) -> None:
         provider=result.target_provider,
         base_url=result.base_url,
     )
+    _fanout_model_to_agent_profiles()
+
+
+def _fanout_model_to_agent_profiles() -> None:
+    """Propagate a GLOBAL model switch to every agent profile's config.yaml.
+
+    Each profile carries its own ``model.default`` (copied in at profile
+    creation via ``--clone``), which outranks the default config during model
+    resolution — so a global switch that only writes the ACTIVE profile leaves
+    every other agent pinned to its old model. 杨航 2026-09-25: "切换模型的
+    时候所有 agent 的模型都跟着变".
+
+    Reads the full model block (default/provider/base_url/transport) from the
+    ACTIVE profile's config — which ``_persist_model_assignment`` just wrote —
+    and replicates all four keys into ``profiles/*/config.yaml``. Transport
+    must travel WITH the provider: leaving a profile's old transport (e.g.
+    ``anthropic_messages`` for MiniMax) under a new glm/deepseek provider would
+    produce a protocol/host mismatch that 400s on first call. Profiles created
+    later are picked up by the NEXT global switch — no maintenance.
+    """
+    try:
+        from pathlib import Path as _P
+
+        from hermes_cli.config import load_config_readonly
+        from utils import atomic_roundtrip_yaml_update as _upd
+
+        home = _P(get_hermes_home())
+        model_cfg = (load_config_readonly() or {}).get("model") or {}
+        model = model_cfg.get("default") or ""
+        provider = model_cfg.get("provider") or ""
+        if not model or not provider:
+            logger.warning(
+                "model fanout: active profile lacks model.default/provider, skipping"
+            )
+            return
+        base_url = model_cfg.get("base_url") or ""
+        transport = model_cfg.get("transport") or ""
+
+        profiles_root = home.parent if home.parent.name == "profiles" else home / "profiles"
+        active_cfg = (home / "config.yaml").resolve()
+        changed = 0
+        for cfg in sorted(profiles_root.glob("*/config.yaml")):
+            if cfg.resolve() == active_cfg:
+                continue  # already written by _persist_model_assignment
+            try:
+                _upd(cfg, "model.default", model)
+                _upd(cfg, "model.provider", provider)
+                _upd(cfg, "model.base_url", base_url or None)
+                if transport:
+                    _upd(cfg, "model.transport", transport)
+                changed += 1
+            except Exception as exc:  # one bad profile must not block the rest
+                logger.warning("model fanout: failed to update %s: %s", cfg.parent.name, exc)
+        logger.info(
+            "model fanout: synced %d agent profiles -> %s/%s", changed, provider, model
+        )
+    except Exception as exc:
+        logger.warning("model fanout: failed to walk profiles dir: %s", exc)
 
 
 def _apply_model_switch(
