@@ -1066,9 +1066,31 @@ def _parse_jobs_file(jobs_file: Path) -> Tuple[Any, bool]:
     bare control characters in string values. IO errors from the open and
     parse errors from the fallback propagate to the caller, which decides
     between repair (load_jobs) and bail-out (peek).
+
+    SHARING-VIOLATION RETRY (2026-09-28): saves are atomic
+    (tempfile → os.replace), but on Windows the replace instant briefly
+    denies concurrent opens — Python surfaces that as PermissionError
+    (Errno 13), which used to fail whole UI requests (`_list_cron_jobs_sync`
+    500s, sidebar "点不动") whenever a */5 tick landed on a read. Retry the
+    open a few times with a tiny backoff before giving up; the window is
+    single-digit milliseconds.
     """
-    with open(jobs_file, "r", encoding="utf-8-sig") as f:
-        raw = f.read()
+    import time as _time
+
+    last_err: OSError | None = None
+    for attempt in range(5):
+        try:
+            with open(jobs_file, "r", encoding="utf-8-sig") as f:
+                raw = f.read()
+            break
+        except PermissionError as exc:
+            last_err = exc
+            if attempt == 4:
+                raise
+            _time.sleep(0.02 * (attempt + 1))
+    else:  # pragma: no cover - defensive
+        raise last_err if last_err else OSError("unreachable")
+
     try:
         return json.loads(raw), False
     except json.JSONDecodeError:
