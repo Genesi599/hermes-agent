@@ -4769,8 +4769,41 @@ def _fanout_model_to_agent_profiles() -> None:
                 changed += 1
             except Exception as exc:  # one bad profile must not block the rest
                 logger.warning("model fanout: failed to update %s: %s", cfg.parent.name, exc)
+        # Unpin stored sessions as well: a session row's `model` (and
+        # `model_config`'s $.model) form the per-session override that outranks
+        # profile defaults — leaving them pinned keeps OLD sessions on their
+        # creation-time model even after every profile config was just updated.
+        # NULL both across every state.db; `_stored_model_overrides` then builds
+        # no override dict and resume falls back to the profile default
+        # (杨航 2026-09-28: "老会话也跟随"). json_remove keeps sibling keys
+        # (reasoning_config, service_tier) intact.
+        import sqlite3 as _sq
+
+        dbs = [home / "state.db"] + sorted(profiles_root.glob("*/state.db"))
+        unpinned = 0
+        for dbp in dbs:
+            if not dbp.exists():
+                continue
+            try:
+                con = _sq.connect(str(dbp))
+                try:
+                    cur = con.execute(
+                        "UPDATE sessions SET model = NULL WHERE model IS NOT NULL"
+                    )
+                    if cur.rowcount and cur.rowcount > 0:
+                        unpinned += cur.rowcount
+                    con.execute(
+                        "UPDATE sessions SET model_config = json_remove(model_config, '$.model') "
+                        "WHERE model_config IS NOT NULL AND json_valid(model_config)"
+                    )
+                    con.commit()
+                finally:
+                    con.close()
+            except Exception as exc:
+                logger.warning("model fanout: unpin failed for %s: %s", dbp.name, exc)
         logger.info(
-            "model fanout: synced %d agent profiles -> %s/%s", changed, provider, model
+            "model fanout: synced %d agent profiles -> %s/%s; unpinned %d sessions",
+            changed, provider, model, unpinned,
         )
     except Exception as exc:
         logger.warning("model fanout: failed to walk profiles dir: %s", exc)
