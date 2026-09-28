@@ -2,6 +2,7 @@ import type { ComponentProps, ElementType, FC } from 'react'
 import { memo } from 'react'
 import { Streamdown } from 'streamdown'
 
+import { extractAlert, MarkdownAlert } from '@/components/assistant-ui/embeds/alert'
 import { ExternalLink } from '@/lib/external-link'
 import { cn } from '@/lib/utils'
 
@@ -82,9 +83,29 @@ function MarkdownTable({ className, ...rest }: ComponentProps<'table'>) {
   )
 }
 
+// Room cards & tool bodies share this renderer, and both surface agent
+// markdown that can carry GitHub-style alerts (`> [!BOOK]` quotes from 带读
+// above all). Route marked blockquotes through MarkdownAlert so the marker
+// doesn't leak as raw text; plain blockquotes keep the compact italic style.
+const BlockquoteTag = tagged('blockquote')
+
+function MarkdownBlockquote({ children, ...rest }: ComponentProps<'blockquote'>) {
+  const alert = extractAlert(children)
+
+  if (alert) {
+    return <MarkdownAlert type={alert.type}>{alert.body}</MarkdownAlert>
+  }
+
+  return (
+    <BlockquoteTag {...rest}>
+      {children}
+    </BlockquoteTag>
+  )
+}
+
 const COMPONENTS = {
   a: MarkdownAnchor,
-  blockquote: tagged('blockquote'),
+  blockquote: MarkdownBlockquote,
   code: MarkdownCode,
   h1: tagged('h1'),
   h2: tagged('h2'),

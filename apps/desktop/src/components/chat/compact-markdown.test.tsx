@@ -17,6 +17,24 @@ import { CompactMarkdown } from './compact-markdown'
 afterEach(cleanup)
 
 describe('CompactMarkdown', () => {
+  it('renders > [!BOOK] as an alert card with the book-quote class (room path)', () => {
+    const text = '> [!BOOK]\n> I sit cross-legged on the floor.'
+
+    const { container } = render(<CompactMarkdown text={text} />)
+
+    expect(container.querySelector('.book-quote')).not.toBeNull()
+    expect(container.querySelector('.book-quote')?.textContent).toContain('cross-legged')
+    // The marker must not leak as raw text into the room card.
+    expect(container.textContent).not.toContain('[!BOOK]')
+  })
+
+  it('keeps plain blockquotes compact-italic in the room path', () => {
+    const { container } = render(<CompactMarkdown text={'> ordinary quote'} />)
+
+    expect(container.querySelector('.book-quote')).toBeNull()
+    expect(container.querySelector('blockquote')?.className).toContain('italic')
+  })
+
   it('preserves newlines and indentation of plain-text structure', () => {
     const text = '科研主线\n└─ 胸腺新单细胞·初步分析结果\n   └─ OYdeg 表达差异分析'
 
