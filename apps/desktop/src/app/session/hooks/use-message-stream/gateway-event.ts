@@ -70,6 +70,7 @@ import {
 } from '@/store/session'
 import { broadcastSessionsChanged } from '@/store/session-sync'
 import { $sessionStates, dropSessionState } from '@/store/session-states'
+import { noteTurnStreamText, resetTurnStreamStats } from '@/store/turn-stream-stats'
 import { pruneDelegateFallbackSubagents, pruneFinishedSessionSubagents, upsertSubagent } from '@/store/subagents'
 import { clearActiveSessionTodos } from '@/store/todos'
 import { recordToolDiff } from '@/store/tool-diffs'
@@ -660,6 +661,9 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
 
         if (isActiveEvent) {
           triggerHaptic('streamStart')
+          // New visible turn → zero the ≈tokens/t-s readout (active session
+          // only: a background room's turn must not clobber it).
+          resetTurnStreamStats()
         }
 
         updateSessionState(sessionId, state => {
@@ -700,7 +704,12 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
           // the session-state map so both sides meet on storedSessionId.
           const streamKey = $sessionStates.get()[sessionId]?.storedSessionId ?? sessionId
           markSessionStreamAlive(streamKey)
-          appendAssistantDelta(sessionId, coerceGatewayText(payload?.text))
+          const deltaText = coerceGatewayText(payload?.text)
+          appendAssistantDelta(sessionId, deltaText)
+          // Live ≈tokens/t-s readout (active session's stream only).
+          if (isActiveEvent && deltaText) {
+            noteTurnStreamText(deltaText)
+          }
         }
       } else if (event.type === 'message.interim') {
         // The agent emitted interim assistant commentary (text alongside tool

@@ -1,4 +1,7 @@
+import { useStore } from '@nanostores/react'
+
 import { cn } from '@/lib/utils'
+import { estimateStreamTokens, $turnStreamStats } from '@/store/turn-stream-stats'
 
 import { formatElapsed } from './activity-timer'
 
@@ -25,3 +28,33 @@ export function ActivityTimerText({ seconds, className }: ActivityTimerTextProps
     </span>
   )
 }
+
+/** `≈N tokens · M t/s` beside the elapsed timer — the Reasonix-style output
+ * readout (2026-09-28). Tokens are estimated from streamed text length (the
+ * real usage only arrives at turn end); the rate's denominator is burst time
+ * (deltas actively flowing), not wall clock, so tool turns don't drag it.
+ * Hidden until there is enough streamed text for the estimate to mean
+ * anything. */
+export function TurnStreamStatsText({ className }: { className?: string }) {
+  const stats = useStore($turnStreamStats)
+
+  if (stats.chars < 40) {
+    return null
+  }
+
+  const tokens = estimateStreamTokens(stats)
+  const seconds = stats.activeMs / 1000
+  const rate = seconds >= 0.5 ? Math.round(tokens / seconds) : null
+
+  return (
+    <span
+      className={cn(
+        'shrink-0 text-[0.56rem] leading-none tracking-[0.02em] tabular-nums text-midground/55',
+        className
+      )}
+    >
+      ≈{tokens} tokens{rate !== null ? ` · ${rate} t/s` : ''}
+    </span>
+  )
+}
+

@@ -5,7 +5,7 @@ import { type FC, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { useSessionView } from '@/app/chat/session-view'
 import { toolPresentVerb } from '@/components/assistant-ui/tool/run-summary'
 import { useElapsedSeconds } from '@/components/chat/activity-timer'
-import { ActivityTimerText } from '@/components/chat/activity-timer-text'
+import { ActivityTimerText, TurnStreamStatsText } from '@/components/chat/activity-timer-text'
 import { type ReviewActivity, reviewActivityLabel, ReviewActivityPulse } from '@/components/chat/review-activity'
 import { SCAFFOLD_LABEL_CLASS } from '@/components/chat/scaffold-row'
 import { Codicon } from '@/components/ui/codicon'
@@ -197,6 +197,7 @@ export const ResponseLoadingIndicator: FC = () => {
         />
         <HintText>{visibleLabel}</HintText>
         <ActivityTimerText seconds={elapsed} />
+        <TurnStreamStatsText />
       </StatusRow>
       {compacting && thinking ? <CompactionThinkingBlock text={thinking} /> : null}
     </>
