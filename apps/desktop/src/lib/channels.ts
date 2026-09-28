@@ -109,6 +109,24 @@ export async function roomBySession(sessionId: string): Promise<Channel | null> 
   return roomsCache?.bySession.get(id) ?? null
 }
 
+/** Synchronous room lookup against the shared 30s cache — NO fetch.
+ *
+ * Room opens don't render the session transcript at all (`room ?
+ * <ChannelView/> : <Thread/>`), so the open path uses this to skip the
+ * transcript prefetch + resume payload for KNOWN rooms. A cold-cache miss
+ * returns null and the caller falls back to the full resume — deliberately
+ * safe: a session we can't cheaply prove is a room keeps the transcript
+ * fallback (2026-09-23 blank-transcript trap). */
+export function cachedRoomBySession(sessionId: string): Channel | null {
+  const id = sessionId.trim()
+
+  if (!id || !roomsCache || Date.now() - roomsCache.at > ROOMS_TTL_MS) {
+    return null
+  }
+
+  return roomsCache.bySession.get(id) ?? null
+}
+
 /** The channel for a project, or null when that project has no room yet. */
 export async function channelForProject(project: string): Promise<Channel | null> {
   const name = project.trim()

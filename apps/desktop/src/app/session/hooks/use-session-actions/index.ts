@@ -12,6 +12,7 @@ import { setSessionYolo } from '@/lib/yolo-session'
 import { $compactingSessions } from '@/store/compaction'
 import { migrateSessionDraft } from '@/store/composer'
 import { clearQueuedPrompts, migrateQueuedPrompts } from '@/store/composer-queue'
+import { cachedRoomBySession } from '@/lib/channels'
 import { $pinnedSessionIds } from '@/store/layout'
 import { clearNotifications, notify, notifyError } from '@/store/notifications'
 import { $activeGatewayProfile, $newChatProfile, ensureGatewayProfile, normalizeProfileKey } from '@/store/profile'
@@ -978,12 +979,22 @@ export function useSessionActions({
         let prefetchApplied = false
         let prefetchedStoredSessionId: string | null = null
 
+        // ROOM LITE OPEN (2026-09-28): a project room renders ChannelView only
+        // — the bound session's transcript is never displayed (`room ?
+        // <ChannelView/> : <Thread/>`). For a room the channels cache can prove
+        // SYNCHRONOUSLY (sidebar rosters keep it warm), skip the transcript
+        // work entirely: no REST prefetch, no resume payload (a big room's
+        // bound session carries 0.4–1.1 MB / 500–5000 messages that nobody
+        // shows). A cache miss keeps the full path below — a session we can't
+        // cheaply prove is a room retains the transcript fallback.
+        const knownRoom = cachedRoomBySession(storedSessionId) !== null
+
         // REST transcript prefetch and the gateway resume RPC are independent
         // — run them concurrently so a big session's wall time is
         // max(prefetch, resume) instead of their sum. The prefetch paints the
         // transcript as soon as it lands; the RPC binds the runtime id.
         // Watch windows skip the prefetch — lazy resume attaches the live mirror.
-        const prefetchPromise = watchWindow ? null : getLatestSessionMessages(storedSessionId, sessionProfile)
+        const prefetchPromise = watchWindow || knownRoom ? null : getLatestSessionMessages(storedSessionId, sessionProfile)
 
         const resumePromise = requestGateway<SessionResumeResponse>('session.resume', {
           session_id: storedSessionId,
@@ -1005,7 +1016,12 @@ export function useSessionActions({
           // 一直加载" on 绘图师 / Hermes 工程师). The prefetch still wins when
           // it lands (prefetchApplied branch above), so the extra payload only
           // exists for the miss it rescues.
+          //
+          // The ONE exception is `knownRoom` above: the room surface never
+          // mounts the transcript, so there is nothing to blank — the 09-23
+          // trap's precondition doesn't exist here.
           ...(watchWindow ? { lazy: true } : {}),
+          ...(knownRoom ? { omit_messages: true } : {}),
           ...(sessionProfile ? { profile: sessionProfile } : {})
         })
 
