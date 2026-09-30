@@ -966,37 +966,47 @@ export async function resolveStoredSession(storedSessionId: string): Promise<Ses
     .map(profile => normalizeProfileKey(profile.name))
     .filter(key => key !== activeKey)
 
-  // CONCURRENT probe (2026-09-29): the serial loop cost one round-trip per
-  // profile — a session owned by the 14th profile paid ~13 misses before its
-  // hit, measured as the bulk of a 6.4s cold chip-open (vs 0.6s warm). Fire
-  // every probe at once; total wait is one round-trip, and the array order
-  // keeps the hit selection deterministic (ids live in exactly one store, so
-  // at most one probe can hit).
-  const settled = await Promise.all(
-    otherProfiles.map(async profile => {
-      try {
-        const session = await getSession(storedSessionId, profile)
+  // BATCHED probe (2026-09-30 fix): the serial loop cost one round-trip per
+  // profile (a session owned by the 14th profile paid ~13 misses — the bulk of
+  // a 6.4s cold chip-open), but firing ALL probes at once turned out to
+  // stampede the Electron bridge: ~15 concurrent profile-scoped requests made
+  // the shared gateway WS flip-flop (six reconnects in 20s, each rebounding
+  // detached sessions and rebuilding their agents — the 10:48 绘图师-stuck
+  // storm). Probe in small batches instead: still parallel-cheap, never more
+  // than PROBE_BATCH in flight. The array order keeps hit selection
+  // deterministic (ids live in exactly one store, so at most one hits).
+  const PROBE_BATCH = 3
 
-        // Same ownership contract: the DESKTOP profile we explicitly probed is
-        // authoritative, whatever the scoped backend stamped (older backends
-        // omit the field; a per-profile remote override strips the alias before
-        // forwarding, so that backend answers as its own "default").
-        session.profile = profile
+  for (let start = 0; start < otherProfiles.length; start += PROBE_BATCH) {
+    const batch = otherProfiles.slice(start, start + PROBE_BATCH)
+    const settled = await Promise.all(
+      batch.map(async profile => {
+        try {
+          const session = await getSession(storedSessionId, profile)
 
-        return session
-      } catch {
-        return undefined
-      }
-    })
-  )
+          // Same ownership contract: the DESKTOP profile we explicitly probed is
+          // authoritative, whatever the scoped backend stamped (older backends
+          // omit the field; a per-profile remote override strips the alias before
+          // forwarding, so that backend answers as its own "default").
+          session.profile = profile
 
-  const hit = settled.find(session => session !== undefined)
+          return session
+        } catch {
+          return undefined
+        }
+      })
+    )
 
-  if (hit) {
-    upsertResolvedSession(hit, storedSessionId)
+    const hit = settled.find(session => session !== undefined)
+
+    if (hit) {
+      upsertResolvedSession(hit, storedSessionId)
+
+      return hit
+    }
   }
 
-  return hit
+  return undefined
 }
 
 /**
