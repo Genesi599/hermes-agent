@@ -15,6 +15,7 @@ import { useStoreSelector } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
 import { $agentActivity, $agentUnreadAt, agentWatchKey, type AgentWatch, markAgentRead, registerAgentWatch } from '@/store/agent-activity'
 import { setResumeExhaustedSessionId, setResumeFailedSessionId } from '@/store/session'
+import { prewarmProfileBackend } from '@/store/profile'
 import { $cronJobs } from '@/store/cron'
 import { notifyError } from '@/store/notifications'
 import { ensureGatewayProfile } from '@/store/profile'
@@ -290,6 +291,7 @@ function AgentChip({
         data-agent={label}
         data-agent-selected={selected ? 'true' : undefined}
         data-agent-state={running ? 'working' : unread ? 'unread' : 'idle'}
+        onPointerEnter={() => prewarmProfileBackend(profile)}
         onClick={event => {
           // The row underneath opens the PARENT session; this opens the AGENT.
           event.preventDefault()
