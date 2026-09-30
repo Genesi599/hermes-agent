@@ -287,28 +287,14 @@ export async function ensureGatewayProfile(profile: string | null | undefined): 
   }
 
   $gatewaySwapTarget.set(target)
-  // SWAP DEADLINE (2026-09-30): the swap chain (openSecondary → connect →
-  // sync) has ONE unbounded await — if anything in it wedges, the overlay
-  // stays up forever and every later swap queues behind the zombie promise
-  // (绘图师 "Waking up plotter…" 永挂, all retries dead). Race the chain
-  // against a deadline: on timeout still activate the target (the socket
-  // may actually be open — only our await was lost) and let the reconnect
-  // backoff own the rest. The UI must never lock on a swap.
-  const SWAP_DEADLINE_MS = 12_000
   gatewaySwitch = (async () => {
     // ensureGatewayForProfile opens (or reuses) the target's socket and points
     // the active gateway at it — without closing the profile you came from.
-    await Promise.race([
-      ensureGatewayForProfile(target),
-      new Promise(resolve => setTimeout(resolve, SWAP_DEADLINE_MS))
-    ])
+    await ensureGatewayForProfile(target)
     $activeGatewayProfile.set(target)
     // The active backend just changed; resync $connection so remote-aware
     // paths (image.attach_bytes vs image.attach, /api/fs/*, /api/media) follow.
-    await Promise.race([
-      syncConnectionToActiveProfile(target),
-      new Promise(resolve => setTimeout(resolve, 3_000))
-    ])
+    await syncConnectionToActiveProfile(target)
   })()
 
   try {
