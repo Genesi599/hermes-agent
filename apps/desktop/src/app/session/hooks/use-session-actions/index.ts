@@ -773,7 +773,15 @@ export function useSessionActions({
           publishSessionState(cachedRuntimeId, cachedViewState)
         }
 
-        if (sessionShouldHaveTranscript(stored) && cachedViewState.messages.length === 0) {
+        // AUTHORITATIVE COUNT (2026-09-30): the warm-cache path has no resume
+        // response — trust the STORED session row's message_count (freshly
+        // upserted by resolveStoredSession) over the cached sidebar row. A
+        // session whose messages were deleted legitimately has 0; treating a
+        // stale >0 as "transcript lost" set resumeFailed on a healthy empty
+        // conversation (绘图师 root cause, final layer).
+        const authoritativeCount = stored?.message_count ?? 0
+
+        if (authoritativeCount > 0 && cachedViewState.messages.length === 0) {
           runtimeIdByStoredSessionIdRef.current.delete(storedSessionId)
           sessionStateByRuntimeIdRef.current.delete(cachedRuntimeId)
           dropSessionState(cachedRuntimeId)
@@ -1154,7 +1162,9 @@ export function useSessionActions({
         // must not mask a lost transcript (a retry that reloads real history
         // is safer than surfacing the in-flight turn alone). Recovery only
         // ever appends, so this matches the final transcript's emptiness.
-        if (sessionShouldHaveTranscript(stored) && preferredMessages.length === 0) {
+        const authoritativeCountMain = resumed?.message_count ?? stored?.message_count ?? 0
+
+        if (authoritativeCountMain > 0 && preferredMessages.length === 0) {
           setActiveSessionId(null)
           activeSessionIdRef.current = null
           setResumeFailedSessionId(storedSessionId)
