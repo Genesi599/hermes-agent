@@ -1018,34 +1018,32 @@ export function useSessionActions({
           }
         }
 
-        const resumePromise = requestGateway<SessionResumeResponse>('session.resume', {
-          session_id: storedSessionId,
-          cols: 96,
-          source: 'desktop',
-          // REST is the transcript authority for Desktop. Avoid duplicating a
-          // potentially huge compression lineage in the WebSocket response.
-          // Watch windows attach lazily (live mirror). Every other cold resume
-          // gets the gateway's default deferred build: the RPC returns the
-          // transcript immediately instead of blocking the switch on _make_agent
-          // (MCP discovery / prompt build), and the agent pre-warms in the
-          // background while the prefetch above paints the transcript.
-          //
-          // FALLBACK MESSAGES (2026-09-23): do NOT pass omit_messages — the
-          // resume payload is the ONLY message source when the REST prefetch
-          // misses (IPC hiccup / cross-profile route / transient 4xx). With it
-          // omitted, that miss degraded to a permanently BLANK transcript (no
-          // spinner, no error) — the same trap the tile path hit ("打开了但
-          // 一直加载" on 绘图师 / Hermes 工程师). The prefetch still wins when
-          // it lands (prefetchApplied branch above), so the extra payload only
-          // exists for the miss it rescues.
-          //
-          // The ONE exception is `knownRoom` above: the room surface never
-          // mounts the transcript, so there is nothing to blank — the 09-23
-          // trap's precondition doesn't exist here.
-          ...(watchWindow ? { lazy: true } : {}),
-          ...(knownRoom || prefetchLanded ? { omit_messages: true } : {}),
-          ...(sessionProfile ? { profile: sessionProfile } : {})
-        })
+        // RESUME with IN-PLACE PAYLOAD FALLBACK (2026-09-30): attempt 1 uses
+        // the payload rules above (omit for rooms / landed prefetch). A very
+        // large transcript whose prefetch missed rides the WS copy and can
+        // hang past any retry budget (绘图师 4.6MB → "Couldn't load this
+        // session"). Race each attempt against RESUME_RPC_TIMEOUT_MS and, on
+        // timeout/failure, retry ONCE with omit_messages — the REST prefetch
+        // is retried by the route loop and the previousMessages guard keeps
+        // the view non-blank, so dropping the WS copy late is safe.
+        const RESUME_RPC_TIMEOUT_MS = 10_000
+
+        const requestResumeOnce = (forceOmit: boolean) =>
+          Promise.race([
+            requestGateway<SessionResumeResponse>('session.resume', {
+              session_id: storedSessionId,
+              cols: 96,
+              source: 'desktop',
+              ...(watchWindow ? { lazy: true } : {}),
+              ...(knownRoom || prefetchLanded || forceOmit ? { omit_messages: true } : {}),
+              ...(sessionProfile ? { profile: sessionProfile } : {})
+            }),
+            new Promise<never>((_, reject) => {
+              setTimeout(() => reject(new Error('session.resume timed out')), RESUME_RPC_TIMEOUT_MS)
+            })
+          ])
+
+        const resumePromise = requestResumeOnce(false).catch(() => requestResumeOnce(true))
 
         // The rejection is consumed by the `await` below; this guard only
         // keeps it from surfacing as unhandled while the prefetch settles.
