@@ -318,6 +318,19 @@ export async function ensureGatewayForProfile(profile: string): Promise<void> {
     } catch {
       scheduleReconnect(entry)
     }
+
+    // OPEN-CHECK BEFORE ACTIVATE (2026-09-30): the old code fell through to
+    // setActive even when the connect failed/timed out — the active gateway
+    // then sat in error/connecting state, every requestGateway threw "not
+    // connected", and the route-resume retry burned its budget on a gateway
+    // that would reconnect on its own backoff seconds later (绘图师 20s
+    // exhaustion). Refuse to activate a non-open gateway: the error
+    // propagates to ensureGatewayProfile → the resume aborts cleanly → the
+    // route-retry fires AFTER the reconnect backoff has actually repaired
+    // the socket.
+    if (!isOpen(entry.gateway)) {
+      throw new Error(`Gateway for profile "${key}" failed to open (reconnect scheduled)`)
+    }
   }
 
   setActive(key)
