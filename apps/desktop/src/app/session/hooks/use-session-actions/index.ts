@@ -996,6 +996,28 @@ export function useSessionActions({
         // Watch windows skip the prefetch — lazy resume attaches the live mirror.
         const prefetchPromise = watchWindow || knownRoom ? null : getLatestSessionMessages(storedSessionId, sessionProfile)
 
+        // PREFETCH-GATED PAYLOAD (2026-09-30): a resume that ships the whole
+        // transcript over the WS is only ever the FALLBACK for a prefetch miss
+        // (2026-09-23 blank-trap). When the prefetch has already landed with
+        // content, shipping the same megabytes over the WS is pure cost — and
+        // for very large transcripts (绘图师: 177 messages / 4.6MB) the RPC
+        // never completes at all, retries exhaust, and the open dies with
+        // "Couldn't load this session". So wait for the prefetch outcome
+        // first (measured 40–120ms locally); only a miss keeps the full
+        // payload. The 09-23 trap's precondition (no transcript source) is
+        // exactly what this preserves.
+        let prefetchLanded = false
+
+        if (prefetchPromise) {
+          try {
+            const prefetched = await prefetchPromise
+
+            prefetchLanded = Array.isArray(prefetched?.messages) && prefetched.messages.length > 0
+          } catch {
+            prefetchLanded = false
+          }
+        }
+
         const resumePromise = requestGateway<SessionResumeResponse>('session.resume', {
           session_id: storedSessionId,
           cols: 96,
@@ -1021,7 +1043,7 @@ export function useSessionActions({
           // mounts the transcript, so there is nothing to blank — the 09-23
           // trap's precondition doesn't exist here.
           ...(watchWindow ? { lazy: true } : {}),
-          ...(knownRoom ? { omit_messages: true } : {}),
+          ...(knownRoom || prefetchLanded ? { omit_messages: true } : {}),
           ...(sessionProfile ? { profile: sessionProfile } : {})
         })
 
