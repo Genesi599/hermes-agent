@@ -14,6 +14,7 @@ import { agentsForSession, type SessionAgent } from '@/lib/session-agents'
 import { useStoreSelector } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
 import { $agentActivity, $agentUnreadAt, agentWatchKey, type AgentWatch, markAgentRead, registerAgentWatch } from '@/store/agent-activity'
+import { setResumeExhaustedSessionId, setResumeFailedSessionId } from '@/store/session'
 import { $cronJobs } from '@/store/cron'
 import { notifyError } from '@/store/notifications'
 import { ensureGatewayProfile } from '@/store/profile'
@@ -297,6 +298,14 @@ function AgentChip({
           if (targetId && onOpenId) {
             // Same read-clearing the guarded lookup path does (openAgent).
             markAgentRead(watchKey ?? profile)
+            // CLEAR STALE ERROR LATCHES (2026-09-30): a previous failed open
+            // armed resumeFailed/Exhausted for this session. Clicking the chip
+            // is an explicit user intent to (re)open — without clearing, the
+            // route-resume sees the route unchanged and never retries, so the
+            // "Couldn't load this session" error from minutes ago just sits
+            // there (绘图师: user clicks, nothing happens, error persists).
+            setResumeFailedSessionId(cur => (cur === targetId ? null : cur))
+            setResumeExhaustedSessionId(cur => (cur === targetId ? null : cur))
             onOpenId(targetId)
           } else {
             onOpen()
