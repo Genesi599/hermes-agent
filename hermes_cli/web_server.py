@@ -6699,6 +6699,11 @@ class SessionPromptSubmit(BaseModel):
     model: str = ""
     provider: str = ""
     queued: bool = True
+    # SHARED CONTEXT SLOT (2026-09-29): the dispatched room's fresh context
+    # block rides the turn REQUEST-ONLY (server.py composes it via
+    # _prepend_note); `text` stays the clean task. None = client didn't send
+    # one (legacy dispatchers keep context inside text); '' explicitly clears.
+    shared_context: str | None = None
 
 
 def _submit_session_prompt_sync(session_id: str, body: SessionPromptSubmit, profile: str | None = None) -> dict:
@@ -6758,6 +6763,12 @@ def _submit_session_prompt_scoped(
             raise HTTPException(status_code=502, detail="session did not come live")
 
     sid, session = live
+
+    # Store the room's fresh shared context BEFORE anything can return early
+    # (the same-text dedup below must not skip the refresh), so the very turn
+    # this POST starts composes the new snapshot.
+    if body.shared_context is not None:
+        gw.write_shared_context(session, body.shared_context)
 
     with session["history_lock"]:
         busy = bool(session.get("running"))

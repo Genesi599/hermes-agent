@@ -12839,6 +12839,78 @@ def _hud_surface_note(session: dict) -> str:
     return hud_surface_note(getattr(session.get("agent"), "valid_tool_names", None))
 
 
+# ── SHARED CONTEXT SLOT (2026-09-29) ─────────────────────────────────────────
+# Dispatched rooms inject a fresh shared-context block (board + recent room
+# lines, ~8KB) with EVERY turn. It used to ride the prompt TEXT, so routing
+# transcripts accumulated hundreds of stale copies (~1MB measured on
+# 日常 · 旅游规划师) — slow cold opens, bloated per-turn model context. The
+# slot keeps ONE copy: the dispatch POST stores it (live session dict +
+# sidecar file under the session's home), and each turn composes it onto the
+# MODEL INPUT ONLY via _prepend_note — persist_user_message keeps the clean
+# task, so the transcript never grows a context copy again.
+_SHARED_CONTEXT_DIR = "shared_context"
+
+
+def _shared_context_sidecar_path(session: dict) -> Path | None:
+    key = str(session.get("session_key") or "").strip()
+
+    if not key:
+        return None
+
+    safe = "".join(ch if ch.isalnum() or ch in "_-." else "_" for ch in key)
+    home = _session_home(session)
+
+    if home is None:
+        return None
+
+    return Path(home) / _SHARED_CONTEXT_DIR / f"{safe}.md"
+
+
+def write_shared_context(session: dict, context: str) -> None:
+    """Store the conversation's CURRENT shared-context block (dispatch POST).
+
+    Empty string clears the slot (and the sidecar). Best-effort persistence:
+    an unwritable home still leaves the live-session copy for this process.
+    """
+    session["shared_context"] = context or ""
+
+    try:
+        path = _shared_context_sidecar_path(session)
+
+        if path is None:
+            return
+
+        if context:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(context, encoding="utf-8")
+        elif path.exists():
+            path.unlink()
+    except Exception:
+        pass
+
+
+def _shared_context_note(session: dict) -> str:
+    """The context block for THIS turn's model input ('' when the
+    conversation has none). Lazily restores from the sidecar on a
+    cold-resumed session so auto-continue keeps its context too."""
+    value = session.get("shared_context")
+
+    if value is None:
+        value = ""
+
+        try:
+            path = _shared_context_sidecar_path(session)
+
+            if path is not None and path.exists():
+                value = path.read_text(encoding="utf-8")
+        except Exception:
+            value = ""
+
+        session["shared_context"] = value
+
+    return value
+
+
 def _prepend_note(run_message: Any, note: str) -> Any:
     """Prefix a per-turn note onto the MODEL INPUT, leaving the prompt alone.
 
@@ -13429,6 +13501,10 @@ def _run_prompt_submit(
             # Which window the message was typed into. HUD mode is per-turn
             # state, so it cannot live in the (byte-stable) system prompt.
             run_message = _prepend_note(run_message, _hud_surface_note(session))
+
+            # Dispatched shared context rides the request only (see the
+            # SHARED CONTEXT SLOT block above) — never the persisted prompt.
+            run_message = _prepend_note(run_message, _shared_context_note(session))
 
             def _stream(delta):
                 with session["history_lock"]:
