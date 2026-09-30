@@ -75,11 +75,11 @@ describe('useSessionTileDelegate resumeTile', () => {
 
     expect(runtimeId).toBe('runtime-1')
     expect(getLatestSessionMessages).toHaveBeenCalledWith('stored-x', 'ai-engineer')
+    // 2026-09-30: 首次 resume 不带 omit(保留 WS 副本兜底), 12s 超时后才 omit 重试
     expect(requestGateway).toHaveBeenCalledWith('session.resume', {
       session_id: 'stored-x',
       cols: 96,
-      profile: 'ai-engineer',
-      omit_messages: true
+      profile: 'ai-engineer'
     })
   })
 
@@ -96,8 +96,7 @@ describe('useSessionTileDelegate resumeTile', () => {
     expect(requestGateway).toHaveBeenCalledWith('session.resume', {
       session_id: 'stored-y',
       cols: 96,
-      profile: 'default',
-      omit_messages: true
+      profile: 'default'
     })
   })
 })

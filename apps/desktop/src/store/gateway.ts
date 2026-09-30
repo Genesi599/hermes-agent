@@ -28,6 +28,8 @@ interface RegistryConfig {
 
 // ── Secondary (pool) backends ──────────────────────────────────────────────
 interface Secondary {
+  /** In-flight openSecondary join handle (single-flight guard). */
+  openInFlight: null | Promise<void>
   profile: string
   gateway: HermesGateway
   offEvent: () => void
@@ -169,7 +171,25 @@ function clearTimer(entry: Secondary): void {
 }
 
 async function openSecondary(entry: Secondary): Promise<void> {
-  console.warn('[gwdiag] openSecondary start', entry.profile)
+  // SINGLE-FLIGHT (2026-09-30): two concurrent openSecondary calls on one
+  // entry raced their gateway.connect() — the loser's socket was replaced
+  // by the winner's before its 'open' listener fired, and JsonRpcGatewayClient
+  // then DROPPED that event (this.socket !== socket), leaving the losing
+  // promise unsettled forever. Every awaiter of the gateway swap hung on
+  // "Waking up …" with no timeout and no error (绘图师, reproducible).
+  // Join an already-running open instead of starting a second one.
+  if (entry.openInFlight) {
+    return entry.openInFlight
+  }
+
+  entry.openInFlight = doOpenSecondary(entry).finally(() => {
+    entry.openInFlight = null
+  })
+
+  return entry.openInFlight
+}
+
+async function doOpenSecondary(entry: Secondary): Promise<void> {
   const desktop = window.hermesDesktop
 
   if (!desktop) {
@@ -226,6 +246,7 @@ function createSecondary(profile: string): Secondary {
 
   const entry: Secondary = {
     profile,
+    openInFlight: null,
     gateway,
     offEvent: () => {},
     offState: () => {},
