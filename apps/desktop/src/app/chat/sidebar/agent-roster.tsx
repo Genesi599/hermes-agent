@@ -156,6 +156,7 @@ function AgentChip({
   avatar,
   label,
   onOpen,
+  onOpenId,
   profile,
   resolveTarget,
   title,
@@ -166,6 +167,11 @@ function AgentChip({
   /** Same as clicking the chip: open the agent's conversation, or land in its
    *  context when it has none yet. */
   onOpen: () => void
+  /** FAST PATH (2026-09-30): open a KNOWN conversation id directly — skips
+   *  openAgent's listAllProfileSessions IPC, whose promise can wedge on a
+   * stale secondary gateway (the 09-23 "点不动" hang class, recurred today
+   * as 点绘图师一直加载). The activity poll already resolved this id. */
+  onOpenId?: (sessionId: string) => void
   profile: string
   /** The agent's conversation id, resolved the way a CLICK resolves it (exact
    *  `<项目> · <智能体>` name first). Asked for when the menu opens, not on
@@ -287,7 +293,14 @@ function AgentChip({
           // The row underneath opens the PARENT session; this opens the AGENT.
           event.preventDefault()
           event.stopPropagation()
-          onOpen()
+
+          if (targetId && onOpenId) {
+            // Same read-clearing the guarded lookup path does (openAgent).
+            markAgentRead(watchKey ?? profile)
+            onOpenId(targetId)
+          } else {
+            onOpen()
+          }
         }}
         onContextMenu={lookUpTarget}
         title={running ? `${title} · ${r.sessionRunning}` : unread ? `${title} · ${r.finishedUnread}` : title}
@@ -515,6 +528,7 @@ function AgentRosterImpl({
         avatar={<img alt="" className="size-full object-cover" src={DEFAULT_AGENT_SPEAKER.avatarImage} />}
         label={DEFAULT_AGENT_SPEAKER.name}
         onOpen={() => void openHermes()}
+        onOpenId={onOpenSession ? id => onOpenSession(id) : undefined}
         profile="default"
         resolveTarget={() => hermesConversationFor(project)}
         title={`打开与「${DEFAULT_AGENT_SPEAKER.name}」的对话（管理者：群聊/看板/智能体调度）`}
@@ -526,6 +540,7 @@ function AgentRosterImpl({
           key={agent.label}
           label={agent.label}
           onOpen={() => void openAgent(agent)}
+          onOpenId={onOpenSession ? id => onOpenSession(id) : undefined}
           profile={agent.profile ?? agent.label}
           resolveTarget={() => resolveAgentTarget(agent)}
           title={`跟「${agent.label}」对话`}
