@@ -146,7 +146,6 @@ function reportGatewayState(profile: string, state: ConnectionState): void {
     markNativeNotifyBaseline()
   }
 
-  console.warn('[gwdiag] reportState', profile, state, 'activeKey=', g.activeKey)
   if (normKey(profile) === g.activeKey) {
     setGatewayState(state)
   }
@@ -197,11 +196,8 @@ async function doOpenSecondary(entry: Secondary): Promise<void> {
   }
 
   const conn = await desktop.getConnection(entry.profile)
-  console.warn('[gwdiag] gotConnection', entry.profile, conn?.wsUrl?.slice(0, 50))
   const wsUrl = await resolveGatewayWsUrl(desktop, conn)
-  console.warn('[gwdiag] gotWsUrl', entry.profile, wsUrl?.slice(0, 50))
   await entry.gateway.connect(wsUrl)
-  console.warn('[gwdiag] connected', entry.profile, entry.gateway.connectionState)
   void desktop.touchBackend?.(entry.profile).catch(() => undefined)
 }
 

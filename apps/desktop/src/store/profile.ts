@@ -286,7 +286,6 @@ export async function ensureGatewayProfile(profile: string | null | undefined): 
     }
   }
 
-  console.warn('[gwdiag] swap begin →', target)
   $gatewaySwapTarget.set(target)
   // SWAP DEADLINE (2026-09-30): the swap chain (openSecondary → connect →
   // sync) has ONE unbounded await — if anything in it wedges, the overlay
@@ -299,12 +298,10 @@ export async function ensureGatewayProfile(profile: string | null | undefined): 
   gatewaySwitch = (async () => {
     // ensureGatewayForProfile opens (or reuses) the target's socket and points
     // the active gateway at it — without closing the profile you came from.
-    console.warn('[gwdiag] swap: ensureGatewayForProfile entered', target)
     await Promise.race([
       ensureGatewayForProfile(target),
       new Promise(resolve => setTimeout(resolve, SWAP_DEADLINE_MS))
     ])
-    console.warn('[gwdiag] swap: ensureGatewayForProfile done', target)
     $activeGatewayProfile.set(target)
     // The active backend just changed; resync $connection so remote-aware
     // paths (image.attach_bytes vs image.attach, /api/fs/*, /api/media) follow.
@@ -312,7 +309,6 @@ export async function ensureGatewayProfile(profile: string | null | undefined): 
       syncConnectionToActiveProfile(target),
       new Promise(resolve => setTimeout(resolve, 3_000))
     ])
-    console.warn('[gwdiag] swap complete', target)
   })()
 
   try {
