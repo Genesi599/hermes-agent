@@ -1035,7 +1035,7 @@ export function useSessionActions({
               cols: 96,
               source: 'desktop',
               ...(watchWindow ? { lazy: true } : {}),
-              ...(knownRoom || prefetchLanded || forceOmit ? { omit_messages: true } : {}),
+              ...(knownRoom || forceOmit ? { omit_messages: true } : {}),
               ...(sessionProfile ? { profile: sessionProfile } : {})
             }),
             new Promise<never>((_, reject) => {
