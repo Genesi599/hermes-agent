@@ -966,25 +966,37 @@ export async function resolveStoredSession(storedSessionId: string): Promise<Ses
     .map(profile => normalizeProfileKey(profile.name))
     .filter(key => key !== activeKey)
 
-  for (const profile of otherProfiles) {
-    try {
-      const session = await getSession(storedSessionId, profile)
+  // CONCURRENT probe (2026-09-29): the serial loop cost one round-trip per
+  // profile — a session owned by the 14th profile paid ~13 misses before its
+  // hit, measured as the bulk of a 6.4s cold chip-open (vs 0.6s warm). Fire
+  // every probe at once; total wait is one round-trip, and the array order
+  // keeps the hit selection deterministic (ids live in exactly one store, so
+  // at most one probe can hit).
+  const settled = await Promise.all(
+    otherProfiles.map(async profile => {
+      try {
+        const session = await getSession(storedSessionId, profile)
 
-      // Same ownership contract: the DESKTOP profile we explicitly probed is
-      // authoritative, whatever the scoped backend stamped (older backends
-      // omit the field; a per-profile remote override strips the alias before
-      // forwarding, so that backend answers as its own "default").
-      session.profile = profile
+        // Same ownership contract: the DESKTOP profile we explicitly probed is
+        // authoritative, whatever the scoped backend stamped (older backends
+        // omit the field; a per-profile remote override strips the alias before
+        // forwarding, so that backend answers as its own "default").
+        session.profile = profile
 
-      upsertResolvedSession(session, storedSessionId)
+        return session
+      } catch {
+        return undefined
+      }
+    })
+  )
 
-      return session
-    } catch {
-      // Not on this profile; try the next.
-    }
+  const hit = settled.find(session => session !== undefined)
+
+  if (hit) {
+    upsertResolvedSession(hit, storedSessionId)
   }
 
-  return undefined
+  return hit
 }
 
 /**
