@@ -14,6 +14,7 @@ import { embeddedImageUrls, textWithoutEmbeddedImages } from '@/lib/embedded-ima
 import { reconcileApprovalModeForProfile } from '@/store/approval-mode'
 import { requestDesktopOnboardingForCredentialWarning } from '@/store/onboarding'
 import { $activeGatewayProfile, $profiles, normalizeProfileKey } from '@/store/profile'
+import { $profileBySessionId } from '@/store/session-profile-hint'
 import {
   $currentCwd,
   $sessions,
@@ -937,6 +938,24 @@ export async function resolveStoredSession(storedSessionId: string): Promise<Ses
     return cached
   }
 
+  // PROFILE HINT (2026-09-30): the roster polls already know this id's owner
+  // (session-profile-hint). One scoped GET on the hinted profile replaces the
+  // whole probe ladder for agent-chip opens. A stale hint 404s and falls
+  // through to the normal resolution below.
+  const hintedProfile = $profileBySessionId.get()[storedSessionId]?.trim()
+
+  if (hintedProfile && hintedProfile !== normalizeProfileKey($activeGatewayProfile.get())) {
+    try {
+      const hinted = await getSession(storedSessionId, hintedProfile)
+
+      hinted.profile = hintedProfile
+      upsertResolvedSession(hinted, storedSessionId)
+
+      return hinted
+    } catch {
+      // Stale hint — fall through to the active-backend GET / ladder.
+    }
+  }
   // Direct by-id on the live backend — one row lookup, no list scan. Covers
   // single-profile users and any id on the active profile (e.g. an old session
   // past the sidebar's recent window). 404 just means it's not on this profile.

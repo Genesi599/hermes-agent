@@ -3,6 +3,7 @@ import { atom } from 'nanostores'
 import { listAllProfileSessions } from '@/hermes'
 import { persistentAtom } from '@/lib/persisted'
 import { rememberRoomRouting } from '@/store/room-routing'
+import { rememberSessionProfile } from '@/store/session-profile-hint'
 import { $selectedStoredSessionId, markSessionUnread } from '@/store/session'
 import { $focusedStoredSessionId } from '@/store/session-states'
 
@@ -205,6 +206,10 @@ export async function pollAgentWatch(watch: AgentWatch): Promise<void> {
     if (room) {
       rememberRoomRouting(picked.id, room)
     }
+
+    // Publish ownership too (2026-09-30): opening this conversation can then
+    // resolve with ONE scoped GET instead of the cross-profile probe ladder.
+    rememberSessionProfile(picked.id, watch.profile)
 
     // A turn that finishes while its own conversation is the one on screen is
     // not "unread" — the user watched it land. Only a finish they were looking
