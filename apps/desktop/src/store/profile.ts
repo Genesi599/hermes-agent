@@ -286,15 +286,19 @@ export async function ensureGatewayProfile(profile: string | null | undefined): 
     }
   }
 
+  console.warn('[gwdiag] swap begin →', target)
   $gatewaySwapTarget.set(target)
   gatewaySwitch = (async () => {
     // ensureGatewayForProfile opens (or reuses) the target's socket and points
     // the active gateway at it — without closing the profile you came from.
+    console.warn('[gwdiag] swap: ensureGatewayForProfile entered', target)
     await ensureGatewayForProfile(target)
+    console.warn('[gwdiag] swap: ensureGatewayForProfile done', target)
     $activeGatewayProfile.set(target)
     // The active backend just changed; resync $connection so remote-aware
     // paths (image.attach_bytes vs image.attach, /api/fs/*, /api/media) follow.
     await syncConnectionToActiveProfile(target)
+    console.warn('[gwdiag] swap complete', target)
   })()
 
   try {

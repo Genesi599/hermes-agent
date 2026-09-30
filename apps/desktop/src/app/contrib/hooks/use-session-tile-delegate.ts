@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { getLatestSessionMessages, PROMPT_SUBMIT_REQUEST_TIMEOUT_MS } from '@/hermes'
 import { toChatMessages } from '@/lib/chat-messages'
 import { publishSessionState, setSessionTileDelegate } from '@/store/session-states'
+import { ensureGatewayProfile } from '@/store/profile'
 import type { SessionResumeResponse } from '@/types/hermes'
 
 import type { usePromptActions } from '../../session/hooks/use-prompt-actions'
@@ -114,11 +115,28 @@ export function useSessionTileDelegate({
         // the same cross-profile bleed the recovery resumes had (#67603).
         const profile = await resolveSessionProfile(storedSessionId)
 
+        // PROFILE SWAP FIRST (2026-09-30): the tile path used to fire the
+        // resume straight at the CURRENT gateway with only a `profile` param,
+        // betting on backend-side scoping. When the active gateway stayed on
+        // another profile the bet lost silently (绘图师 tile: resume lost,
+        // route-resume tug-of-war, "一直加载"). Swap the gateway BEFORE the
+        // RPC, exactly like the main resume path (use-session-actions).
+        if (profile) {
+          await ensureGatewayProfile(profile)
+        }
+
         const [prefetch, resumed] = await Promise.all([
           getLatestSessionMessages(storedSessionId, profile).catch(() => null),
-          requestGateway<SessionResumeResponse>('session.resume', {
-            session_id: storedSessionId,
-            cols: 96,
+          // TIMEOUT + OMIT RETRY (2026-09-30): a huge transcript whose WS
+          // copy never completes hangs this Promise.all forever (the 4.6MB
+          // 绘图师 lineage). Race the RPC against a cap and retry once with
+          // omit_messages — the prefetch side of this same Promise.all is the
+          // transcript source when it lands (see the messages merge below).
+          Promise.race([
+            (async () => {
+              const first = await requestGateway<SessionResumeResponse>('session.resume', {
+              session_id: storedSessionId,
+              cols: 96,
             // NO omit_messages (2026-09-23): the RPC is the FALLBACK message
             // source. With `omit_messages: true` the resume returned
             // `messages: []` and the whole transcript came from the REST
@@ -129,8 +147,20 @@ export function useSessionTileDelegate({
             // carry the messages too; a prefetch that succeeds still wins
             // below (state.messages.length > 0 branch), so the payload cost
             // only shows up on the miss it is there to rescue.
-            ...(profile ? { profile } : {})
-          })
+                ...(profile ? { profile } : {})
+              }).catch(() => null)
+
+              return first ?? requestGateway<SessionResumeResponse>('session.resume', {
+                session_id: storedSessionId,
+                cols: 96,
+                omit_messages: true,
+                ...(profile ? { profile } : {})
+              })
+            })(),
+            new Promise<never>((_, reject) => {
+              setTimeout(() => reject(new Error('tile resume timed out')), 12_000)
+            })
+          ])
         ])
 
         const runtimeId = resumed?.session_id
