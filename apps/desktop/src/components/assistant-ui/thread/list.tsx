@@ -107,6 +107,8 @@ const BACKFILL_STEP = 60
 // frame. Treat a subpixel remainder as achieved; larger gaps still follow new
 // streamed content normally.
 const SCROLL_TARGET_EPSILON_PX = 0.5
+// Delay for the post-settle bottom re-glue (covers slow markdown renders).
+const LATE_SCROLL_CATCH_UP_MS = 500
 
 export const resolveThreadScrollTarget: GetTargetScrollTop = (targetScrollTop, { scrollElement }) => {
   const currentScrollTop = scrollElement.scrollTop
@@ -609,15 +611,32 @@ const ThreadMessageListInner: FC<ThreadMessageListProps> = ({
         void scrollToBottom('instant')
         loadSettledRef.current = true
 
+        // LATE RENDER CATCH-UP (2026-10-09): heavy sessions keep growing
+        // scrollHeight for hundreds of ms after settle gives up. Re-glue.
+        lateCatchUpId = window.setTimeout(() => {
+          const node = scrollRef.current
+
+          if (node && loadSettledRef.current) {
+            void scrollToBottom('instant')
+          }
+        }, LATE_SCROLL_CATCH_UP_MS)
+
         return
       }
 
       rafId = requestAnimationFrame(settle)
     }
 
+    let lateCatchUpId: null | number = null
     let rafId = requestAnimationFrame(settle)
 
-    return () => cancelAnimationFrame(rafId)
+    return () => {
+      cancelAnimationFrame(rafId)
+
+      if (lateCatchUpId !== null) {
+        window.clearTimeout(lateCatchUpId)
+      }
+    }
   }, [hasGroups, scrollRef, scrollToBottom, sessionKey, stopScroll])
 
   // Prepend an older page while preserving the on-screen position. The user is
