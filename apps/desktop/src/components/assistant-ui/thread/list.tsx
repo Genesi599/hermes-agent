@@ -602,7 +602,17 @@ const ThreadMessageListInner: FC<ThreadMessageListProps> = ({
 
       stableFrames = height === lastHeight ? stableFrames + 1 : 0
       lastHeight = height
-      node.scrollTop = height
+
+      // ANTI-FLASH (2026-10-09): only pin on the FIRST frame (initial
+      // position) and after height stabilizes (final position). Setting
+      // scrollTop on EVERY frame while backfill is growing content causes
+      // 10+ visible scroll jumps ("闪好几下才稳定"). While height is still
+      // changing, leave scrollTop alone — the content grows above the fold
+      // and the two pinned positions (start + end) are the only visible
+      // transitions.
+      if (frame === 0) {
+        node.scrollTop = height
+      }
 
       // Most session switches are synchronous and stabilize within 2 frames;
       // the old 90-frame ceiling was for slow async image loads. Cap at 15
