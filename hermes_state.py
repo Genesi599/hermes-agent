@@ -149,6 +149,124 @@ def _purge_compacted_enabled() -> bool:
         return False
 
 
+def _tool_output_downgrade_enabled() -> bool:
+    """custom/hermes-yh: stale tool outputs are downgraded to summaries.
+
+    Reads ``compression.downgrade_tool_outputs`` from config.yaml (default
+    True in this fork). When enabled, tool-role messages older than
+    ``keep_last_n`` turns are replaced in the durable transcript by a
+    one-line summary — the model saw the full output during its turn;
+    after that it only needs to know WHAT ran, not the full stdout.
+    """
+    try:
+        from hermes_cli.config import load_config_readonly
+
+        comp_cfg = load_config_readonly().get("compression") or {}
+        return bool(comp_cfg.get("downgrade_tool_outputs", True))
+    except Exception:
+        return False
+
+
+# Size below which a tool output is small enough to keep as-is (no downgrade
+# value). Configurable via ``compression.tool_output_keep_bytes``.
+_DEFAULT_TOOL_KEEP_BYTES = 400
+
+
+def _summarize_tool_output(content: str, tool_name: str | None) -> str:
+    """One-line summary replacing a stale tool output in the transcript."""
+    import json as _json
+
+    size_kb = max(len(content) // 1024, 1)
+
+    # Try to parse structured tool output ({"output": ..., "exit_code": ...})
+    output_text = content
+    exit_code = None
+    try:
+        parsed = _json.loads(content)
+        if isinstance(parsed, dict):
+            output_text = str(parsed.get("output", ""))
+            exit_code = parsed.get("exit_code")
+    except (ValueError, TypeError):
+        pass
+
+    # Head: first meaningful line, stripped
+    for line in output_text.split(chr(10)):
+        stripped = line.strip()
+        if stripped and not stripped.startswith(("#", "```", "---")):
+            head = stripped[:80]
+            break
+    else:
+        head = output_text.strip()[:80] if output_text.strip() else "(empty)"
+
+    name = tool_name or "tool"
+    suffix = f" exit={exit_code}" if exit_code is not None else ""
+    return f"[{name} · {size_kb}KB{suffix} · {head}]"
+
+
+def downgrade_stale_tool_outputs(
+    db_path: "str | Path",
+    session_id: str,
+    keep_last_n: int = 5,
+    min_bytes: int = _DEFAULT_TOOL_KEEP_BYTES,
+) -> int:
+    """Replace old tool outputs with one-line summaries. Returns rows updated.
+
+    Only touches ``role='tool'`` messages that are (a) larger than
+    ``min_bytes`` (small outputs aren't worth the churn) and (b) older than
+    the last ``keep_last_n`` tool messages. The model saw the full output
+    during its turn; afterwards a summary suffices.
+    """
+    if not _tool_output_downgrade_enabled():
+        return 0
+
+    import sqlite3 as _sqlite3
+
+    con = _sqlite3.connect(db_path, timeout=10)
+    try:
+        # IDs of the most recent N tool messages (protected from downgrade)
+        recent = [
+            row[0]
+            for row in con.execute(
+                "SELECT id FROM messages WHERE session_id = ? AND role = 'tool' "
+                "ORDER BY id DESC LIMIT ?",
+                (session_id, keep_last_n),
+            )
+        ]
+
+        # Old tool messages large enough to be worth downgrading
+        stale = con.execute(
+            "SELECT id, content, tool_name FROM messages "
+            "WHERE session_id = ? AND role = 'tool' "
+            "AND length(coalesce(content, '')) > ? "
+            "AND compacted = 0 "
+            "ORDER BY id",
+            (session_id, min_bytes),
+        ).fetchall()
+
+        updated = 0
+        for msg_id, content, tool_name in stale:
+            if msg_id in recent:
+                continue
+            summary = _summarize_tool_output(content or "", tool_name)
+            if len(summary) < len(content or ""):
+                con.execute(
+                    "UPDATE messages SET content = ? WHERE id = ?",
+                    (summary, msg_id),
+                )
+                updated += 1
+
+        if updated:
+            con.commit()
+            logger.info(
+                "tool_output_downgrade: %d stale tool outputs summarized "
+                "(session=%s, keep_last=%d)",
+                updated, session_id, keep_last_n,
+            )
+        return updated
+    finally:
+        con.close()
+
+
 class SessionResumeTooLargeError(ValueError):
     def __init__(
         self,

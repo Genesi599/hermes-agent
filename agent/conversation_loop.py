@@ -7975,6 +7975,19 @@ def run_conversation(
     # Post-loop turn finalization extracted to agent/turn_finalizer.finalize_turn
     # (god-file decomposition Phase 1 step 4). Behavior-neutral: the assembled
     # result dict is returned exactly as before.
+    # TOOL OUTPUT DOWNGRADE (2026-10-09): after the turn ends, summarize
+    # stale tool outputs in the durable transcript. The model already saw
+    # the full output during this turn; old ones only need a summary line.
+    try:
+        from hermes_state import downgrade_stale_tool_outputs
+        _db = getattr(agent, "_session_db", None)
+        _db_path = getattr(_db, "db_path", None) if _db else None
+        _sid = getattr(agent, "session_id", None)
+        if _db_path and _sid:
+            downgrade_stale_tool_outputs(_db_path, _sid)
+    except Exception:
+        pass  # best-effort; never block turn finalization
+
     return finalize_turn(
         agent,
         final_response=final_response,
