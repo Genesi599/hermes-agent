@@ -442,7 +442,11 @@ const ThreadMessageListInner: FC<ThreadMessageListProps> = ({
       // Functional max, not a plain set: an urgent "Show earlier" click can
       // land between scheduling and committing this transition, and a plain
       // set would rebase over it and shrink the budget back down.
-      startTransition(() => setRenderBudget(budget => Math.max(budget, Math.min(budget + BACKFILL_STEP, paneBudget))))
+      // SINGLE-STEP BACKFILL (2026-10-09): the progressive rAF loop added
+      // BACKFILL_STEP units per frame, causing 3-5 visible layout shifts
+      // ("闪几下才稳定"). Go to the full pane budget in ONE transition —
+      // the only visual states are: first-paint → full content.
+      startTransition(() => setRenderBudget(budget => Math.max(budget, paneBudget)))
     })
 
     return () => cancelAnimationFrame(rafId)
