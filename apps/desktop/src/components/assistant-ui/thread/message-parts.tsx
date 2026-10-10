@@ -273,7 +273,23 @@ const ReasoningAccordionGroup: FC<{ children?: ReactNode; endIndex: number; star
     <ThinkingDisclosure
       messageRunning={messageRunning}
       pending={pending}
-      timerKey={`reasoning:${messageId}`}
+      // AUTO-CONTINUE GHOST FIX (2026-10-10): when a turn is interrupted and
+      // auto-continued, the SAME message carries TWO reasoning parts (original
+      // + continuation). Sharing one timerKey made the second read the first's
+      // accumulated timer/stats — a "ghost" Thinking with empty content but
+      // the original's numbers. Discriminate by part index ONLY when there are
+      // multiple reasoning parts (the single-part case keeps the stable key
+      // from the timerKey flicker fix, 2026-09-22).
+      // AUTO-CONTINUE GHOST FIX (2026-10-10): a turn interrupted + auto-
+      // continued carries TWO reasoning groups in one message. Sharing one
+      // timerKey made both read/write the same disclosure memory — the ghost
+      // showed the original's stats with empty content, flickering as both
+      // fought over one state. The FIRST group keeps the stable messageId-only
+      // key (the 2026-09-22 flicker fix); groups AFTER the first add their
+      // startIndex — auto-continue parts are appended at the END so their
+      // index is stable (the shifting that motivated removing startIndex only
+      // affected the first group via replace=true).
+      timerKey={`reasoning:${messageId}${startIndex > 0 ? `:${startIndex}` : ''}`}
     >
       {children}
     </ThinkingDisclosure>
