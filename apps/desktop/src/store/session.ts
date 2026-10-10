@@ -688,6 +688,27 @@ export function markSessionUnread(sessionId: string | null | undefined) {
     return
   }
 
+  // FOCUSED-SESSION GUARD (2026-10-10): the user is LOOKING AT this session —
+  // a "completed while you were away" dot on the screen they're watching is
+  // noise. The clear-subscription only fires on focus CHANGES, so a mark
+  // for the ALREADY-focused session never gets cleared. Check the selected
+  // session (same store, no import cycle) and match by id or lineage root.
+  const selected = $selectedStoredSessionId.get()
+
+  if (selected && selected === id) {
+    return
+  }
+
+  if (selected) {
+    const sessions = $sessions.get()
+    const selRow = sessions.find(s => s.id === selected || s._lineage_root_id === selected)
+    const idRow = sessions.find(s => s.id === id || s._lineage_root_id === id)
+
+    if (selRow && idRow && (selRow.id === idRow.id || selRow._lineage_root_id === idRow._lineage_root_id)) {
+      return
+    }
+  }
+
   $unreadFinishedSessionIds.set([...$unreadFinishedSessionIds.get(), id])
 }
 
