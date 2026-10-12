@@ -237,6 +237,21 @@ async function reconnectSecondary(entry: Secondary): Promise<void> {
   }
 }
 
+// True when the shared backend pool is active (default). The renderer can
+// check this to skip secondary gateway creation — the primary backend serves
+// all profiles via per-request scoping.
+function sharedBackendActive(): boolean {
+  // The Electron main process decides this; the renderer mirrors it via the
+  // absence of env override. In practice this is always true unless the user
+  // explicitly sets HERMES_DESKTOP_SHARED_BACKEND=0.
+  const raw = String(
+    (globalThis as { __HERMES_DESKTOP_SHARED_BACKEND__?: string })
+      .__HERMES_DESKTOP_SHARED_BACKEND__ ?? ''
+  ).trim().toLowerCase()
+
+  return !(raw === '0' || raw === 'false' || raw === 'no' || raw === 'off')
+}
+
 function createSecondary(profile: string): Secondary {
   const gateway = new HermesGateway()
 
@@ -296,6 +311,23 @@ export async function ensureGatewayForProfile(profile: string): Promise<void> {
   const key = normKey(profile)
 
   if (key === g.primaryProfile) {
+    setActive(key)
+
+    return
+  }
+
+  // SHARED-BACKEND SHORT-CIRCUIT (2026-10-12 architectural fix): when the
+  // shared backend pool is active (default, see connection-config.ts
+  // resolveProfileBackendRoute route 4b), ALL profiles are served by the
+  // primary backend with per-request `?profile=` scoping — the backend
+  // handles HERMES_HOME switching (tui_gateway.profile_scope). No secondary
+  // WebSocket is needed. The old secondary-gateway swap chain (openSecondary
+  // → connect → setActive) was the source of seven layers of reliability bugs
+  // (concurrent races, stale connections, orphan backends, single-flight
+  // deadlocks). Just activate the profile on the primary gateway — the RPC
+  // params already carry `profile: key`, and REST calls already use
+  // setApiRequestProfile. This eliminates the entire class.
+  if (sharedBackendActive()) {
     setActive(key)
 
     return
