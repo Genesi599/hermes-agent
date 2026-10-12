@@ -20,7 +20,7 @@ import { ErrorState } from '@/components/ui/error-state'
 import { TitleMenuTrigger } from '@/components/ui/title-menu-trigger'
 import { type HermesGateway } from '@/hermes'
 import { useI18n } from '@/i18n'
-import { type Channel, ensureChannelForSession } from '@/lib/channels'
+import { type Channel, ensureChannelForSession , cachedRoomBySession } from '@/lib/channels'
 import type { ChatMessage } from '@/lib/chat-messages'
 import { NEW_SESSION_TITLE, quickModelOptions, sessionTitle } from '@/lib/chat-runtime'
 import { useIncrementalExternalStoreRuntime } from '@/lib/incremental-external-store-runtime'
@@ -588,6 +588,17 @@ export const ChatView = memo(function ChatView({
       roomOwnerRef.current = null
 
       return
+    }
+
+    // SYNC ROOM INIT (2026-10-12): seed from the cached channel binding
+    // BEFORE the async lookup — otherwise the Thread renders for one paint
+    // and then swaps to ChannelView, showing the private chat transcript
+    // as a flash before the room appears ("先跳到私聊再跳到群聊").
+    const cached = selectedSessionId ? cachedRoomBySession(selectedSessionId) : null
+
+    if (cached) {
+      setRoom(cached)
+      roomOwnerRef.current = selectedSessionId
     }
 
     if (busy || awaitingResponse) {
