@@ -1556,6 +1556,7 @@ async def vision_analyze_tool(
         )
         result = {
             "success": True,
+            "model": model,
             "analysis": f"[{scale_note}] {analysis}" if scale_note else analysis,
         }
         if scale_note:
