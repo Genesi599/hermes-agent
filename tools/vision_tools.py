@@ -1361,7 +1361,7 @@ async def vision_analyze_tool(
         if is_interrupted():
             return tool_error("Interrupted", success=False)
 
-        logger.info("Analyzing image: %s", image_url[:60])
+        logger.info("Analyzing image (model=%s): %s", model, image_url[:60])
         logger.info("User prompt: %s", user_prompt[:100])
 
         # Resolve the source to raw bytes through the single resolver (unifies
@@ -1557,7 +1557,7 @@ async def vision_analyze_tool(
         result = {
             "success": True,
             "model": model,
-            "analysis": f"[{scale_note}] {analysis}" if scale_note else analysis,
+            "analysis": f"[vision model: {model}] {f'[{scale_note}] ' if scale_note else ''}{analysis}",
         }
         if scale_note:
             result["scale_note"] = scale_note
